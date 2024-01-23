@@ -1,7 +1,7 @@
 use ElemGroup::*;
 
 /// Element group on the periodic table
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ElemGroup {
     /// Alkali metal
     Alkali,
@@ -23,14 +23,15 @@ pub enum ElemGroup {
     RarEar,
 }
 
+#[derive(Debug, Clone, Copy)]
 pub struct AtomData {
     pub name: &'static str,
     pub sym: &'static str,
-    pub mass: f64,
+    pub mass: f32,
     pub group: ElemGroup
 }
 impl AtomData {
-    pub const fn new(name: &'static str, sym: &'static str, mass: f64, group: ElemGroup) -> Self {
+    pub const fn new(name: &'static str, sym: &'static str, mass: f32, group: ElemGroup) -> Self {
         Self {
             name,
             sym,

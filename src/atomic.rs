@@ -9,15 +9,69 @@ use atoi::FromRadix10;
 use std::fmt::{self, Display, Formatter};
 use crate::atom_info::ATOM_DATA;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Chirality {
+    None,
+    Ccw,
+    Cw,
+}
+impl Chirality {
+    pub fn is_chiral(self) -> bool {
+        self != Self::None
+    }
+}
+
 /// An atom in the molecule graph
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Atom {
     pub protons: u8,
     pub isotope: Option<u16>,
     pub charge: i8,
+    pub chirality: Chirality,
     /// Aromaticity can be found in the bonds, and that should checked. This is only here to
     /// simplify SMILES parsing
     aromatic: bool,
+}
+impl Atom {
+    pub fn new(protons: u8) -> Self {
+        Self {
+            protons,
+            isotope: None,
+            charge: 0,
+            chirality: Chirality::None,
+            aromatic: false
+        }
+    }
+    pub fn new_aromatic(protons: u8) -> Self {
+        Self {
+            protons,
+            isotope: None,
+            charge: 0,
+            chirality: Chirality::None,
+            aromatic: true
+        }
+    }
+    pub fn new_isotope(protons: u8, isotope: Option<u16>) -> Self {
+        Self {
+            protons,
+            isotope,
+            charge: 0,
+            chirality: Chirality::None,
+            aromatic: false
+        }
+    }
+    pub fn new_aromatic_isotope(protons: u8, isotope: Option<u16>) -> Self {
+        Self {
+            protons,
+            isotope,
+            charge: 0,
+            chirality: Chirality::None,
+            aromatic: true
+        }
+    }
+    pub fn mass(self) -> f32 {
+        ATOM_DATA[self.protons as usize].mass
+    }
 }
 impl Display for Atom {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -250,75 +304,75 @@ impl<'a> SmilesParser<'a> {
                 self.index += 1;
                 if self.input.get(self.index) ==  Some(&b'r') {
                     self.index += 1;
-                    Ok(Some(self.graph.add_node(Atom {protons: 35, isotope: None, charge: 0, aromatic: false})))
+                    Ok(Some(self.graph.add_node(Atom::new(35))))
                 } else {
-                    Ok(Some(self.graph.add_node(Atom {protons: 5, isotope: None, charge: 0, aromatic: false})))
+                    Ok(Some(self.graph.add_node(Atom::new(5))))
                 }
             }
             Some(&b'C') => {
                 self.index += 1;
                 if self.input.get(self.index) ==  Some(&b'l') {
                     self.index += 1;
-                    Ok(Some(self.graph.add_node(Atom {protons: 17, isotope: None, charge: 0, aromatic: false})))
+                    Ok(Some(self.graph.add_node(Atom::new(17))))
                 } else {
-                    Ok(Some(self.graph.add_node(Atom {protons: 6, isotope: None, charge: 0, aromatic: false})))
+                    Ok(Some(self.graph.add_node(Atom::new(6))))
                 }
             }
             Some(&b'N') => {
                 self.index += 1;
-                Ok(Some(self.graph.add_node(Atom {protons: 7, isotope: None, charge: 0, aromatic: false})))
+                Ok(Some(self.graph.add_node(Atom::new(7))))
             }
             Some(&b'O') => {
                 self.index += 1;
-                Ok(Some(self.graph.add_node(Atom {protons: 8, isotope: None, charge: 0, aromatic: false})))
+                Ok(Some(self.graph.add_node(Atom::new(8))))
             }
             Some(&b'P') => {
                 self.index += 1;
-                Ok(Some(self.graph.add_node(Atom {protons: 15, isotope: None, charge: 0, aromatic: false})))
+                Ok(Some(self.graph.add_node(Atom::new(15))))
             }
             Some(&b'S') => {
                 self.index += 1;
-                Ok(Some(self.graph.add_node(Atom {protons: 16, isotope: None, charge: 0, aromatic: false})))
+                Ok(Some(self.graph.add_node(Atom::new(16))))
             }
             Some(&b'F') => {
                 self.index += 1;
-                Ok(Some(self.graph.add_node(Atom {protons: 9, isotope: None, charge: 0, aromatic: false})))
+                Ok(Some(self.graph.add_node(Atom::new(9))))
             }
             Some(&b'I') => {
                 self.index += 1;
-                Ok(Some(self.graph.add_node(Atom {protons: 53, isotope: None, charge: 0, aromatic: false})))
+                Ok(Some(self.graph.add_node(Atom::new(53))))
             }
             Some(&b'R') => {
                 self.index += 1;
-                Ok(Some(self.graph.add_node(Atom {protons: 0, isotope: Some(0), charge: 0, aromatic: false})))
+                Ok(Some(self.graph.add_node(Atom::new_isotope(0, Some(0)))))
             }
             Some(&b'n') => {
                 self.index += 1;
-                Ok(Some(self.graph.add_node(Atom {protons: 7, isotope: None, charge: 0, aromatic: true})))
+                Ok(Some(self.graph.add_node(Atom::new_aromatic(7))))
             }
             Some(&b'o') => {
                 self.index += 1;
-                Ok(Some(self.graph.add_node(Atom {protons: 8, isotope: None, charge: 0, aromatic: true})))
+                Ok(Some(self.graph.add_node(Atom::new_aromatic(8))))
             }
             Some(&b'p') => {
                 self.index += 1;
-                Ok(Some(self.graph.add_node(Atom {protons: 15, isotope: None, charge: 0, aromatic: true})))
+                Ok(Some(self.graph.add_node(Atom::new_aromatic(15))))
             }
             Some(&b's') => {
                 self.index += 1;
-                Ok(Some(self.graph.add_node(Atom {protons: 16, isotope: None, charge: 0, aromatic: true})))
+                Ok(Some(self.graph.add_node(Atom::new_aromatic(16))))
             }
             Some(&b'b') => {
                 self.index += 1;
-                Ok(Some(self.graph.add_node(Atom {protons: 5, isotope: None, charge: 0, aromatic: true})))
+                Ok(Some(self.graph.add_node(Atom::new_aromatic(5))))
             }
             Some(&b'c') => {
                 self.index += 1;
-                Ok(Some(self.graph.add_node(Atom {protons: 6, isotope: None, charge: 0, aromatic: true})))
+                Ok(Some(self.graph.add_node(Atom::new_aromatic(6))))
             }
             Some(&b'r') => {
                 self.index += 1;
-                Ok(Some(self.graph.add_node(Atom {protons: 0, isotope: Some(0), charge: 0, aromatic: true})))
+                Ok(Some(self.graph.add_node(Atom::new_aromatic_isotope(0, Some(0)))))
             }
             Some(&b'[') => {
                 self.index += 1;
@@ -327,13 +381,13 @@ impl<'a> SmilesParser<'a> {
                 let mut isotope = (used != 0).then_some(isotope);
                 let atom = match self.input.get(self.index) {
                     None => Err(SmilesError::new(self.index, ExpectedAtom))?,
-                    Some(&b'b') => self.graph.add_node(Atom {protons: 5, isotope, charge: 0, aromatic: true}),
-                    Some(&b'c') => self.graph.add_node(Atom {protons: 6, isotope, charge: 0, aromatic: true}),
-                    Some(&b'n') => self.graph.add_node(Atom {protons: 7, isotope, charge: 0, aromatic: true}),
-                    Some(&b'o') => self.graph.add_node(Atom {protons: 8, isotope, charge: 0, aromatic: true}),
-                    Some(&b'p') => self.graph.add_node(Atom {protons: 15, isotope, charge: 0, aromatic: true}),
-                    Some(&b's') => self.graph.add_node(Atom {protons: 16, isotope, charge: 0, aromatic: true}),
-                    Some(&b'r') => self.graph.add_node(Atom {protons: 0, isotope: Some(isotope.unwrap_or(0)), charge: 0, aromatic: true}),
+                    Some(&b'b') => self.graph.add_node(Atom::new_aromatic(5)),
+                    Some(&b'c') => self.graph.add_node(Atom::new_aromatic(6)),
+                    Some(&b'n') => self.graph.add_node(Atom::new_aromatic(7)),
+                    Some(&b'o') => self.graph.add_node(Atom::new_aromatic(8)),
+                    Some(&b'p') => self.graph.add_node(Atom::new_aromatic(15)),
+                    Some(&b's') => self.graph.add_node(Atom::new_aromatic(16)),
+                    Some(&b'r') => self.graph.add_node(Atom::new_aromatic_isotope(0, Some(isotope.unwrap_or(0)))),
                     Some(c) if c.is_ascii_uppercase() => {
                         let start = self.index;
                         let len = self.input[(self.index + 1)..].iter().copied().take_while(u8::is_ascii_lowercase).count();
@@ -345,11 +399,21 @@ impl<'a> SmilesParser<'a> {
                         } else {
                             ATOM_DATA.iter().enumerate().find(|(_, a)| a.sym.as_bytes() == elem).ok_or(SmilesError::new(start, UnknownElement(bstr::BStr::new(elem).into())))?.0 as _
                         };
-                        self.graph.add_node(Atom {protons, isotope, charge: 0, aromatic: false})
+                        self.graph.add_node(Atom::new_isotope(protons, isotope))
                     }
                     _ => Err(SmilesError::new(self.index, ExpectedAtom))?
                 };
                 self.index += 1;
+                if self.input.get(self.index) == Some(&b'@') {
+                    self.index += 1;
+                    if self.input.get(self.index) == Some(&b'@') {
+                        self.index += 1;
+                        self.graph[atom].chirality = Chirality::Cw;
+                    }
+                    else {
+                        self.graph[atom].chirality = Chirality::Ccw;
+                    }
+                }
                 if self.input.get(self.index) == Some(&b'H') {
                     self.index += 1;
                     let (mut h, used) = usize::from_radix_10(&self.input[self.index..]);
@@ -360,7 +424,7 @@ impl<'a> SmilesParser<'a> {
                         self.index += used;
                     }
                     for _ in 0..h {
-                        let hy = self.graph.add_node(Atom {protons: 1, isotope: None, charge: 0, aromatic: false});
+                        let hy = self.graph.add_node(Atom::new(1));
                         self.graph.add_edge(atom, hy, Bond::Single);
                     }
                 }
@@ -484,7 +548,7 @@ impl<'a> SmilesParser<'a> {
                 let bond_count = self.graph.edges(atom).fold(0f32, |c, b| c + b.weight().bond_count()).floor().clamp(0.0, 127.0) as i8;
                 if bond_count < ex_bonds {
                     for _ in 0..(ex_bonds - bond_count) {
-                        let hy = self.graph.add_node(Atom {protons: 1, isotope: None, charge: 0, aromatic: false});
+                        let hy = self.graph.add_node(Atom::new(1));
                         self.graph.add_edge(atom, hy, Bond::Single);
                     }
                 }
