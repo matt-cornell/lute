@@ -1,0 +1,17 @@
+[package]
+name = "chem-sim"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+atoi = "2.0.0"
+bstr = { version = "1.9.0", default-features = false, features = ["std"] }
+fmtastic = "0.1.0"
+petgraph = "0.6.4"
+strum = { version = "0.25.0", features = ["derive"] }
+thiserror = "1.0.56"
+
+[[bin]]
+name = "parse-smiles"
