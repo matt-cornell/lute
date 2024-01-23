@@ -195,8 +195,12 @@ impl<'a> SmilesParser<'a> {
         let first_atom = self.get_atom()?.unwrap();
         let mut last_atom = first_atom;
         while self.index < self.input.len() {
-            match self.input[self.index] {
-                b'(' => {
+            let (bond, ex) = self.handle_loops(last_atom)?;
+            match self.input.get(self.index) {
+                Some(&b'(') => {
+                    if ex {
+                        Err(SmilesError::new(self.index, ExpectedAtom))?;
+                    }
                     self.index += 1;
                     let start_idx = self.index;
                     let (atom, bond, ex) = self.parse_chain(true)?.ok_or(SmilesError::new(self.index, ExpectedAtom))?;
@@ -205,12 +209,14 @@ impl<'a> SmilesParser<'a> {
                     }
                     self.graph.add_edge(last_atom, atom, if !ex && self.graph[last_atom].aromatic && self.graph[atom].aromatic {Bond::Aromatic} else {bond});
                 }
-                b')' if nested => {
+                Some(&b')') if nested => {
+                    if ex {
+                        Err(SmilesError::new(self.index, ExpectedAtom))?;
+                    }
                     self.index += 1;
                     break
                 }
-                _ => {
-                    let (bond, ex) = self.handle_loops(last_atom)?;
+                Some(_) => {
                     let atom = self.get_atom()?;
                     if let Some(atom) = atom {
                         if bond != Bond::Non {
@@ -222,6 +228,13 @@ impl<'a> SmilesParser<'a> {
                         Err(SmilesError::new(self.index, ExpectedAtom))?
                     }
                     else {
+                        break
+                    }
+                }
+                None => {
+                    if ex {
+                        Err(SmilesError::new(self.index, ExpectedAtom))?
+                    } else {
                         break
                     }
                 }
