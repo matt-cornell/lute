@@ -476,12 +476,12 @@ impl<'a> SmilesParser<'a> {
     fn saturate(&mut self) {
         for atom in self.graph.node_indices() {
             let ex_bonds = match self.graph[atom].protons {
-                x @ 6..=9 => Some(10 - x),
-                x @ 14..=17 => Some(18 - x),
+                x @ 6..=9 => Some(10 - (x as i8) - self.graph[atom].charge),
+                x @ 14..=17 => Some(18 - (x as i8) - self.graph[atom].charge),
                 _ => None
             };
             if let Some(ex_bonds) = ex_bonds {
-                let bond_count = self.graph.edges(atom).fold(0f32, |c, b| c + b.weight().bond_count()).floor().clamp(0.0, 255.0) as u8;
+                let bond_count = self.graph.edges(atom).fold(0f32, |c, b| c + b.weight().bond_count()).floor().clamp(0.0, 127.0) as i8;
                 if bond_count < ex_bonds {
                     for _ in 0..(ex_bonds - bond_count) {
                         let hy = self.graph.add_node(Atom {protons: 1, isotope: None, charge: 0, aromatic: false});
