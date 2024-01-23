@@ -1,5 +1,5 @@
-use chem_sim::atomic::*;
 use chem_sim::atom_info::*;
+use chem_sim::atomic::*;
 use petgraph::dot::*;
 use petgraph::graph::*;
 
@@ -34,7 +34,7 @@ fn atom_color(num: u8) -> &'static str {
             ElemGroup::Alkali => "purple4",
             ElemGroup::AlkEar => "magenta4",
             ElemGroup::Halogn => "green4",
-        }
+        },
     }
 }
 fn bond_style<'a>(_: &'a MoleculeGraph, bond: EdgeReference<'a, Bond>) -> String {
@@ -47,7 +47,8 @@ fn bond_style<'a>(_: &'a MoleculeGraph, bond: EdgeReference<'a, Bond>) -> String
         Bond::Left => r#"color="black", label="left""#,
         Bond::Right => r#"color="black", label="right""#,
         Bond::Non => r#"color="black", style="invis""#,
-    }.to_string()
+    }
+    .to_string()
 }
 fn atom_style<'a>(_: &'a MoleculeGraph, (_, atom): (NodeIndex, &'a Atom)) -> String {
     let num = atom.protons;
@@ -58,8 +59,11 @@ fn main() {
     for arg in std::env::args().skip(1) {
         let parser = SmilesParser::new(&arg);
         match parser.parse() {
-            Ok(graph) => println!("{}", Dot::with_attr_getters(&graph, &[Config::EdgeNoLabel], &bond_style, &atom_style)),
-            Err(err) => eprintln!("{err}")
+            Ok(graph) => println!(
+                "{}",
+                Dot::with_attr_getters(&graph, &[Config::EdgeNoLabel], &bond_style, &atom_style)
+            ),
+            Err(err) => eprintln!("{err}"),
         }
     }
 }

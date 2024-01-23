@@ -1,13 +1,13 @@
-use petgraph::prelude::*;
-use std::str::FromStr;
-use std::collections::HashMap;
-use thiserror::Error;
-use std::borrow::Cow;
-use SmilesErrorKind::*;
-use strum::*;
-use atoi::FromRadix10;
-use std::fmt::{self, Display, Formatter};
 use crate::atom_info::ATOM_DATA;
+use atoi::FromRadix10;
+use petgraph::prelude::*;
+use std::borrow::Cow;
+use std::collections::HashMap;
+use std::fmt::{self, Display, Formatter};
+use std::str::FromStr;
+use strum::*;
+use thiserror::Error;
+use SmilesErrorKind::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Chirality {
@@ -39,7 +39,7 @@ impl Atom {
             isotope: None,
             charge: 0,
             chirality: Chirality::None,
-            aromatic: false
+            aromatic: false,
         }
     }
     pub fn new_aromatic(protons: u8) -> Self {
@@ -48,7 +48,7 @@ impl Atom {
             isotope: None,
             charge: 0,
             chirality: Chirality::None,
-            aromatic: true
+            aromatic: true,
         }
     }
     pub fn new_isotope(protons: u8, isotope: Option<u16>) -> Self {
@@ -57,7 +57,7 @@ impl Atom {
             isotope,
             charge: 0,
             chirality: Chirality::None,
-            aromatic: false
+            aromatic: false,
         }
     }
     pub fn new_aromatic_isotope(protons: u8, isotope: Option<u16>) -> Self {
@@ -66,7 +66,7 @@ impl Atom {
             isotope,
             charge: 0,
             chirality: Chirality::None,
-            aromatic: true
+            aromatic: true,
         }
     }
     pub fn mass(self) -> f32 {
@@ -80,18 +80,17 @@ impl Display for Atom {
             if let Some(isotope) = self.isotope {
                 write!(f, "-{isotope}")?;
             }
-        }
-        else {
+        } else {
             use fmtastic::Superscript;
             if let Some(isotope) = self.isotope {
                 write!(f, "{}", Superscript(isotope))?;
             }
             write!(f, "{}", ATOM_DATA[self.protons as usize].sym)?;
             match self.charge {
-                0 => {},
+                0 => {}
                 1 => f.write_str("⁺")?,
                 -1 => f.write_str("⁻")?,
-                _ => write!(f, "{:+}", Superscript(self.charge))?
+                _ => write!(f, "{:+}", Superscript(self.charge))?,
             }
         }
         Ok(())
@@ -127,7 +126,7 @@ impl Bond {
             Self::Triple => 3f32,
             Self::Quad => 4f32,
             Self::Aromatic => 1.5f32,
-            Self::Non => 0f32
+            Self::Non => 0f32,
         }
     }
 }
@@ -186,7 +185,7 @@ impl SmilesErrorKind<'_> {
             ExpectedAtom => ExpectedAtom,
             ExpectedClosingBracket => ExpectedClosingBracket,
             LoopBondMismatch(b1, b2) => LoopBondMismatch(b1, b2),
-            DuplicateBond => DuplicateBond
+            DuplicateBond => DuplicateBond,
         }
     }
 }
@@ -196,21 +195,18 @@ impl SmilesErrorKind<'_> {
 #[error("an error occured at byte {index} in the SMILES string: {kind}")]
 pub struct SmilesError<'a> {
     pub index: usize,
-    pub kind: SmilesErrorKind<'a>
+    pub kind: SmilesErrorKind<'a>,
 }
 impl<'a> SmilesError<'a> {
     /// Convenience method
     pub const fn new(index: usize, kind: SmilesErrorKind<'a>) -> Self {
-        Self {
-            index,
-            kind,
-        }
+        Self { index, kind }
     }
     /// Convert self into a static lifetime by heap-allocating the string
     pub fn into_owned(self) -> SmilesError<'static> {
         SmilesError {
             index: self.index,
-            kind: self.kind.into_owned()
+            kind: self.kind.into_owned(),
         }
     }
 }
@@ -221,7 +217,7 @@ pub struct SmilesParser<'a> {
     input: &'a [u8],
     index: usize,
     rings: HashMap<usize, (NodeIndex, Option<Bond>)>,
-    graph: MoleculeGraph
+    graph: MoleculeGraph,
 }
 impl<'a> SmilesParser<'a> {
     pub fn new<I: AsRef<[u8]> + ?Sized>(input: &'a I) -> Self {
@@ -231,12 +227,15 @@ impl<'a> SmilesParser<'a> {
             input,
             index: 0,
             rings: Default::default(),
-            graph: Default::default()
+            graph: Default::default(),
         }
     }
     /// Parse a "chain". This can really be anything, though, it just returns the first atom in the
     /// group so it can be bonded to something else
-    fn parse_chain(&mut self, nested: bool) -> Result<Option<(NodeIndex, Bond, bool)>, SmilesError<'a>> {
+    fn parse_chain(
+        &mut self,
+        nested: bool,
+    ) -> Result<Option<(NodeIndex, Bond, bool)>, SmilesError<'a>> {
         if self.index >= self.input.len() {
             return Ok(None);
         }
@@ -245,7 +244,7 @@ impl<'a> SmilesParser<'a> {
         } else {
             (Bond::Non, false)
         };
-        
+
         let first_atom = self.get_atom()?.unwrap();
         let mut last_atom = first_atom;
         while self.index < self.input.len() {
@@ -257,39 +256,58 @@ impl<'a> SmilesParser<'a> {
                     }
                     self.index += 1;
                     let start_idx = self.index;
-                    let (atom, bond, ex) = self.parse_chain(true)?.ok_or(SmilesError::new(self.index, ExpectedAtom))?;
+                    let (atom, bond, ex) = self
+                        .parse_chain(true)?
+                        .ok_or(SmilesError::new(self.index, ExpectedAtom))?;
                     if self.graph.contains_edge(last_atom, atom) {
                         Err(SmilesError::new(start_idx, DuplicateBond))?
                     }
-                    self.graph.add_edge(last_atom, atom, if !ex && self.graph[last_atom].aromatic && self.graph[atom].aromatic {Bond::Aromatic} else {bond});
+                    self.graph.add_edge(
+                        last_atom,
+                        atom,
+                        if !ex && self.graph[last_atom].aromatic && self.graph[atom].aromatic {
+                            Bond::Aromatic
+                        } else {
+                            bond
+                        },
+                    );
                 }
                 Some(&b')') if nested => {
                     if ex {
                         Err(SmilesError::new(self.index, ExpectedAtom))?;
                     }
                     self.index += 1;
-                    break
+                    break;
                 }
                 Some(_) => {
                     let atom = self.get_atom()?;
                     if let Some(atom) = atom {
                         if bond != Bond::Non {
-                            self.graph.add_edge(last_atom, atom, if !ex && self.graph[last_atom].aromatic && self.graph[atom].aromatic {Bond::Aromatic} else {bond});
+                            self.graph.add_edge(
+                                last_atom,
+                                atom,
+                                if !ex
+                                    && self.graph[last_atom].aromatic
+                                    && self.graph[atom].aromatic
+                                {
+                                    Bond::Aromatic
+                                } else {
+                                    bond
+                                },
+                            );
                         }
                         last_atom = atom;
-                    }
-                    else if ex {
+                    } else if ex {
                         Err(SmilesError::new(self.index, ExpectedAtom))?
-                    }
-                    else {
-                        break
+                    } else {
+                        break;
                     }
                 }
                 None => {
                     if ex {
                         Err(SmilesError::new(self.index, ExpectedAtom))?
                     } else {
-                        break
+                        break;
                     }
                 }
             }
@@ -302,7 +320,7 @@ impl<'a> SmilesParser<'a> {
             None => Ok(None),
             Some(&b'B') => {
                 self.index += 1;
-                if self.input.get(self.index) ==  Some(&b'r') {
+                if self.input.get(self.index) == Some(&b'r') {
                     self.index += 1;
                     Ok(Some(self.graph.add_node(Atom::new(35))))
                 } else {
@@ -311,7 +329,7 @@ impl<'a> SmilesParser<'a> {
             }
             Some(&b'C') => {
                 self.index += 1;
-                if self.input.get(self.index) ==  Some(&b'l') {
+                if self.input.get(self.index) == Some(&b'l') {
                     self.index += 1;
                     Ok(Some(self.graph.add_node(Atom::new(17))))
                 } else {
@@ -372,7 +390,9 @@ impl<'a> SmilesParser<'a> {
             }
             Some(&b'r') => {
                 self.index += 1;
-                Ok(Some(self.graph.add_node(Atom::new_aromatic_isotope(0, Some(0)))))
+                Ok(Some(
+                    self.graph.add_node(Atom::new_aromatic_isotope(0, Some(0))),
+                ))
             }
             Some(&b'[') => {
                 self.index += 1;
@@ -387,21 +407,35 @@ impl<'a> SmilesParser<'a> {
                     Some(&b'o') => self.graph.add_node(Atom::new_aromatic(8)),
                     Some(&b'p') => self.graph.add_node(Atom::new_aromatic(15)),
                     Some(&b's') => self.graph.add_node(Atom::new_aromatic(16)),
-                    Some(&b'r') => self.graph.add_node(Atom::new_aromatic_isotope(0, Some(isotope.unwrap_or(0)))),
+                    Some(&b'r') => self
+                        .graph
+                        .add_node(Atom::new_aromatic_isotope(0, Some(isotope.unwrap_or(0)))),
                     Some(c) if c.is_ascii_uppercase() => {
                         let start = self.index;
-                        let len = self.input[(self.index + 1)..].iter().copied().take_while(u8::is_ascii_lowercase).count();
+                        let len = self.input[(self.index + 1)..]
+                            .iter()
+                            .copied()
+                            .take_while(u8::is_ascii_lowercase)
+                            .count();
                         let elem = &self.input[start..(start + len + 1)];
                         self.index += len;
                         let protons = if elem == b"R" {
                             isotope.get_or_insert(0);
                             0
                         } else {
-                            ATOM_DATA.iter().enumerate().find(|(_, a)| a.sym.as_bytes() == elem).ok_or(SmilesError::new(start, UnknownElement(bstr::BStr::new(elem).into())))?.0 as _
+                            ATOM_DATA
+                                .iter()
+                                .enumerate()
+                                .find(|(_, a)| a.sym.as_bytes() == elem)
+                                .ok_or(SmilesError::new(
+                                    start,
+                                    UnknownElement(bstr::BStr::new(elem).into()),
+                                ))?
+                                .0 as _
                         };
                         self.graph.add_node(Atom::new_isotope(protons, isotope))
                     }
-                    _ => Err(SmilesError::new(self.index, ExpectedAtom))?
+                    _ => Err(SmilesError::new(self.index, ExpectedAtom))?,
                 };
                 self.index += 1;
                 if self.input.get(self.index) == Some(&b'@') {
@@ -409,8 +443,7 @@ impl<'a> SmilesParser<'a> {
                     if self.input.get(self.index) == Some(&b'@') {
                         self.index += 1;
                         self.graph[atom].chirality = Chirality::Cw;
-                    }
-                    else {
+                    } else {
                         self.graph[atom].chirality = Chirality::Ccw;
                     }
                 }
@@ -419,8 +452,7 @@ impl<'a> SmilesParser<'a> {
                     let (mut h, used) = usize::from_radix_10(&self.input[self.index..]);
                     if used == 0 {
                         h = 1;
-                    }
-                    else {
+                    } else {
                         self.index += used;
                     }
                     for _ in 0..h {
@@ -433,11 +465,13 @@ impl<'a> SmilesParser<'a> {
                         self.index += 1;
                         let (mut charge, used) = i8::from_radix_10(&self.input[self.index..]);
                         if used == 0 {
-                            let count = self.input[self.index..].iter().take_while(|&&c| c == b'+').count();
+                            let count = self.input[self.index..]
+                                .iter()
+                                .take_while(|&&c| c == b'+')
+                                .count();
                             self.index += count;
                             charge = (count + 1) as i8;
-                        }
-                        else {
+                        } else {
                             self.index += used;
                         }
                         self.graph[atom].charge = charge;
@@ -446,11 +480,13 @@ impl<'a> SmilesParser<'a> {
                         self.index += 1;
                         let (mut charge, used) = i8::from_radix_10(&self.input[self.index..]);
                         if used == 0 {
-                            let count = self.input[self.index..].iter().take_while(|&&c| c == b'-').count();
+                            let count = self.input[self.index..]
+                                .iter()
+                                .take_while(|&&c| c == b'-')
+                                .count();
                             self.index += count;
                             charge = (count + 1) as i8;
-                        }
-                        else {
+                        } else {
                             self.index += used;
                         }
                         self.graph[atom].charge = -charge;
@@ -464,7 +500,7 @@ impl<'a> SmilesParser<'a> {
                     Err(SmilesError::new(self.index, ExpectedClosingBracket))
                 }
             }
-            _ => Err(SmilesError::new(self.index, ExpectedAtom))
+            _ => Err(SmilesError::new(self.index, ExpectedAtom)),
         }
     }
     /// Handle loops. Since this needs to know which bond to use, it also parses a bond.
@@ -501,7 +537,7 @@ impl<'a> SmilesParser<'a> {
                         if b1 == b2 {
                             (b1, true)
                         } else {
-                            return Err(SmilesError::new(bond_idx, LoopBondMismatch(b1, b2)))
+                            return Err(SmilesError::new(bond_idx, LoopBondMismatch(b1, b2)));
                         }
                     }
                 };
@@ -509,7 +545,15 @@ impl<'a> SmilesParser<'a> {
                     return Err(SmilesError::new(num_idx, DuplicateBond));
                 }
                 if bond != Bond::Non {
-                    self.graph.add_edge(last_atom, other, if !ex && self.graph[last_atom].aromatic && self.graph[other].aromatic {Bond::Aromatic} else {bond});
+                    self.graph.add_edge(
+                        last_atom,
+                        other,
+                        if !ex && self.graph[last_atom].aromatic && self.graph[other].aromatic {
+                            Bond::Aromatic
+                        } else {
+                            bond
+                        },
+                    );
                 }
             }
             Entry::Vacant(e) => {
@@ -529,7 +573,7 @@ impl<'a> SmilesParser<'a> {
             Some(&b':') => (Bond::Aromatic, true),
             Some(&b'/') => (Bond::Left, true),
             Some(&b'\\') => (Bond::Right, true),
-            _ => (Bond::Single, false)
+            _ => (Bond::Single, false),
         };
         if incr {
             self.index += 1;
@@ -542,10 +586,15 @@ impl<'a> SmilesParser<'a> {
             let ex_bonds = match self.graph[atom].protons {
                 x @ 6..=9 => Some(10 - (x as i8) - self.graph[atom].charge),
                 x @ 14..=17 => Some(18 - (x as i8) - self.graph[atom].charge),
-                _ => None
+                _ => None,
             };
             if let Some(ex_bonds) = ex_bonds {
-                let bond_count = self.graph.edges(atom).fold(0f32, |c, b| c + b.weight().bond_count()).floor().clamp(0.0, 127.0) as i8;
+                let bond_count = self
+                    .graph
+                    .edges(atom)
+                    .fold(0f32, |c, b| c + b.weight().bond_count())
+                    .floor()
+                    .clamp(0.0, 127.0) as i8;
                 if bond_count < ex_bonds {
                     for _ in 0..(ex_bonds - bond_count) {
                         let hy = self.graph.add_node(Atom::new(1));
