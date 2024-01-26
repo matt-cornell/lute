@@ -1,3 +1,4 @@
 #[rustfmt::skip]
 pub mod atom_info;
-pub mod atomic;
+pub mod graph;
+pub mod molecule;

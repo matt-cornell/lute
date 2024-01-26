@@ -1,3 +1,6 @@
+//! Utilities for modeling molecules as graphs
+// This top-level file handles definitions and parsing
+
 use crate::atom_info::ATOM_DATA;
 use atoi::FromRadix10;
 use petgraph::prelude::*;
@@ -169,6 +172,8 @@ pub enum SmilesErrorKind<'a> {
     ExpectedAtom,
     #[error("expected a closing bracket")]
     ExpectedClosingBracket,
+    #[error("expected a closing parenthesis")]
+    ExpectedClosingParen,
     #[error("bonds in loop don't match: {0} vs {1}")]
     LoopBondMismatch(Bond, Bond),
     #[error("duplicate bonds between atoms")]
@@ -184,6 +189,7 @@ impl SmilesErrorKind<'_> {
             ExpectedRingNumber => ExpectedRingNumber,
             ExpectedAtom => ExpectedAtom,
             ExpectedClosingBracket => ExpectedClosingBracket,
+            ExpectedClosingParen => ExpectedClosingParen,
             LoopBondMismatch(b1, b2) => LoopBondMismatch(b1, b2),
             DuplicateBond => DuplicateBond,
         }
@@ -277,7 +283,7 @@ impl<'a> SmilesParser<'a> {
                         Err(SmilesError::new(self.index, ExpectedAtom))?;
                     }
                     self.index += 1;
-                    break;
+                    return Ok(Some((first_atom, first_bond.0, first_bond.1)));
                 }
                 Some(_) => {
                     let atom = self.get_atom()?;
@@ -312,7 +318,11 @@ impl<'a> SmilesParser<'a> {
                 }
             }
         }
-        Ok(Some((first_atom, first_bond.0, first_bond.1)))
+        if nested {
+            Err(SmilesError::new(self.index, ExpectedClosingParen))
+        } else {
+            Ok(Some((first_atom, first_bond.0, first_bond.1)))
+        }
     }
     /// Parse an atom or an atom with hydrogens attached (in brackets)
     fn get_atom(&mut self) -> Result<Option<NodeIndex>, SmilesError<'a>> {
@@ -608,6 +618,10 @@ impl<'a> SmilesParser<'a> {
     pub fn parse(mut self) -> Result<MoleculeGraph, SmilesError<'a>> {
         self.parse_chain(false)?;
         self.saturate();
-        Ok(self.graph)
+        if let Some(id) = self.rings.into_keys().next() {
+            Err(SmilesError::new(self.index, UnclosedLoop(id)))
+        } else {
+            Ok(self.graph)
+        }
     }
 }

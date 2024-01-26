@@ -1,3 +1,5 @@
+//! This file is pretty much a periodic table
+
 use ElemGroup::*;
 
 /// Element group on the periodic table
@@ -41,6 +43,7 @@ impl AtomData {
     }
 }
 
+/// All of the data, just index the array by the atomic number
 pub static ATOM_DATA: &[AtomData] = &[
     AtomData::new("unknown",       "R",  0.0000, Nonmet),
     AtomData::new("hydrogen",      "H",  1.0078, Nonmet),

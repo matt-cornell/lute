@@ -1,5 +1,5 @@
 use chem_sim::atom_info::*;
-use chem_sim::atomic::*;
+use chem_sim::molecule::*;
 use petgraph::dot::*;
 use petgraph::graph::*;
 
