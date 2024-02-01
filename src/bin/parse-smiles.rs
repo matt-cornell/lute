@@ -148,13 +148,12 @@ fn main() {
                 } else {
                     add_y += (diff_x - diff_y) / 2.0;
                 }
-                let scale = 200.0 / max_axis;
                 let locs = locs
                     .iter()
                     .map(|(x, y)| {
                         (
-                            ((x + add_x) * scale).floor() as u16,
-                            ((y + add_y) * scale).floor() as u16,
+                            (x + add_x).floor() as u16,
+                            (y + add_y).floor() as u16,
                         )
                     })
                     .collect::<Vec<_>>();
@@ -166,8 +165,8 @@ fn main() {
                         Bond::Non => {},
                         Bond::Single | Bond::Left | Bond::Right => out += &format!("  <line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" style=\"stroke:black;stroke-width:2\"/>\n"),
                         Bond::Double => out += &format!("  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n", x1 - 2, y1 - 2, x2 - 2, y2 - 2, x1 + 2, x2 + 2, x2 + 2, y2 + 2),
-                        Bond::Triple => out += &format!("  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" style=\"stroke:black;stroke-width:2\" />", x1 - 4, y1 - 4, x2 - 4, y2 - 4, x1 + 4, x2 + 4, x2 + 4, y2 + 4, x1, y1, x2, y2),
-                        Bond::Quad => out += &format!("  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n", x1 - 6, y1 - 6, x2 - 6, y2 - 6, x1 - 2, x2 - 2, x2 - 2, y2 - 2, x1 + 2, y1 + 2, x2 + 2, y2 + 2, x1 + 6, y1 + 6, x2 + 6, y2 + 6),
+                        Bond::Triple => out += &format!("  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n", x1 - 4, y1 - 4, x2 - 4, y2 - 4, x1 + 4, y1 + 4, x2 + 4, y2 + 4, x1, y1, x2, y2),
+                        Bond::Quad => out += &format!("  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n", x1 - 6, y1 - 6, x2 - 6, y2 - 6, x1 - 2, y1 - 2, x2 - 2, y2 - 2, x1 + 2, y1 + 2, x2 + 2, y2 + 2, x1 + 6, y1 + 6, x2 + 6, y2 + 6),
                         Bond::Aromatic => out += &format!("  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke-dasharray=\"10,10\" style=\"stroke:black;stroke-width:2\" />\n", x1 - 2, y1 - 2, x2 - 2, y2 - 2, x1 + 2, x2 + 2, y2 + 2, y2 + 2),
                     }
                 }
@@ -179,7 +178,7 @@ fn main() {
                 for (atom, (cx, cy)) in graph.node_weights().zip(&locs) {
                     let r = match atom.protons {
                         0 => 30,
-                        1 | 2 => 10,
+                        1 | 2 => 8,
                         3..=10 => 14,
                         11..=18 => 18,
                         19..=36 => 22,
@@ -193,7 +192,7 @@ fn main() {
                         cy + 3,
                     );
                 }
-                println!("<svg width=\"200\" height=\"200\">\n{out}</svg>");
+                println!("<svg width=\"{max_axis}\" height=\"{max_axis}\">\n{out}</svg>");
             }
             OutputType::Png => todo!(),
         },
