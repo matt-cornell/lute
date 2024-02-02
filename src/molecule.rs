@@ -515,62 +515,63 @@ impl<'a> SmilesParser<'a> {
     }
     /// Handle loops. Since this needs to know which bond to use, it also parses a bond.
     fn handle_loops(&mut self, last_atom: NodeIndex) -> Result<(Bond, bool), SmilesError<'a>> {
-        let bond_idx = self.index;
-        let prev_bond = self.get_bond();
-        if self.index >= self.input.len() {
-            return Ok(prev_bond);
-        }
-        let c = self.input[self.index];
-        let num_idx = self.index;
-        let num = if c.is_ascii_digit() {
-            self.index += 1;
-            (c - b'0') as usize
-        } else if c == b'%' {
-            self.index += 1;
-            let (num, used) = usize::from_radix_10(&self.input[self.index..]);
-            if used == 0 {
-                return Err(SmilesError::new(self.index, ExpectedRingNumber));
+        loop {
+            let bond_idx = self.index;
+            let prev_bond = self.get_bond();
+            if self.index >= self.input.len() {
+                return Ok(prev_bond);
             }
-            self.index += used;
-            num
-        } else {
-            return Ok(prev_bond);
-        };
-        use std::collections::hash_map::Entry;
-        match self.rings.entry(num) {
-            Entry::Occupied(e) => {
-                let (other, old_bond) = e.remove();
-                let (bond, ex) = match (prev_bond, old_bond) {
-                    (bond, None) => bond,
-                    ((_, false), Some(bond)) => (bond, true),
-                    ((b1, true), Some(b2)) => {
-                        if b1 == b2 {
-                            (b1, true)
-                        } else {
-                            return Err(SmilesError::new(bond_idx, LoopBondMismatch(b1, b2)));
+            let c = self.input[self.index];
+            let num_idx = self.index;
+            let num = if c.is_ascii_digit() {
+                self.index += 1;
+                (c - b'0') as usize
+            } else if c == b'%' {
+                self.index += 1;
+                let (num, used) = usize::from_radix_10(&self.input[self.index..]);
+                if used == 0 {
+                    return Err(SmilesError::new(self.index, ExpectedRingNumber));
+                }
+                self.index += used;
+                num
+            } else {
+                return Ok(prev_bond);
+            };
+            use std::collections::hash_map::Entry;
+            match self.rings.entry(num) {
+                Entry::Occupied(e) => {
+                    let (other, old_bond) = e.remove();
+                    let (bond, ex) = match (prev_bond, old_bond) {
+                        (bond, None) => bond,
+                        ((_, false), Some(bond)) => (bond, true),
+                        ((b1, true), Some(b2)) => {
+                            if b1 == b2 {
+                                (b1, true)
+                            } else {
+                                return Err(SmilesError::new(bond_idx, LoopBondMismatch(b1, b2)));
+                            }
                         }
+                    };
+                    if self.graph.contains_edge(last_atom, other) {
+                        return Err(SmilesError::new(num_idx, DuplicateBond));
                     }
-                };
-                if self.graph.contains_edge(last_atom, other) {
-                    return Err(SmilesError::new(num_idx, DuplicateBond));
+                    if bond != Bond::Non {
+                        self.graph.add_edge(
+                            last_atom,
+                            other,
+                            if !ex && self.graph[last_atom].aromatic && self.graph[other].aromatic {
+                                Bond::Aromatic
+                            } else {
+                                bond
+                            },
+                        );
+                    }
                 }
-                if bond != Bond::Non {
-                    self.graph.add_edge(
-                        last_atom,
-                        other,
-                        if !ex && self.graph[last_atom].aromatic && self.graph[other].aromatic {
-                            Bond::Aromatic
-                        } else {
-                            bond
-                        },
-                    );
+                Entry::Vacant(e) => {
+                    e.insert((last_atom, prev_bond.1.then_some(prev_bond.0)));
                 }
-            }
-            Entry::Vacant(e) => {
-                e.insert((last_atom, prev_bond.1.then_some(prev_bond.0)));
             }
         }
-        Ok(self.get_bond())
     }
     /// Parse a single bond
     fn get_bond(&mut self) -> (Bond, bool) {
