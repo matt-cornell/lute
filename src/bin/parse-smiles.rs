@@ -152,8 +152,8 @@ fn main() {
                     .iter()
                     .map(|(x, y)| {
                         (
-                            (x + add_x).floor() as u16,
-                            (y + add_y).floor() as u16,
+                            (x + add_x).floor() as i16,
+                            (y + add_y).floor() as i16,
                         )
                     })
                     .collect::<Vec<_>>();
@@ -161,13 +161,17 @@ fn main() {
                 for edge in graph.edge_references() {
                     let (x1, y1) = locs[edge.source().index()];
                     let (x2, y2) = locs[edge.target().index()];
+                    let (dx, dy) = (x2 - x1, y2 - y1);
+                    let (dx, dy) = if dy == 0 {(1.0, 0.0)} else {(-dy as f64, dx as f64)};
+                    let mag = (dx * dx + dy * dy).sqrt() / 4.0;
+                    let (dx, dy) = ((dx / mag) as i16, (dy / mag) as i16);
                     match edge.weight() {
                         Bond::Non => {},
                         Bond::Single | Bond::Left | Bond::Right => out += &format!("  <line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" style=\"stroke:black;stroke-width:2\"/>\n"),
-                        Bond::Double => out += &format!("  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n", x1 - 2, y1 - 2, x2 - 2, y2 - 2, x1 + 2, y1 + 2, x2 + 2, y2 + 2),
-                        Bond::Triple => out += &format!("  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n", x1 - 4, y1 - 4, x2 - 4, y2 - 4, x1 + 4, y1 + 4, x2 + 4, y2 + 4, x1, y1, x2, y2),
-                        Bond::Quad => out += &format!("  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n", x1 - 6, y1 - 6, x2 - 6, y2 - 6, x1 - 2, y1 - 2, x2 - 2, y2 - 2, x1 + 2, y1 + 2, x2 + 2, y2 + 2, x1 + 6, y1 + 6, x2 + 6, y2 + 6),
-                        Bond::Aromatic => out += &format!("  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke-dasharray=\"10,10\" style=\"stroke:black;stroke-width:2\" />\n", x1 - 2, y1 - 2, x2 - 2, y2 - 2, x1 + 2, y1 + 2, x2 + 2, y2 + 2),
+                        Bond::Double => out += &format!("  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n", x1 - dx, y1 - dy, x2 - dx, y2 - dx, x1 + dx, y1 + dy, x2 + dx, y2 + dy),
+                        Bond::Triple => out += &format!("  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n", x1 - 2 * dx, y1 - 2 * dy, x2 - 2 * dx, y2 - 2 * dy, x1 + 2 * dx, y1 + 2 * dy, x2 + 2 * dx, y2 + 2 * dy, x1, y1, x2, y2),
+                        Bond::Quad => out += &format!("  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n", x1 - 3 * dx, y1 - 3 * dy, x2 - 3 * dx, y2 - 3 * dy, x1 - dx, y1 - dy, x2 - dx, y2 - dy, x1 + dx, y1 + dy, x2 + dx, y2 + dy, x1 + 3 * dx, y1 + 3 * dy, x2 + 3 * dx, y2 + 3 * dy),
+                        Bond::Aromatic => out += &format!("  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\"  stroke-dasharray=\"10,10\"/>\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n", x1 - dx, y1 - dy, x2 - dx, y2 - dy, x1 + dx, y1 + dy, x2 + dx, y2 + dy),
                     }
                 }
 
