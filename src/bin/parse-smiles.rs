@@ -106,6 +106,17 @@ fn atom_style<'a>(_: &'a MoleculeGraph, (_, atom): (NodeIndex, &'a Atom)) -> Str
     let num = atom.protons;
     format!("color={:?}", dot_atom_color(num))
 }
+fn atom_radius(protons: u8) -> u8 {
+    match protons {
+        0 => 25,
+        1 | 2 => 6,
+        3..=10 => 11,
+        11..=18 => 14,
+        19..=36 => 16,
+        37..=54 => 19,
+        55.. => 23,
+    }
+}
 
 fn main() {
     let cli = Cli::parse();
@@ -133,10 +144,10 @@ fn main() {
                     .collect::<Vec<_>>();
                 let locs = coordgen::gen_coords(&atoms, &edges).unwrap();
                 let mut out = String::new();
-                let min_x = locs.iter().map(|p| p.0).min_by(f32::total_cmp).unwrap_or(0.0);
-                let min_y = locs.iter().map(|p| p.1).min_by(f32::total_cmp).unwrap_or(0.0);
-                let max_x = locs.iter().map(|p| p.0).max_by(f32::total_cmp).unwrap_or(0.0);
-                let max_y = locs.iter().map(|p| p.1).max_by(f32::total_cmp).unwrap_or(0.0);
+                let min_x = locs.iter().zip(&atoms).map(|(p, &a)| p.0 - atom_radius(a) as f32).min_by(f32::total_cmp).unwrap_or(0.0);
+                let min_y = locs.iter().zip(&atoms).map(|(p, &a)| p.1 - atom_radius(a) as f32).min_by(f32::total_cmp).unwrap_or(0.0);
+                let max_x = locs.iter().zip(&atoms).map(|(p, &a)| p.0 + atom_radius(a) as f32).max_by(f32::total_cmp).unwrap_or(0.0);
+                let max_y = locs.iter().zip(&atoms).map(|(p, &a)| p.1 + atom_radius(a) as f32).max_by(f32::total_cmp).unwrap_or(0.0);
                 let diff_x = max_x - min_x + 40.0;
                 let diff_y = max_y - min_y + 40.0;
                 let max_axis =
@@ -163,7 +174,7 @@ fn main() {
                     let (x2, y2) = locs[edge.target().index()];
                     let (dx, dy) = (x2 - x1, y2 - y1);
                     let (dx, dy) = if dy == 0 {(1.0, 0.0)} else {(-dy as f64, dx as f64)};
-                    let mag = (dx * dx + dy * dy).sqrt() / 4.0;
+                    let mag = (dx * dx + dy * dy).sqrt() / 3.0;
                     let (dx, dy) = ((dx / mag) as i16, (dy / mag) as i16);
                     match edge.weight() {
                         Bond::Non => {},
@@ -180,15 +191,7 @@ fn main() {
                 }
 
                 for (atom, (cx, cy)) in graph.node_weights().zip(&locs) {
-                    let r = match atom.protons {
-                        0 => 30,
-                        1 | 2 => 8,
-                        3..=10 => 14,
-                        11..=18 => 18,
-                        19..=36 => 22,
-                        37..=54 => 26,
-                        55.. => 39,
-                    };
+                    let r = atom_radius(atom.protons);
                     out += &format!(
                         "  <circle r=\"{r}\" cx=\"{cx}\" cy=\"{cy}\" fill=\"{}\" />\n  <text x=\"{}\" y=\"{}\" font-size=\"8\" fill=\"#333\">{atom}</text>\n",
                         svg_atom_color(atom.protons),
