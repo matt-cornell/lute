@@ -11,6 +11,7 @@ bstr = { version = "1.9.0", default-features = false, features = ["std"] }
 clap = { version = "4.4.18", features = ["derive"] }
 coordgen = "0.2.2"
 fmtastic = "0.1.0"
+parking_lot = "0.12.1"
 petgraph = "0.6.4"
 strum = { version = "0.25.0", features = ["derive"] }
 thiserror = "1.0.56"

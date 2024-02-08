@@ -144,14 +144,33 @@ fn main() {
                     .collect::<Vec<_>>();
                 let locs = coordgen::gen_coords(&atoms, &edges).unwrap();
                 let mut out = String::new();
-                let min_x = locs.iter().zip(&atoms).map(|(p, &a)| p.0 - atom_radius(a) as f32).min_by(f32::total_cmp).unwrap_or(0.0);
-                let min_y = locs.iter().zip(&atoms).map(|(p, &a)| p.1 - atom_radius(a) as f32).min_by(f32::total_cmp).unwrap_or(0.0);
-                let max_x = locs.iter().zip(&atoms).map(|(p, &a)| p.0 + atom_radius(a) as f32).max_by(f32::total_cmp).unwrap_or(0.0);
-                let max_y = locs.iter().zip(&atoms).map(|(p, &a)| p.1 + atom_radius(a) as f32).max_by(f32::total_cmp).unwrap_or(0.0);
+                let min_x = locs
+                    .iter()
+                    .zip(&atoms)
+                    .map(|(p, &a)| p.0 - atom_radius(a) as f32)
+                    .min_by(f32::total_cmp)
+                    .unwrap_or(0.0);
+                let min_y = locs
+                    .iter()
+                    .zip(&atoms)
+                    .map(|(p, &a)| p.1 - atom_radius(a) as f32)
+                    .min_by(f32::total_cmp)
+                    .unwrap_or(0.0);
+                let max_x = locs
+                    .iter()
+                    .zip(&atoms)
+                    .map(|(p, &a)| p.0 + atom_radius(a) as f32)
+                    .max_by(f32::total_cmp)
+                    .unwrap_or(0.0);
+                let max_y = locs
+                    .iter()
+                    .zip(&atoms)
+                    .map(|(p, &a)| p.1 + atom_radius(a) as f32)
+                    .max_by(f32::total_cmp)
+                    .unwrap_or(0.0);
                 let diff_x = max_x - min_x + 40.0;
                 let diff_y = max_y - min_y + 40.0;
-                let max_axis =
-                    std::cmp::max_by(diff_x, diff_y, f32::total_cmp);
+                let max_axis = std::cmp::max_by(diff_x, diff_y, f32::total_cmp);
                 let mut add_x = -min_x + 20.0;
                 let mut add_y = -min_y + 20.0;
                 if diff_y > diff_x {
@@ -161,19 +180,18 @@ fn main() {
                 }
                 let locs = locs
                     .iter()
-                    .map(|(x, y)| {
-                        (
-                            (x + add_x).floor() as i16,
-                            (y + add_y).floor() as i16,
-                        )
-                    })
+                    .map(|(x, y)| ((x + add_x).floor() as i16, (y + add_y).floor() as i16))
                     .collect::<Vec<_>>();
 
                 for edge in graph.edge_references() {
                     let (x1, y1) = locs[edge.source().index()];
                     let (x2, y2) = locs[edge.target().index()];
                     let (dx, dy) = (x2 - x1, y2 - y1);
-                    let (dx, dy) = if dy == 0 {(1.0, 0.0)} else {(-dy as f64, dx as f64)};
+                    let (dx, dy) = if dy == 0 {
+                        (1.0, 0.0)
+                    } else {
+                        (-dy as f64, dx as f64)
+                    };
                     let mag = (dx * dx + dy * dy).sqrt() / 3.0;
                     let (dx, dy) = ((dx / mag) as i16, (dy / mag) as i16);
                     match edge.weight() {
