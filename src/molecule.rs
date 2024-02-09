@@ -86,11 +86,16 @@ impl Display for Atom {
                 write!(f, "-{isotope}")?;
             }
         } else {
-            use fmtastic::Superscript;
-            if let Some(isotope) = self.isotope {
-                write!(f, "{}", Superscript(isotope))?;
+            use fmtastic::*;
+            if self.protons != 0 {
+                if let Some(isotope) = self.isotope {
+                    write!(f, "{}", Superscript(isotope))?;
+                }
             }
             write!(f, "{}", ATOM_DATA[self.protons as usize].sym)?;
+            if self.protons == 0 {
+                write!(f, "{}", Subscript(self.isotope.unwrap_or(0)))?;
+            }
             match self.charge {
                 0 => {}
                 1 => f.write_str("⁺")?,

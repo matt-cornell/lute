@@ -109,7 +109,7 @@ fn atom_style<'a>(_: &'a MoleculeGraph, (_, atom): (NodeIndex, &'a Atom)) -> Str
 fn atom_radius(protons: u8) -> u8 {
     match protons {
         0 => 25,
-        1 | 2 => 6,
+        1 | 2 => 8,
         3..=10 => 11,
         11..=18 => 14,
         19..=36 => 16,
@@ -211,10 +211,10 @@ fn main() {
                 for (atom, (cx, cy)) in graph.node_weights().zip(&locs) {
                     let r = atom_radius(atom.protons);
                     out += &format!(
-                        "  <circle r=\"{r}\" cx=\"{cx}\" cy=\"{cy}\" fill=\"{}\" />\n  <text x=\"{}\" y=\"{}\" font-size=\"8\" fill=\"#333\">{atom}</text>\n",
+                        "  <circle r=\"{r}\" cx=\"{cx}\" cy=\"{cy}\" fill=\"{}\" />\n  <text x=\"{}\" y=\"{}\" font-size=\"{r}\" fill=\"#333\">{atom}</text>\n",
                         svg_atom_color(atom.protons),
-                        cx - 3,
-                        cy + 3,
+                        cx - r as i16 * 6 / 13,
+                        cy + r as i16 * 6 / 13,
                     );
                 }
                 println!("<svg width=\"{max_axis}\" height=\"{max_axis}\">\n{out}</svg>");
