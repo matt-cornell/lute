@@ -13,6 +13,7 @@ use thiserror::Error;
 use SmilesErrorKind::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub enum Chirality {
     None,
     Ccw,
@@ -28,12 +29,13 @@ impl Chirality {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Atom {
     pub protons: u8,
-    pub isotope: Option<u16>,
     pub charge: i8,
+    pub isotope: Option<u16>,
     pub chirality: Chirality,
     /// Aromaticity can be found in the bonds, and that should checked. This is only here to
     /// simplify SMILES parsing
-    aromatic: bool,
+    #[doc(hidden)]
+    pub aromatic: bool,
 }
 impl Atom {
     pub fn new(protons: u8) -> Self {
