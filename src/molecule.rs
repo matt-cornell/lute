@@ -597,8 +597,8 @@ impl<'a> SmilesParser<'a> {
     fn saturate(&mut self) {
         for atom in self.graph.node_indices() {
             let ex_bonds = match self.graph[atom].protons {
-                x @ 6..=9 => Some(10 - (x as i8) - self.graph[atom].charge),
-                x @ 14..=17 => Some(18 - (x as i8) - self.graph[atom].charge),
+                x @ 6..=9 => Some(10 - (x as i8) + self.graph[atom].charge),
+                x @ 14..=17 => Some(18 - (x as i8) + self.graph[atom].charge),
                 _ => None,
             };
             if let Some(ex_bonds) = ex_bonds {
