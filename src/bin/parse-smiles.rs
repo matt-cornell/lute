@@ -99,7 +99,7 @@ fn bond_style<'a>(_: &'a MoleculeGraph, bond: EdgeReference<'a, Bond>) -> String
         Bond::Left => r#"color="black", label="left""#,
         Bond::Right => r#"color="black", label="right""#,
         Bond::Non => r#"color="black", style="invis""#,
-        _ => panic!("invalid bond!")
+        _ => panic!("invalid bond!"),
     }
     .to_string()
 }

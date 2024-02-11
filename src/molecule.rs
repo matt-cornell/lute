@@ -3,14 +3,15 @@
 
 use crate::atom_info::ATOM_DATA;
 use atoi::FromRadix10;
+use c_enum::*;
 use petgraph::prelude::*;
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fmt::{self, Display, Formatter};
 use std::str::FromStr;
 use thiserror::Error;
 use SmilesErrorKind::*;
-use c_enum::*;
 
 c_enum! {
     #[derive(Clone, Copy, PartialEq, Eq)]
@@ -133,7 +134,7 @@ impl Bond {
             Self::Quad => 4f32,
             Self::Aromatic => 1.5f32,
             Self::Non => 0f32,
-            _ => panic!("invalid bond!")
+            _ => panic!("invalid bond!"),
         }
     }
     pub fn as_static_str(self) -> &'static str {
@@ -146,7 +147,7 @@ impl Bond {
             Self::Aromatic => "aromatic",
             Self::Left => "left",
             Self::Right => "right",
-            _ => panic!("invalid bond!")
+            _ => panic!("invalid bond!"),
         }
     }
 }
@@ -421,9 +422,7 @@ impl<'a> SmilesParser<'a> {
             }
             Some(&b'r') => {
                 self.index += 1;
-                Ok(Some(
-                    self.graph.add_node(Atom::new_aromatic(0)),
-                ))
+                Ok(Some(self.graph.add_node(Atom::new_aromatic(0))))
             }
             Some(&b'[') => {
                 self.index += 1;
@@ -437,9 +436,7 @@ impl<'a> SmilesParser<'a> {
                     Some(&b'o') => self.graph.add_node(Atom::new_aromatic(8)),
                     Some(&b'p') => self.graph.add_node(Atom::new_aromatic(15)),
                     Some(&b's') => self.graph.add_node(Atom::new_aromatic(16)),
-                    Some(&b'r') => self
-                        .graph
-                        .add_node(Atom::new_aromatic_isotope(0, isotope)),
+                    Some(&b'r') => self.graph.add_node(Atom::new_aromatic_isotope(0, isotope)),
                     Some(c) if c.is_ascii_uppercase() => {
                         let start = self.index;
                         let len = self.input[(self.index + 1)..]
@@ -449,7 +446,9 @@ impl<'a> SmilesParser<'a> {
                             .count();
                         let elem = &self.input[start..(start + len + 1)];
                         self.index += len;
-                        let protons = if elem == b"R" { 0 } else {
+                        let protons = if elem == b"R" {
+                            0
+                        } else {
                             ATOM_DATA
                                 .iter()
                                 .enumerate()
@@ -608,6 +607,7 @@ impl<'a> SmilesParser<'a> {
         }
         (bond, incr)
     }
+
     /// Saturate all atoms with hydrogens
     fn saturate(&mut self) {
         for atom in self.graph.node_indices() {
@@ -632,10 +632,26 @@ impl<'a> SmilesParser<'a> {
             }
         }
     }
+
+    /// Update R-groups to avoid any duplicates
+    fn update_rs(&mut self) {
+        let mut found = HashSet::new();
+        for n in self.graph.node_weights_mut() {
+            if n.protons != 0 {
+                continue;
+            }
+            if found.contains(&n.isotope) {
+                n.isotope = (0..).find(|i| !found.contains(i)).unwrap();
+            }
+            found.insert(n.isotope);
+        }
+    }
+
     /// Parse the molecule, consuming self. This is taken by value to avoid cleanup.
     pub fn parse(mut self) -> Result<MoleculeGraph, SmilesError<'a>> {
         self.parse_chain(false)?;
         self.saturate();
+        self.update_rs();
         if let Some(id) = self.rings.into_keys().next() {
             Err(SmilesError::new(self.index, UnclosedLoop(id)))
         } else {

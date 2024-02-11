@@ -6,15 +6,15 @@ use crate::molecule::{Atom, Bond};
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use petgraph::prelude::*;
 use petgraph::visit::*;
+use smallbitvec::{InternalStorage, SmallBitVec};
+use smallvec::SmallVec;
 use std::cell::{Ref, RefCell, RefMut};
 use std::io::{self, Read, Write};
 use std::marker::PhantomData;
+use std::mem::ManuallyDrop;
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 use std::sync::Arc;
-use smallvec::SmallVec;
-use smallbitvec::{SmallBitVec, InternalStorage};
-use std::mem::ManuallyDrop;
 
 type Ix = petgraph::graph::DefaultIx;
 const IX_SIZE: usize = std::mem::size_of::<Ix>();
@@ -81,7 +81,10 @@ unsafe fn read_pod_slice<T: Copy, R: Read>(buf: &mut R) -> io::Result<Vec<T>> {
 /// Read a slice of data from a reader, reinterpreting the bytes
 /// # Safety
 /// `T` must be valid for any memory contents
-unsafe fn read_pod_slice_with_buf<T: Copy, R: Read>(buf: &mut R, vec: &mut Vec<T>) -> io::Result<()> {
+unsafe fn read_pod_slice_with_buf<T: Copy, R: Read>(
+    buf: &mut R,
+    vec: &mut Vec<T>,
+) -> io::Result<()> {
     let mut arr = [0u8; std::mem::size_of::<usize>()];
     buf.read_exact(&mut arr)?;
     let len = usize::from_ne_bytes(arr);
@@ -130,7 +133,12 @@ impl Arena {
             for node in nodes {
                 graph.add_node(node);
             }
-            for EdgeRepr {source, target, weight} in edges {
+            for EdgeRepr {
+                source,
+                target,
+                weight,
+            } in edges
+            {
                 graph.add_edge(source.into(), target.into(), weight);
             }
             buf.read_exact(&mut ibuf)?;
@@ -147,8 +155,7 @@ impl Arena {
                         InternalStorage::Spilled(Box::from(abuf.as_slice()))
                     };
                     parts.push(MolRepr::Atomic(SmallBitVec::from_storage(is)));
-                }
-                else {
+                } else {
                     read_pod_slice_with_buf(&mut buf, &mut fbuf)?;
                     read_pod_slice_with_buf(&mut buf, &mut bbuf)?;
                     parts.push(MolRepr::Broken(BrokenMol {
@@ -157,10 +164,7 @@ impl Arena {
                     }));
                 }
             }
-            Ok(Self {
-                graph,
-                parts,
-            })
+            Ok(Self { graph, parts })
         }
     }
 
@@ -168,23 +172,34 @@ impl Arena {
     pub fn comp_size(&self) -> usize {
         const NODE_SIZE: usize = 5;
         const EDGE_SIZE: usize = 2 * IX_SIZE + 1;
-        3 * IX_SIZE + self.graph.node_count() * NODE_SIZE + self.graph.edge_count() * EDGE_SIZE + self.parts.iter().map(MolRepr::comp_size).sum::<usize>()
+        3 * IX_SIZE
+            + self.graph.node_count() * NODE_SIZE
+            + self.graph.edge_count() * EDGE_SIZE
+            + self.parts.iter().map(MolRepr::comp_size).sum::<usize>()
     }
 
     /// Create a binary output from which this graph can be reconstructed
     pub fn compile<W: Write>(&self, mut buf: W) -> io::Result<()> {
         let mut table = vec![None; self.graph.node_count()];
         let mut c: Ix = 0;
-        let nodes = self.graph.node_indices().map(|i| {
-            table[i.index()] = Some(c);
-            c += 1;
-            self.graph[i]
-        }).collect::<Vec<_>>();
-        let edges = self.graph.edge_references().map(|e| EdgeRepr {
-            source: table[e.source().index()].unwrap(),
-            target: table[e.target().index()].unwrap(),
-            weight: *e.weight()
-        }).collect::<Vec<_>>();
+        let nodes = self
+            .graph
+            .node_indices()
+            .map(|i| {
+                table[i.index()] = Some(c);
+                c += 1;
+                self.graph[i]
+            })
+            .collect::<Vec<_>>();
+        let edges = self
+            .graph
+            .edge_references()
+            .map(|e| EdgeRepr {
+                source: table[e.source().index()].unwrap(),
+                target: table[e.target().index()].unwrap(),
+                weight: *e.weight(),
+            })
+            .collect::<Vec<_>>();
         write_pod_slice(&nodes, &mut buf)?;
         write_pod_slice(&edges, &mut buf)?;
         buf.write_all(&(self.parts.len() as Ix).to_ne_bytes())?;
@@ -223,19 +238,37 @@ pub struct Molecule<R> {
     index: usize,
 }
 impl<R> Molecule<R> {
-    pub fn from_arena<'a, 'b: 'a, A: ArenaAccessible<Access<'a> = R> + 'a>(arena: &'b A, index: usize) -> Self where Self: 'a {
+    pub fn from_arena<'a, 'b: 'a, A: ArenaAccessible<Access<'a> = R> + 'a>(
+        arena: &'b A,
+        index: usize,
+    ) -> Self
+    where
+        Self: 'a,
+    {
         Self {
             arena: arena.get_accessor(),
             index,
         }
     }
-    pub fn from_mut_arena<'a, 'b: 'a, A: ArenaAccessible<AccessMut<'a> = R> + 'a>(arena: &'b mut A, index: usize) -> Self where Self: 'a {
+    pub fn from_mut_arena<'a, 'b: 'a, A: ArenaAccessible<AccessMut<'a> = R> + 'a>(
+        arena: &'b mut A,
+        index: usize,
+    ) -> Self
+    where
+        Self: 'a,
+    {
         Self {
             arena: arena.get_accessor_mut(),
             index,
         }
     }
-    pub fn from_imut_arena<'a, 'b: 'a, A: ArenaAccessibleMut<InternalAccess<'a> = R> + 'a>(arena: &'b A, index: usize) -> Self where Self: 'a {
+    pub fn from_imut_arena<'a, 'b: 'a, A: ArenaAccessibleMut<InternalAccess<'a> = R> + 'a>(
+        arena: &'b A,
+        index: usize,
+    ) -> Self
+    where
+        Self: 'a,
+    {
         Self {
             arena: arena.get_accessor_imut(),
             index,
