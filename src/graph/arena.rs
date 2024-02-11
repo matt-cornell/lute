@@ -2,7 +2,7 @@
 //! reactions often only involve a small part of the molecule, it would be inefficient to make
 //! copies of everything.
 
-use crate::molecule::{Atom, Bond, Chirality};
+use crate::molecule::{Atom, Bond};
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use petgraph::prelude::*;
 use petgraph::visit::*;
@@ -12,15 +12,104 @@ use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 use std::sync::Arc;
+use smallvec::SmallVec;
+use smallbitvec::{SmallBitVec, InternalStorage};
+use std::mem::ManuallyDrop;
 
 type Ix = petgraph::graph::DefaultIx;
 const IX_SIZE: usize = std::mem::size_of::<Ix>();
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(C)]
+struct InterFragBond {
+    ai: Ix,
+    ar: Ix,
+    bi: Ix,
+    br: Ix,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct BrokenMol {
+    frags: SmallVec<[Ix; 8]>,
+    bonds: SmallVec<[InterFragBond; 8]>,
+}
+impl BrokenMol {
+    pub fn comp_size(&self) -> usize {
+        (2 + self.frags.len() + self.bonds.len() * 4) * IX_SIZE
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum MolRepr {
+    Atomic(SmallBitVec),
+    Broken(BrokenMol),
+}
+impl MolRepr {
+    pub fn comp_size(&self) -> usize {
+        match self {
+            Self::Atomic(a) => IX_SIZE + a.len(),
+            Self::Broken(b) => b.comp_size(),
+        }
+    }
+}
+
+/// Write a slice of POD data to a writer
+fn write_pod_slice<T: Copy, W: Write>(data: &[T], buf: &mut W) -> io::Result<()> {
+    // Safety: we're reinterpreting as bytes here, which will always be valid
+    unsafe {
+        let ptr = data.as_ptr() as *const u8;
+        let len = data.len() * std::mem::size_of::<T>();
+        buf.write_all(&len.to_ne_bytes())?;
+        buf.write_all(std::slice::from_raw_parts(ptr, len))?;
+        Ok(())
+    }
+}
+/// Read a slice of data from a reader, reinterpreting the bytes
+/// # Safety
+/// `T` must be valid for any memory contents
+unsafe fn read_pod_slice<T: Copy, R: Read>(buf: &mut R) -> io::Result<Vec<T>> {
+    let mut arr = [0u8; std::mem::size_of::<usize>()];
+    buf.read_exact(&mut arr)?;
+    let len = usize::from_ne_bytes(arr);
+    let mut mdv = ManuallyDrop::new(Vec::<T>::with_capacity(len));
+    let ptr = mdv.as_mut_ptr();
+    let cap = mdv.capacity();
+    assert!(cap >= len);
+    buf.read_exact(std::slice::from_raw_parts_mut(ptr as *mut _, len))?;
+    Ok(Vec::from_raw_parts(ptr, len, cap))
+}
+/// Read a slice of data from a reader, reinterpreting the bytes
+/// # Safety
+/// `T` must be valid for any memory contents
+unsafe fn read_pod_slice_with_buf<T: Copy, R: Read>(buf: &mut R, vec: &mut Vec<T>) -> io::Result<()> {
+    let mut arr = [0u8; std::mem::size_of::<usize>()];
+    buf.read_exact(&mut arr)?;
+    let len = usize::from_ne_bytes(arr);
+    vec.clear();
+    vec.reserve(len);
+    let mut mdv = ManuallyDrop::new(std::mem::take(vec));
+    let ptr = mdv.as_mut_ptr();
+    let cap = mdv.capacity();
+    assert!(cap >= len);
+    buf.read_exact(std::slice::from_raw_parts_mut(ptr as *mut _, len))?;
+    *vec = Vec::from_raw_parts(ptr, len, cap);
+    Ok(())
+}
+
+#[derive(Clone, Copy)]
+#[repr(C)]
+struct EdgeRepr {
+    source: Ix,
+    target: Ix,
+    weight: Bond,
+}
 
 /// The `Arena` is the backing storage for everything. It tracks all molecules and handles
 /// deduplication.
 #[derive(Debug, Default, Clone)]
 pub struct Arena {
     graph: StableUnGraph<Atom, Bond>,
+    parts: SmallVec<[MolRepr; 16]>,
 }
 impl Arena {
     pub fn new() -> Self {
@@ -31,93 +120,91 @@ impl Arena {
     /// it assumes that the previously compiled graph was valid.
     pub fn from_compiled<R: Read>(mut buf: R) -> io::Result<Self> {
         let mut ibuf = [0u8; IX_SIZE];
-        let mut abuf = [0u8; 5];
-        buf.read_exact(&mut ibuf)?;
-        let node_count = Ix::from_le_bytes(ibuf);
-        buf.read_exact(&mut ibuf)?;
-        let edge_count = Ix::from_le_bytes(ibuf);
-        let mut graph = StableGraph::with_capacity(node_count as _, edge_count as _);
-        for _ in 0..node_count {
-            buf.read_exact(&mut abuf)?;
-            let protons = abuf[0];
-            let charge = unsafe { *(&abuf[1] as *const u8 as *const i8) };
-            let chirality = match abuf[2] {
-                0 => Chirality::None,
-                1 => Chirality::Ccw,
-                2 => Chirality::Cw,
-                c => Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("expected 0, 1, or 2 for chirality kind, found {c}"),
-                ))?,
-            };
-            let mut isotope = Some(((abuf[4] as u16) << 8) | (abuf[3] as u16));
-            if isotope == Some(0) && protons != 0 {
-                isotope = None;
+        let mut abuf = Vec::with_capacity(1);
+        let mut fbuf = Vec::new();
+        let mut bbuf = Vec::new();
+        unsafe {
+            let nodes = read_pod_slice::<Atom, R>(&mut buf)?;
+            let edges = read_pod_slice::<EdgeRepr, R>(&mut buf)?;
+            let mut graph = StableGraph::with_capacity(nodes.len() as _, edges.len() as _);
+            for node in nodes {
+                graph.add_node(node);
             }
-            graph.add_node(Atom {
-                protons,
-                charge,
-                chirality,
-                isotope,
-                aromatic: false,
-            });
-        }
-        for _ in 0..edge_count {
+            for EdgeRepr {source, target, weight} in edges {
+                graph.add_edge(source.into(), target.into(), weight);
+            }
             buf.read_exact(&mut ibuf)?;
-            let source = NodeIndex::new(Ix::from_le_bytes(ibuf) as _);
-            buf.read_exact(&mut ibuf)?;
-            let target = NodeIndex::new(Ix::from_le_bytes(ibuf) as _);
-            let mut c = 0u8;
-            buf.read_exact(std::slice::from_mut(&mut c))?;
-            let weight = match c {
-                0 => Bond::Non,
-                1 => Bond::Single,
-                2 => Bond::Double,
-                3 => Bond::Triple,
-                4 => Bond::Quad,
-                5 => Bond::Aromatic,
-                6 => Bond::Left,
-                7 => Bond::Right,
-                _ => Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("expected 0..=7 for bond kind, found {c}"),
-                ))?,
-            };
-            graph.add_edge(source, target, weight);
+            let part_count = Ix::from_ne_bytes(ibuf) as usize;
+            let mut parts = SmallVec::with_capacity(part_count);
+            let mut i = 0u8;
+            for _ in 0..part_count {
+                buf.read_exact(std::slice::from_mut(&mut i))?;
+                if i == 0 {
+                    read_pod_slice_with_buf(&mut buf, &mut abuf)?;
+                    let is = if abuf.len() == 1 {
+                        InternalStorage::Inline(abuf[0])
+                    } else {
+                        InternalStorage::Spilled(Box::from(abuf.as_slice()))
+                    };
+                    parts.push(MolRepr::Atomic(SmallBitVec::from_storage(is)));
+                }
+                else {
+                    read_pod_slice_with_buf(&mut buf, &mut fbuf)?;
+                    read_pod_slice_with_buf(&mut buf, &mut bbuf)?;
+                    parts.push(MolRepr::Broken(BrokenMol {
+                        frags: SmallVec::from_slice(&fbuf),
+                        bonds: SmallVec::from_slice(&bbuf),
+                    }));
+                }
+            }
+            Ok(Self {
+                graph,
+                parts,
+            })
         }
-        Ok(Self { graph })
     }
+
     /// Return the size of the binary output in bytes
     pub fn comp_size(&self) -> usize {
         const NODE_SIZE: usize = 5;
         const EDGE_SIZE: usize = 2 * IX_SIZE + 1;
-        2 * IX_SIZE + self.graph.node_count() * NODE_SIZE + self.graph.edge_count() * EDGE_SIZE
+        3 * IX_SIZE + self.graph.node_count() * NODE_SIZE + self.graph.edge_count() * EDGE_SIZE + self.parts.iter().map(MolRepr::comp_size).sum::<usize>()
     }
+
     /// Create a binary output from which this graph can be reconstructed
     pub fn compile<W: Write>(&self, mut buf: W) -> io::Result<()> {
-        let mut ebuf = [0u8; 2 * IX_SIZE + 1];
-        ebuf[0..IX_SIZE].copy_from_slice(&(self.graph.node_count() as Ix).to_le_bytes());
-        ebuf[IX_SIZE..(2 * IX_SIZE)].copy_from_slice(&(self.graph.edge_count() as Ix).to_le_bytes());
-        buf.write_all(&ebuf[..16])?;
         let mut table = vec![None; self.graph.node_count()];
         let mut c: Ix = 0;
-        for node in self.graph.node_indices() {
-            table[node.index()] = Some(c);
-            let atom = &self.graph[node];
-            buf.write_all(&[
-                atom.protons,
-                unsafe { *(&atom.charge as *const i8 as *const u8) },
-                atom.chirality as u8,
-                atom.isotope.map_or(0, |i| (i & 255) as u8),
-                atom.isotope.map_or(0, |i| (i >> 8) as u8),
-            ])?;
+        let nodes = self.graph.node_indices().map(|i| {
+            table[i.index()] = Some(c);
             c += 1;
-        }
-        for edge in self.graph.edge_references() {
-            ebuf[0..IX_SIZE].copy_from_slice(&table[edge.source().index()].unwrap().to_le_bytes());
-            ebuf[IX_SIZE..(2 * IX_SIZE)].copy_from_slice(&table[edge.target().index()].unwrap().to_le_bytes());
-            ebuf[2 * IX_SIZE] = unsafe { *(edge.weight() as *const _ as *const u8) };
-            buf.write_all(&ebuf)?;
+            self.graph[i]
+        }).collect::<Vec<_>>();
+        let edges = self.graph.edge_references().map(|e| EdgeRepr {
+            source: table[e.source().index()].unwrap(),
+            target: table[e.target().index()].unwrap(),
+            weight: *e.weight()
+        }).collect::<Vec<_>>();
+        write_pod_slice(&nodes, &mut buf)?;
+        write_pod_slice(&edges, &mut buf)?;
+        buf.write_all(&(self.parts.len() as Ix).to_ne_bytes())?;
+        for part in &self.parts {
+            match part {
+                MolRepr::Atomic(a) => {
+                    let i = a.clone().into_storage();
+                    let s = match &i {
+                        InternalStorage::Inline(s) => std::slice::from_ref(s),
+                        InternalStorage::Spilled(s) => &**s,
+                    };
+                    buf.write_all(&[0])?;
+                    write_pod_slice(s, &mut buf)?;
+                }
+                MolRepr::Broken(b) => {
+                    buf.write_all(&[1])?;
+                    write_pod_slice(&b.frags, &mut buf)?;
+                    write_pod_slice(&b.bonds, &mut buf)?;
+                }
+            }
         }
         Ok(())
     }
@@ -128,11 +215,32 @@ impl Arena {
 #[derive(Debug, Clone, Copy)]
 pub struct Container {}
 
-/// A `Molecule` is a graph, and can have graph algorithms used on it. It's immutable, with all
-/// mutationss making (efficient) copies.
+/// A `Molecule` acts like a graph, and can have graph algorithms used on it. It's immutable, with all
+/// mutations making (efficient) copies.
 #[derive(Debug, Clone, Copy)]
 pub struct Molecule<R> {
     arena: R,
+    index: usize,
+}
+impl<R> Molecule<R> {
+    pub fn from_arena<'a, 'b: 'a, A: ArenaAccessible<Access<'a> = R> + 'a>(arena: &'b A, index: usize) -> Self where Self: 'a {
+        Self {
+            arena: arena.get_accessor(),
+            index,
+        }
+    }
+    pub fn from_mut_arena<'a, 'b: 'a, A: ArenaAccessible<AccessMut<'a> = R> + 'a>(arena: &'b mut A, index: usize) -> Self where Self: 'a {
+        Self {
+            arena: arena.get_accessor_mut(),
+            index,
+        }
+    }
+    pub fn from_imut_arena<'a, 'b: 'a, A: ArenaAccessibleMut<InternalAccess<'a> = R> + 'a>(arena: &'b A, index: usize) -> Self where Self: 'a {
+        Self {
+            arena: arena.get_accessor_imut(),
+            index,
+        }
+    }
 }
 
 /// This trait handles the access to the backing arena. Rather than just passing around references,

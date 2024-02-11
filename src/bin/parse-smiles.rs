@@ -90,7 +90,7 @@ fn svg_atom_color(num: u8) -> &'static str {
     }
 }
 fn bond_style<'a>(_: &'a MoleculeGraph, bond: EdgeReference<'a, Bond>) -> String {
-    match bond.weight() {
+    match *bond.weight() {
         Bond::Single => r#"color="black""#,
         Bond::Double => r#"color="black:black""#,
         Bond::Triple => r#"color="black:black:black""#,
@@ -99,6 +99,7 @@ fn bond_style<'a>(_: &'a MoleculeGraph, bond: EdgeReference<'a, Bond>) -> String
         Bond::Left => r#"color="black", label="left""#,
         Bond::Right => r#"color="black", label="right""#,
         Bond::Non => r#"color="black", style="invis""#,
+        _ => panic!("invalid bond!")
     }
     .to_string()
 }
@@ -194,13 +195,14 @@ fn main() {
                     };
                     let mag = (dx * dx + dy * dy).sqrt() / 3.0;
                     let (dx, dy) = ((dx / mag) as i16, (dy / mag) as i16);
-                    match edge.weight() {
+                    match *edge.weight() {
                         Bond::Non => {},
                         Bond::Single | Bond::Left | Bond::Right => out += &format!("  <line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" style=\"stroke:black;stroke-width:2\"/>\n"),
                         Bond::Double => out += &format!("  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n", x1 - dx, y1 - dy, x2 - dx, y2 - dy, x1 + dx, y1 + dy, x2 + dx, y2 + dy),
                         Bond::Triple => out += &format!("  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n", x1 - 2 * dx, y1 - 2 * dy, x2 - 2 * dx, y2 - 2 * dy, x1 + 2 * dx, y1 + 2 * dy, x2 + 2 * dx, y2 + 2 * dy, x1, y1, x2, y2),
                         Bond::Quad => out += &format!("  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n", x1 - 3 * dx, y1 - 3 * dy, x2 - 3 * dx, y2 - 3 * dy, x1 - dx, y1 - dy, x2 - dx, y2 - dy, x1 + dx, y1 + dy, x2 + dx, y2 + dy, x1 + 3 * dx, y1 + 3 * dy, x2 + 3 * dx, y2 + 3 * dy),
                         Bond::Aromatic => out += &format!("  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\"  stroke-dasharray=\"10,10\"/>\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n", x1 - dx, y1 - dy, x2 - dx, y2 - dy, x1 + dx, y1 + dy, x2 + dx, y2 + dy),
+                        _ => panic!("invalid bond!")
                     }
                 }
 

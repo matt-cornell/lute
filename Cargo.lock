@@ -82,6 +82,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "c-enum"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cd17eb909a8c6a894926bfcc3400a4bb0e732f5a57d37b1f14e8b29e329bace8"
+
+[[package]]
 name = "cc"
 version = "1.0.83"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -102,11 +108,14 @@ version = "0.1.0"
 dependencies = [
  "atoi",
  "bstr",
+ "c-enum",
  "clap",
  "coordgen",
  "fmtastic",
  "parking_lot",
  "petgraph",
+ "smallbitvec",
+ "smallvec",
  "strum",
  "thiserror",
 ]
@@ -337,6 +346,12 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[package]]
+name = "smallbitvec"
+version = "2.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75ce4f9dc4a41b4c3476cc925f1efb11b66df373a8fde5d4b8915fa91b5d995e"
 
 [[package]]
 name = "smallvec"

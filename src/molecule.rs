@@ -8,16 +8,18 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
 use std::str::FromStr;
-use strum::*;
 use thiserror::Error;
 use SmilesErrorKind::*;
+use c_enum::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
-pub enum Chirality {
-    None,
-    Ccw,
-    Cw,
+c_enum! {
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    #[repr(transparent)]
+    pub enum Chirality: u8 {
+        None,
+        Ccw,
+        Cw,
+    }
 }
 impl Chirality {
     pub fn is_chiral(self) -> bool {
@@ -27,10 +29,11 @@ impl Chirality {
 
 /// An atom in the molecule graph
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(C)]
 pub struct Atom {
     pub protons: u8,
     pub charge: i8,
-    pub isotope: Option<u16>,
+    pub isotope: u16,
     pub chirality: Chirality,
     /// Aromaticity can be found in the bonds, and that should checked. This is only here to
     /// simplify SMILES parsing
@@ -41,7 +44,7 @@ impl Atom {
     pub fn new(protons: u8) -> Self {
         Self {
             protons,
-            isotope: None,
+            isotope: 0,
             charge: 0,
             chirality: Chirality::None,
             aromatic: false,
@@ -50,13 +53,13 @@ impl Atom {
     pub fn new_aromatic(protons: u8) -> Self {
         Self {
             protons,
-            isotope: None,
+            isotope: 0,
             charge: 0,
             chirality: Chirality::None,
             aromatic: true,
         }
     }
-    pub fn new_isotope(protons: u8, isotope: Option<u16>) -> Self {
+    pub fn new_isotope(protons: u8, isotope: u16) -> Self {
         Self {
             protons,
             isotope,
@@ -65,7 +68,7 @@ impl Atom {
             aromatic: false,
         }
     }
-    pub fn new_aromatic_isotope(protons: u8, isotope: Option<u16>) -> Self {
+    pub fn new_aromatic_isotope(protons: u8, isotope: u16) -> Self {
         Self {
             protons,
             isotope,
@@ -82,19 +85,19 @@ impl Display for Atom {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         if f.alternate() {
             write!(f, "{}", ATOM_DATA[self.protons as usize].name)?;
-            if let Some(isotope) = self.isotope {
-                write!(f, "-{isotope}")?;
+            if self.isotope != 0 || self.protons == 0 {
+                write!(f, "-{}", self.isotope)?;
             }
         } else {
             use fmtastic::*;
             if self.protons != 0 {
-                if let Some(isotope) = self.isotope {
-                    write!(f, "{}", Superscript(isotope))?;
+                if self.isotope != 0 {
+                    write!(f, "{}", Superscript(self.isotope))?;
                 }
             }
             write!(f, "{}", ATOM_DATA[self.protons as usize].sym)?;
             if self.protons == 0 {
-                write!(f, "{}", Subscript(self.isotope.unwrap_or(0)))?;
+                write!(f, "{}", Subscript(self.isotope))?;
             }
             match self.charge {
                 0 => {}
@@ -106,27 +109,20 @@ impl Display for Atom {
         Ok(())
     }
 }
-
-/// A bond between atoms in the molecule graph
-#[derive(Debug, Clone, Copy, PartialEq, Eq, AsRefStr, Display)]
-pub enum Bond {
-    /// Non-bond, shouldn't appear in final graph
-    #[strum(serialize = "non")]
-    Non,
-    #[strum(serialize = "single")]
-    Single,
-    #[strum(serialize = "double")]
-    Double,
-    #[strum(serialize = "triple")]
-    Triple,
-    #[strum(serialize = "quadruple")]
-    Quad,
-    #[strum(serialize = "aromatic")]
-    Aromatic,
-    #[strum(serialize = "left")]
-    Left,
-    #[strum(serialize = "right")]
-    Right,
+c_enum! {
+    /// A bond between atoms in the molecule graph
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    pub enum Bond: u8 {
+        /// Non-bond, shouldn't appear in final graph
+        Non,
+        Single,
+        Double,
+        Triple,
+        Quad,
+        Aromatic,
+        Left,
+        Right,
+    }
 }
 impl Bond {
     pub fn bond_count(self) -> f32 {
@@ -137,10 +133,28 @@ impl Bond {
             Self::Quad => 4f32,
             Self::Aromatic => 1.5f32,
             Self::Non => 0f32,
+            _ => panic!("invalid bond!")
+        }
+    }
+    pub fn as_static_str(self) -> &'static str {
+        match self {
+            Self::Non => "non",
+            Self::Single => "single",
+            Self::Double => "double",
+            Self::Triple => "triple",
+            Self::Quad => "quad",
+            Self::Aromatic => "aromatic",
+            Self::Left => "left",
+            Self::Right => "right",
+            _ => panic!("invalid bond!")
         }
     }
 }
-
+impl Display for Bond {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_static_str())
+    }
+}
 /// A molecule graph is an undirected graph between atoms, connected with bonds
 pub type MoleculeGraph = UnGraph<Atom, Bond>;
 
@@ -379,7 +393,7 @@ impl<'a> SmilesParser<'a> {
             }
             Some(&b'R') => {
                 self.index += 1;
-                Ok(Some(self.graph.add_node(Atom::new_isotope(0, Some(0)))))
+                Ok(Some(self.graph.add_node(Atom::new(0))))
             }
             Some(&b'n') => {
                 self.index += 1;
@@ -408,14 +422,13 @@ impl<'a> SmilesParser<'a> {
             Some(&b'r') => {
                 self.index += 1;
                 Ok(Some(
-                    self.graph.add_node(Atom::new_aromatic_isotope(0, Some(0))),
+                    self.graph.add_node(Atom::new_aromatic(0)),
                 ))
             }
             Some(&b'[') => {
                 self.index += 1;
                 let (isotope, used) = u16::from_radix_10(&self.input[self.index..]);
                 self.index += used;
-                let mut isotope = (used != 0).then_some(isotope);
                 let atom = match self.input.get(self.index) {
                     None => Err(SmilesError::new(self.index, ExpectedAtom))?,
                     Some(&b'b') => self.graph.add_node(Atom::new_aromatic(5)),
@@ -426,7 +439,7 @@ impl<'a> SmilesParser<'a> {
                     Some(&b's') => self.graph.add_node(Atom::new_aromatic(16)),
                     Some(&b'r') => self
                         .graph
-                        .add_node(Atom::new_aromatic_isotope(0, Some(isotope.unwrap_or(0)))),
+                        .add_node(Atom::new_aromatic_isotope(0, isotope)),
                     Some(c) if c.is_ascii_uppercase() => {
                         let start = self.index;
                         let len = self.input[(self.index + 1)..]
@@ -436,10 +449,7 @@ impl<'a> SmilesParser<'a> {
                             .count();
                         let elem = &self.input[start..(start + len + 1)];
                         self.index += len;
-                        let protons = if elem == b"R" {
-                            isotope.get_or_insert(0);
-                            0
-                        } else {
+                        let protons = if elem == b"R" { 0 } else {
                             ATOM_DATA
                                 .iter()
                                 .enumerate()
