@@ -1,7 +1,5 @@
 //! Taken from `petgraph`! A few modifications have been made to not require compact indices.
 
-use std::convert::TryFrom;
-
 use petgraph::data::DataMap;
 use petgraph::visit::*;
 use petgraph::{Incoming, Outgoing};
@@ -761,8 +759,39 @@ mod matching {
 
             // We hardcode n! values into an array that accounts for architectures
             // with smaller usizes to get our upper bound.
-            let upper_bounds: Vec<Option<usize>> = vec![
-                1u64,
+            #[cfg(target_pointer_width = "16")]
+            const UPPER_BOUNDS: &[usize] = &[
+                1,
+                1,
+                2,
+                6,
+                24,
+                120,
+                720,
+                5040,
+                40320,
+            ];
+
+            #[cfg(target_pointer_width = "32")]
+            const UPPER_BOUNDS: &[usize] = &[
+                1,
+                1,
+                2,
+                6,
+                24,
+                120,
+                720,
+                5040,
+                40320,
+                362880,
+                3628800,
+                39916800,
+                479001600,
+            ];
+
+            #[cfg(target_pointer_width = "64")]
+            const UPPER_BOUNDS: &[usize] = &[
+                1,
                 1,
                 2,
                 6,
@@ -783,16 +812,9 @@ mod matching {
                 6402373705728000,
                 121645100408832000,
                 2432902008176640000,
-            ]
-            .iter()
-            .map(|n| usize::try_from(*n).ok())
-            .collect();
+            ];
 
-            if n > upper_bounds.len() {
-                return (0, None);
-            }
-
-            (0, upper_bounds[n])
+            (0, UPPER_BOUNDS.get(n).copied())
         }
     }
 }

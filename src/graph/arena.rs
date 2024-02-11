@@ -10,7 +10,6 @@ use smallbitvec::{InternalStorage, SmallBitVec};
 use smallvec::SmallVec;
 use std::cell::{Ref, RefCell, RefMut};
 use std::io::{self, Read, Write};
-use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
@@ -58,7 +57,7 @@ fn write_pod_slice<T: Copy, W: Write>(data: &[T], buf: &mut W) -> io::Result<()>
     // Safety: we're reinterpreting as bytes here, which will always be valid
     unsafe {
         let ptr = data.as_ptr() as *const u8;
-        let len = data.len() * std::mem::size_of::<T>();
+        let len = std::mem::size_of_val(data);
         buf.write_all(&len.to_ne_bytes())?;
         buf.write_all(std::slice::from_raw_parts(ptr, len))?;
         Ok(())
@@ -250,8 +249,9 @@ impl<R> Molecule<R> {
             index,
         }
     }
-    pub fn from_mut_arena<'a, 'b: 'a, A: ArenaAccessible<AccessMut<'a> = R> + 'a>(
-        arena: &'b mut A,
+
+    pub fn from_mut_arena<'a, 'b: 'a, A: ArenaAccessibleMut<AccessMut<'a> = R> + 'a>(
+        arena: &'b A,
         index: usize,
     ) -> Self
     where
@@ -262,17 +262,13 @@ impl<R> Molecule<R> {
             index,
         }
     }
-    pub fn from_imut_arena<'a, 'b: 'a, A: ArenaAccessibleMut<InternalAccess<'a> = R> + 'a>(
-        arena: &'b A,
-        index: usize,
-    ) -> Self
-    where
-        Self: 'a,
-    {
-        Self {
-            arena: arena.get_accessor_imut(),
-            index,
-        }
+
+    pub fn arena(&self) -> R::Ref<'_> where R: ArenaAccessor {
+        self.arena.get_arena()
+    }
+
+    pub fn arena_mut(&self) -> R::RefMut<'_> where R: ArenaAccessorMut {
+        self.arena.get_arena_mut()
     }
 }
 
@@ -295,10 +291,7 @@ pub trait ArenaAccessorMut: ArenaAccessor {
     where
         Self: 'a;
 
-    /// ## Safety
-    /// While in most cases, this is safe, it's up to the caller that multiple accesses never take
-    /// place
-    unsafe fn get_arena_mut<'a>(&'a self) -> Self::RefMut<'a>
+    fn get_arena_mut<'a>(&'a self) -> Self::RefMut<'a>
     where
         Self: 'a;
 }
@@ -308,21 +301,17 @@ pub trait ArenaAccessible {
     type Access<'a>: ArenaAccessor + 'a
     where
         Self: 'a;
-    type AccessMut<'a>: ArenaAccessorMut + 'a
-    where
-        Self: 'a;
 
     fn get_accessor(&self) -> Self::Access<'_>;
-    fn get_accessor_mut(&mut self) -> Self::AccessMut<'_>;
 }
 
 /// This trait also allows access to a graph through an internally mutable type.
 pub trait ArenaAccessibleMut: ArenaAccessible {
-    type InternalAccess<'a>: ArenaAccessorMut + 'a
+    type AccessMut<'a>: ArenaAccessorMut + 'a
     where
         Self: 'a;
 
-    fn get_accessor_imut(&self) -> Self::InternalAccess<'_>;
+    fn get_accessor_mut(&self) -> Self::AccessMut<'_>;
 }
 
 #[doc(hidden)]
@@ -339,41 +328,11 @@ impl<'a> ArenaAccessor for RefAcc<'a> {
     }
 }
 
-// `PhantomData` to impl `!Sync`. Use a mutex if you want to use this across threads.
-#[doc(hidden)]
-#[derive(Debug)]
-pub struct RefMutAcc<'a>(&'a mut Arena, PhantomData<RefCell<()>>);
-
-impl<'a> ArenaAccessor for RefMutAcc<'a> {
-    type Ref<'b> = &'b Arena where 'a: 'b;
-
-    fn get_arena<'b>(&'b self) -> Self::Ref<'b>
-    where
-        'a: 'b,
-    {
-        self.0
-    }
-}
-impl<'a> ArenaAccessorMut for RefMutAcc<'a> {
-    type RefMut<'b> = &'b mut Arena where 'a: 'b;
-
-    unsafe fn get_arena_mut<'b>(&'b self) -> Self::RefMut<'b>
-    where
-        'a: 'b,
-    {
-        std::ptr::read(&self.0)
-    }
-}
-
 impl ArenaAccessible for Arena {
     type Access<'a> = RefAcc<'a>;
-    type AccessMut<'a> = RefMutAcc<'a>;
 
     fn get_accessor(&self) -> RefAcc {
         RefAcc(self)
-    }
-    fn get_accessor_mut(&mut self) -> RefMutAcc {
-        RefMutAcc(self, PhantomData)
     }
 }
 
@@ -393,7 +352,7 @@ impl<'a> ArenaAccessor for RefCellAcc<'a> {
 impl<'a> ArenaAccessorMut for RefCellAcc<'a> {
     type RefMut<'b> = RefMut<'b, Arena> where 'a: 'b;
 
-    unsafe fn get_arena_mut<'b>(&'b self) -> Self::RefMut<'b>
+    fn get_arena_mut<'b>(&'b self) -> Self::RefMut<'b>
     where
         'a: 'b,
     {
@@ -403,19 +362,15 @@ impl<'a> ArenaAccessorMut for RefCellAcc<'a> {
 
 impl ArenaAccessible for RefCell<Arena> {
     type Access<'a> = RefCellAcc<'a>;
-    type AccessMut<'a> = RefMutAcc<'a>;
 
     fn get_accessor(&self) -> RefCellAcc {
         RefCellAcc(self)
     }
-    fn get_accessor_mut(&mut self) -> RefMutAcc {
-        RefMutAcc(self.get_mut(), PhantomData)
-    }
 }
 impl ArenaAccessibleMut for RefCell<Arena> {
-    type InternalAccess<'a> = RefCellAcc<'a>;
+    type AccessMut<'a> = RefCellAcc<'a>;
 
-    fn get_accessor_imut(&self) -> RefCellAcc {
+    fn get_accessor_mut(&self) -> RefCellAcc {
         RefCellAcc(self)
     }
 }
@@ -436,7 +391,7 @@ impl<'a> ArenaAccessor for RwLockAcc<'a> {
 impl<'a> ArenaAccessorMut for RwLockAcc<'a> {
     type RefMut<'b> = RwLockWriteGuard<'b, Arena> where 'a: 'b;
 
-    unsafe fn get_arena_mut<'b>(&'b self) -> Self::RefMut<'b>
+    fn get_arena_mut<'b>(&'b self) -> Self::RefMut<'b>
     where
         'a: 'b,
     {
@@ -446,57 +401,45 @@ impl<'a> ArenaAccessorMut for RwLockAcc<'a> {
 
 impl ArenaAccessible for RwLock<Arena> {
     type Access<'a> = RwLockAcc<'a>;
-    type AccessMut<'a> = RefMutAcc<'a>;
 
     fn get_accessor(&self) -> RwLockAcc {
         RwLockAcc(self)
     }
-    fn get_accessor_mut(&mut self) -> RefMutAcc {
-        RefMutAcc(self.get_mut(), PhantomData)
-    }
 }
 impl ArenaAccessibleMut for RwLock<Arena> {
-    type InternalAccess<'a> = RwLockAcc<'a>;
+    type AccessMut<'a> = RwLockAcc<'a>;
 
-    fn get_accessor_imut(&self) -> RwLockAcc {
+    fn get_accessor_mut(&self) -> RwLockAcc {
         RwLockAcc(self)
     }
 }
 
-impl<T: ArenaAccessibleMut> ArenaAccessible for Rc<T> {
+impl<T: ArenaAccessible> ArenaAccessible for Rc<T> {
     type Access<'a> = T::Access<'a> where T: 'a;
-    type AccessMut<'a> = T::InternalAccess<'a> where T: 'a;
 
     fn get_accessor(&self) -> Self::Access<'_> {
         T::get_accessor(self)
-    }
-    fn get_accessor_mut(&mut self) -> Self::AccessMut<'_> {
-        T::get_accessor_imut(&**self)
     }
 }
 impl<T: ArenaAccessibleMut> ArenaAccessibleMut for Rc<T> {
-    type InternalAccess<'a> = T::InternalAccess<'a> where T: 'a;
+    type AccessMut<'a> = T::AccessMut<'a> where T: 'a;
 
-    fn get_accessor_imut(&self) -> T::InternalAccess<'_> {
-        T::get_accessor_imut(&**self)
+    fn get_accessor_mut(&self) -> Self::AccessMut<'_> {
+        T::get_accessor_mut(&**self)
     }
 }
 
-impl<T: ArenaAccessibleMut> ArenaAccessible for Arc<T> {
+impl<T: ArenaAccessible> ArenaAccessible for Arc<T> {
     type Access<'a> = T::Access<'a> where T: 'a;
-    type AccessMut<'a> = T::InternalAccess<'a> where T: 'a;
 
     fn get_accessor(&self) -> Self::Access<'_> {
         T::get_accessor(self)
     }
-    fn get_accessor_mut(&mut self) -> Self::AccessMut<'_> {
-        T::get_accessor_imut(&**self)
-    }
 }
 impl<T: ArenaAccessibleMut> ArenaAccessibleMut for Arc<T> {
-    type InternalAccess<'a> = T::InternalAccess<'a> where T: 'a;
+    type AccessMut<'a> = T::AccessMut<'a> where T: 'a;
 
-    fn get_accessor_imut(&self) -> T::InternalAccess<'_> {
-        T::get_accessor_imut(&**self)
+    fn get_accessor_mut(&self) -> Self::AccessMut<'_> {
+        T::get_accessor_mut(&**self)
     }
 }

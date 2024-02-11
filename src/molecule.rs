@@ -91,10 +91,8 @@ impl Display for Atom {
             }
         } else {
             use fmtastic::*;
-            if self.protons != 0 {
-                if self.isotope != 0 {
-                    write!(f, "{}", Superscript(self.isotope))?;
-                }
+            if self.protons != 0 && self.isotope != 0 {
+                write!(f, "{}", Superscript(self.isotope))?;
             }
             write!(f, "{}", ATOM_DATA[self.protons as usize].sym)?;
             if self.protons == 0 {
