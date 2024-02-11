@@ -200,6 +200,8 @@ pub enum SmilesErrorKind<'a> {
     LoopBondMismatch(Bond, Bond),
     #[error("duplicate bonds between atoms")]
     DuplicateBond,
+    #[error("multiple bonds on an R-group aren't allowed")]
+    MultiBondedR,
 }
 impl SmilesErrorKind<'_> {
     pub fn into_owned(self) -> SmilesErrorKind<'static> {
@@ -214,6 +216,7 @@ impl SmilesErrorKind<'_> {
             ExpectedClosingParen => ExpectedClosingParen,
             LoopBondMismatch(b1, b2) => LoopBondMismatch(b1, b2),
             DuplicateBond => DuplicateBond,
+            MultiBondedR => MultiBondedR,
         }
     }
 }
@@ -290,6 +293,9 @@ impl<'a> SmilesParser<'a> {
                     if self.graph.contains_edge(last_atom, atom) {
                         Err(SmilesError::new(start_idx, DuplicateBond))?
                     }
+                    if self.graph[last_atom].protons == 0 && self.graph.edges(last_atom).next().is_some() {
+                        Err(SmilesError::new(start_idx, MultiBondedR))?
+                    }
                     self.graph.add_edge(
                         last_atom,
                         atom,
@@ -308,8 +314,12 @@ impl<'a> SmilesParser<'a> {
                     return Ok(Some((first_atom, first_bond.0, first_bond.1)));
                 }
                 Some(_) => {
+                    let start_idx = self.index;
                     let atom = self.get_atom()?;
                     if let Some(atom) = atom {
+                        if self.graph[last_atom].protons == 0 && self.graph.edges(last_atom).next().is_some() {
+                            Err(SmilesError::new(start_idx, MultiBondedR))?
+                        }
                         if bond != Bond::Non {
                             self.graph.add_edge(
                                 last_atom,
@@ -474,6 +484,9 @@ impl<'a> SmilesParser<'a> {
                     }
                 }
                 if self.input.get(self.index) == Some(&b'H') {
+                    if self.graph[atom].protons == 0 {
+                        Err(SmilesError::new(self.index, MultiBondedR))?
+                    }
                     self.index += 1;
                     let (mut h, used) = usize::from_radix_10(&self.input[self.index..]);
                     if used == 0 {
