@@ -1,6 +1,7 @@
 //! Create a compact indexable form of a graph.
 
 use petgraph::data::*;
+use petgraph::prelude::*;
 use petgraph::visit::*;
 use std::collections::HashMap;
 use std::hash::Hash;
@@ -12,8 +13,9 @@ pub struct GraphCompactor<G: GraphBase> {
     node_map: Vec<G::NodeId>,
     inv_map: HashMap<G::NodeId, usize>,
 }
-impl<N: Hash + Eq + Copy, G: GraphBase<NodeId = N> + GraphRef + IntoNodeIdentifiers>
-    GraphCompactor<G>
+impl<N: Hash + Eq + Copy, G: GraphBase<NodeId = N>> GraphCompactor<G>
+where
+    for<'a> &'a G: IntoNodeIdentifiers<NodeId = G::NodeId>,
 {
     pub fn new(graph: G) -> Self {
         let node_map: Vec<G::NodeId> = graph.node_identifiers().collect();
@@ -75,6 +77,62 @@ impl<G: GetAdjacencyMatrix> GetAdjacencyMatrix for GraphCompactor<G> {
     }
     fn is_adjacent(&self, matrix: &Self::AdjMatrix, a: Self::NodeId, b: Self::NodeId) -> bool {
         self.graph.is_adjacent(matrix, a, b)
+    }
+}
+
+impl<'a, G: Data> IntoEdges for &'a GraphCompactor<G>
+where
+    &'a G: IntoEdges<EdgeId = G::EdgeId, NodeId = G::NodeId, EdgeWeight = G::EdgeWeight>,
+{
+    type Edges = <&'a G as IntoEdges>::Edges;
+
+    fn edges(self, a: Self::NodeId) -> Self::Edges {
+        self.graph.edges(a)
+    }
+}
+
+impl<'a, G: Data> IntoEdgeReferences for &'a GraphCompactor<G>
+where
+    &'a G: IntoEdgeReferences<EdgeId = G::EdgeId, NodeId = G::NodeId, EdgeWeight = G::EdgeWeight>,
+{
+    type EdgeRef = <&'a G as IntoEdgeReferences>::EdgeRef;
+    type EdgeReferences = <&'a G as IntoEdgeReferences>::EdgeReferences;
+
+    fn edge_references(self) -> Self::EdgeReferences {
+        self.graph.edge_references()
+    }
+}
+
+impl<'a, G: Data> IntoNeighbors for &'a GraphCompactor<G>
+where
+    &'a G: IntoNeighbors<EdgeId = G::EdgeId, NodeId = G::NodeId>,
+{
+    type Neighbors = <&'a G as IntoNeighbors>::Neighbors;
+
+    fn neighbors(self, a: Self::NodeId) -> Self::Neighbors {
+        self.graph.neighbors(a)
+    }
+}
+
+impl<'a, G: Data> IntoNeighborsDirected for &'a GraphCompactor<G>
+where
+    &'a G: IntoNeighborsDirected<EdgeId = G::EdgeId, NodeId = G::NodeId>,
+{
+    type NeighborsDirected = <&'a G as IntoNeighborsDirected>::NeighborsDirected;
+
+    fn neighbors_directed(self, a: Self::NodeId, dir: Direction) -> Self::NeighborsDirected {
+        self.graph.neighbors_directed(a, dir)
+    }
+}
+
+impl<'a, G: Data> IntoEdgesDirected for &'a GraphCompactor<G>
+where
+    &'a G: IntoEdgesDirected<EdgeId = G::EdgeId, NodeId = G::NodeId, EdgeWeight = G::EdgeWeight>,
+{
+    type EdgesDirected = <&'a G as IntoEdgesDirected>::EdgesDirected;
+
+    fn edges_directed(self, a: Self::NodeId, dir: Direction) -> Self::EdgesDirected {
+        self.graph.edges_directed(a, dir)
     }
 }
 

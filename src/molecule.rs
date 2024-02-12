@@ -9,12 +9,13 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt::{self, Display, Formatter};
+use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 use thiserror::Error;
 use SmilesErrorKind::*;
 
 c_enum! {
-    #[derive(Clone, Copy, PartialEq, Eq)]
+    #[derive(Clone, Copy, PartialEq, Eq, Hash)]
     #[repr(transparent)]
     pub enum Chirality: u8 {
         None,
@@ -125,6 +126,13 @@ impl PartialEq for Atom {
     }
 }
 impl Eq for Atom {}
+impl Hash for Atom {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.protons.hash(state);
+        self.isotope.hash(state);
+        self.charge.hash(state);
+    }
+}
 
 c_enum! {
     /// A bond between atoms in the molecule graph

@@ -2,13 +2,17 @@
 //! reactions often only involve a small part of the molecule, it would be inefficient to make
 //! copies of everything.
 
+use crate::graph::compact::GraphCompactor;
 use crate::molecule::{Atom, Bond};
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use petgraph::algo::subgraph_isomorphisms_iter;
+use petgraph::data::DataMap;
 use petgraph::prelude::*;
 use petgraph::visit::*;
 use smallbitvec::{InternalStorage, SmallBitVec};
 use smallvec::SmallVec;
 use std::cell::{Ref, RefCell, RefMut};
+use std::collections::HashMap;
 use std::io::{self, Read, Write};
 use std::mem::ManuallyDrop;
 use std::ops::{Deref, DerefMut};
@@ -247,22 +251,53 @@ impl Arena {
         self.contains_group_impl(mol, group, &mut seen)
     }
 
+    pub fn molecule(&self, mol: usize) -> Molecule<RefAcc> {
+        Molecule::from_arena(self, mol)
+    }
+
     pub fn insert_mol<G>(&mut self, mol: G) -> usize
     where
         G: Data<NodeWeight = Atom, EdgeWeight = Bond>
+            + DataMap
             + GraphProp<EdgeType = Undirected>
             + GraphRef
+            + GetAdjacencyMatrix
             + NodeCompactIndexable
-            + EdgeCount,
+            + EdgeCount
+            + IntoEdgesDirected,
     {
+        let compacted = (0..self.parts.len())
+            .filter_map(|i| {
+                if let MolRepr::Atomic(a) = &self.parts[i] {
+                    Some(GraphCompactor::new(NodeFiltered::from_fn(
+                        &self.graph,
+                        |i| a[i.index()],
+                    )))
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        let mut broken = smallvec::smallvec![self.parts.len() as Ix];
+        let mut bonds = SmallVec::new();
+        for (n, cmp) in compacted.iter().enumerate() {
+            for ism in
+                subgraph_isomorphisms_iter(&cmp, &mol, &mut Atom::eq_or_r, &mut PartialEq::eq)
+                    .into_iter()
+                    .flatten()
+            {}
+        }
         todo!()
     }
 }
 
 /// A `Container` corresponds to a reaction vessel. It's at this layer that actual reactions are
 /// handled.
-#[derive(Debug, Clone, Copy)]
-pub struct Container {}
+#[derive(Debug, Clone)]
+pub struct Container {
+    pub quantities: HashMap<usize, f64>,
+    pub temperature: f64,
+}
 
 /// A `Molecule` acts like a graph, and can have graph algorithms used on it. It's immutable, with all
 /// mutations making (efficient) copies.
@@ -360,6 +395,21 @@ pub trait ArenaAccessibleMut: ArenaAccessible {
         Self: 'a;
 
     fn get_accessor_mut(&self) -> Self::AccessMut<'_>;
+}
+
+impl<T: ArenaAccessible> ArenaAccessible for &T {
+    type Access<'a> = T::Access<'a> where Self: 'a;
+
+    fn get_accessor(&self) -> Self::Access<'_> {
+        T::get_accessor(self)
+    }
+}
+impl<T: ArenaAccessibleMut> ArenaAccessibleMut for &T {
+    type AccessMut<'a> = T::AccessMut<'a> where Self: 'a;
+
+    fn get_accessor_mut(&self) -> Self::AccessMut<'_> {
+        T::get_accessor_mut(self)
+    }
 }
 
 #[doc(hidden)]
