@@ -1,4 +1,4 @@
 pub mod arena;
-pub mod isomorphism;
+pub mod compact;
 
 pub use arena::{Arena, Container, Molecule};

@@ -29,7 +29,7 @@ impl Chirality {
 }
 
 /// An atom in the molecule graph
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct Atom {
     pub protons: u8,
@@ -81,6 +81,12 @@ impl Atom {
     pub fn mass(self) -> f32 {
         ATOM_DATA[self.protons as usize].mass
     }
+    pub fn eq_or_r(&self, other: &Self) -> bool {
+        self.protons == 0 || other.protons == 0 || self.eq_match_r(other)
+    }
+    pub fn eq_match_r(&self, other: &Self) -> bool {
+        (self.protons == 0 && other.protons == 0) || self == other
+    }
 }
 impl Display for Atom {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -108,6 +114,18 @@ impl Display for Atom {
         Ok(())
     }
 }
+impl PartialEq for Atom {
+    fn eq(&self, other: &Self) -> bool {
+        self.protons == other.protons
+            && self.isotope == other.isotope
+            && self.charge == other.charge
+            && (self.chirality == Chirality::None
+                || other.chirality == Chirality::None
+                || self.chirality == other.chirality)
+    }
+}
+impl Eq for Atom {}
+
 c_enum! {
     /// A bond between atoms in the molecule graph
     #[derive(Clone, Copy, PartialEq, Eq)]
@@ -291,7 +309,9 @@ impl<'a> SmilesParser<'a> {
                     if self.graph.contains_edge(last_atom, atom) {
                         Err(SmilesError::new(start_idx, DuplicateBond))?
                     }
-                    if self.graph[last_atom].protons == 0 && self.graph.edges(last_atom).next().is_some() {
+                    if self.graph[last_atom].protons == 0
+                        && self.graph.edges(last_atom).next().is_some()
+                    {
                         Err(SmilesError::new(start_idx, MultiBondedR))?
                     }
                     self.graph.add_edge(
@@ -315,7 +335,9 @@ impl<'a> SmilesParser<'a> {
                     let start_idx = self.index;
                     let atom = self.get_atom()?;
                     if let Some(atom) = atom {
-                        if self.graph[last_atom].protons == 0 && self.graph.edges(last_atom).next().is_some() {
+                        if self.graph[last_atom].protons == 0
+                            && self.graph.edges(last_atom).next().is_some()
+                        {
                             Err(SmilesError::new(start_idx, MultiBondedR))?
                         }
                         if bond != Bond::Non {

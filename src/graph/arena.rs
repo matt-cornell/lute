@@ -222,6 +222,40 @@ impl Arena {
         }
         Ok(())
     }
+
+    fn contains_group_impl(&self, mol: usize, group: usize, seen: &mut SmallBitVec) -> bool {
+        if mol == group {
+            return true;
+        }
+        if seen[mol] {
+            return false;
+        }
+        seen.set(mol, true);
+        if let Some(MolRepr::Broken(b)) = self.parts.get(mol) {
+            b.frags
+                .iter()
+                .any(|f| self.contains_group_impl(*f as _, group, seen))
+        } else {
+            false
+        }
+    }
+
+    /// Check if `mol` contains `group`
+    pub fn contains_group(&self, mol: usize, group: usize) -> bool {
+        let mut seen = SmallBitVec::from_elem(self.parts.len(), false);
+        self.contains_group_impl(mol, group, &mut seen)
+    }
+
+    pub fn insert_mol<G>(&mut self, mol: G) -> usize
+    where
+        G: Data<NodeWeight = Atom, EdgeWeight = Bond>
+            + GraphProp<EdgeType = Undirected>
+            + GraphRef
+            + NodeCompactIndexable
+            + EdgeCount,
+    {
+        todo!()
+    }
 }
 
 /// A `Container` corresponds to a reaction vessel. It's at this layer that actual reactions are
@@ -263,12 +297,25 @@ impl<R> Molecule<R> {
         }
     }
 
-    pub fn arena(&self) -> R::Ref<'_> where R: ArenaAccessor {
+    pub fn arena(&self) -> R::Ref<'_>
+    where
+        R: ArenaAccessor,
+    {
         self.arena.get_arena()
     }
 
-    pub fn arena_mut(&self) -> R::RefMut<'_> where R: ArenaAccessorMut {
+    pub fn arena_mut(&self) -> R::RefMut<'_>
+    where
+        R: ArenaAccessorMut,
+    {
         self.arena.get_arena_mut()
+    }
+
+    pub fn contains(&self, group: usize) -> bool
+    where
+        R: ArenaAccessor,
+    {
+        self.arena.get_arena().contains_group(self.index, group)
     }
 }
 
