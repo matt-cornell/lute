@@ -45,8 +45,9 @@ enum MolRepr {
 }
 impl MolRepr {
     pub fn comp_size(&self) -> usize {
+        const US_SIZE: usize = std::mem::size_of::<usize>() * 8;
         match self {
-            Self::Atomic(a) => IX_SIZE + a.len(),
+            Self::Atomic(a) => IX_SIZE + (a.len() * (US_SIZE - 1)) / US_SIZE,
             Self::Broken(b) => b.comp_size(),
         }
     }
