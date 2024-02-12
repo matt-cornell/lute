@@ -44,9 +44,7 @@ impl<G: GraphBase> NodeCount for GraphCompactor<G> {
     }
 }
 
-impl<N: Hash + Eq + Copy, G: GraphBase<NodeId = N> + NodeIndexable> NodeIndexable
-    for GraphCompactor<G>
-{
+impl<N: Hash + Eq + Copy, G: GraphBase<NodeId = N>> NodeIndexable for GraphCompactor<G> {
     fn from_index(&self, i: usize) -> Self::NodeId {
         self.node_map[i]
     }
