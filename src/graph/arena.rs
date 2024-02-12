@@ -2,10 +2,11 @@
 //! reactions often only involve a small part of the molecule, it would be inefficient to make
 //! copies of everything.
 
+use crate::graph::bitfilter::BitFiltered;
 use crate::graph::compact::GraphCompactor;
+use crate::graph::isomorphism::subgraph_isomorphisms_iter;
 use crate::molecule::{Atom, Bond};
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
-use petgraph::algo::subgraph_isomorphisms_iter;
 use petgraph::data::DataMap;
 use petgraph::prelude::*;
 use petgraph::visit::*;
@@ -263,29 +264,27 @@ impl Arena {
             + GraphRef
             + GetAdjacencyMatrix
             + NodeCompactIndexable
-            + EdgeCount
             + IntoEdgesDirected,
     {
         let compacted = (0..self.parts.len())
             .filter_map(|i| {
                 if let MolRepr::Atomic(a) = &self.parts[i] {
-                    Some(GraphCompactor::new(NodeFiltered::from_fn(
-                        &self.graph,
-                        |i| a[i.index()],
-                    )))
+                    Some(
+                        GraphCompactor::<BitFiltered<&StableUnGraph<Atom, Bond>>>::new(
+                            BitFiltered::new(&self.graph, a),
+                        ),
+                    )
                 } else {
                     None
                 }
             })
             .collect::<Vec<_>>();
-        let mut broken = smallvec::smallvec![self.parts.len() as Ix];
-        let mut bonds = SmallVec::new();
+        #[allow(unused_variables)]
         for (n, cmp) in compacted.iter().enumerate() {
             for ism in
                 subgraph_isomorphisms_iter(&cmp, &mol, &mut Atom::eq_or_r, &mut PartialEq::eq)
-                    .into_iter()
-                    .flatten()
-            {}
+            {
+            }
         }
         todo!()
     }
