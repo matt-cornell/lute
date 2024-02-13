@@ -216,11 +216,7 @@ where
             let (x1, y1) = locs[self.0.to_index(edge.source())];
             let (x2, y2) = locs[self.0.to_index(edge.target())];
             let (dx, dy) = (x2 - x1, y2 - y1);
-            let (dx, dy) = if dy == 0 {
-                (1.0, 0.0)
-            } else {
-                (-dy as f64, dx as f64)
-            };
+            let (dx, dy) = (-dy as f64, dx as f64);
             let mag = (dx * dx + dy * dy).sqrt() / 3.0;
             let (dx, dy) = ((dx / mag) as i16, (dy / mag) as i16);
             match *edge.weight() {

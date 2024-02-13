@@ -30,10 +30,11 @@ pub struct Atom {
     pub charge: i8,
     pub isotope: u16,
     pub chirality: Chirality,
-    /// Aromaticity can be found in the bonds, and that should checked. This is only here to
-    /// simplify SMILES parsing
-    #[doc(hidden)]
-    pub aromatic: bool,
+    /// Scratch buffer for use in a parser, ignored by all equality checks. Probably shouldn't be
+    /// used after parsing
+    /// IMPORTANT: bit 0 (the LSB) is used to track whether hydrogen supression is active on this
+    /// atom! It can't be used for other things!
+    pub scratch: u8,
 }
 impl Atom {
     pub fn new(protons: u8) -> Self {
@@ -42,16 +43,16 @@ impl Atom {
             isotope: 0,
             charge: 0,
             chirality: Chirality::None,
-            aromatic: false,
+            scratch: 0,
         }
     }
-    pub fn new_aromatic(protons: u8) -> Self {
+    pub fn new_scratch(protons: u8, scratch: u8) -> Self {
         Self {
             protons,
             isotope: 0,
             charge: 0,
             chirality: Chirality::None,
-            aromatic: true,
+            scratch,
         }
     }
     pub fn new_isotope(protons: u8, isotope: u16) -> Self {
@@ -60,21 +61,23 @@ impl Atom {
             isotope,
             charge: 0,
             chirality: Chirality::None,
-            aromatic: false,
+            scratch: 0,
         }
     }
-    pub fn new_aromatic_isotope(protons: u8, isotope: u16) -> Self {
+    pub fn new_isotope_scratch(protons: u8, isotope: u16, scratch: u8) -> Self {
         Self {
             protons,
             isotope,
             charge: 0,
             chirality: Chirality::None,
-            aromatic: true,
+            scratch,
         }
     }
+
     pub fn mass(self) -> f32 {
         ATOM_DATA[self.protons as usize].mass
     }
+
     pub fn eq_or_r(&self, other: &Self) -> bool {
         self.protons == 0 || other.protons == 0 || self.eq_match_r(other)
     }

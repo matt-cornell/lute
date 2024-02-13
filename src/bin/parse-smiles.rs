@@ -18,7 +18,7 @@ struct Cli {
 
 fn main() {
     let cli = Cli::parse();
-    let parser = chem_sim::parse::SmilesParser::new(&cli.input);
+    let parser = chem_sim::parse::SmilesParser::new_unsuppressed(&cli.input);
     match parser.parse() {
         Ok(graph) => match cli.out {
             OutputType::Dot => println!("{}", chem_sim::disp::fmt_as_dot(&graph)),
