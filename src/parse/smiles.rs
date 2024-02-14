@@ -349,15 +349,19 @@ impl<'a> SmilesParser<'a> {
                         Err(SmilesError::new(self.index, MultiBondedR))?
                     }
                     self.index += 1;
-                    let (mut h, used) = usize::from_radix_10(&self.input[self.index..]);
+                    let (mut h, used) = u8::from_radix_10(&self.input[self.index..]);
                     if used == 0 {
                         h = 1;
                     } else {
-                        self.index += used;
+                        self.index += used as usize;
                     }
-                    for _ in 0..h {
-                        let hy = self.graph.add_node(Atom::new(1));
-                        self.graph.add_edge(atom, hy, Bond::Single);
+                    if self.suppress_hydrogens {
+                        self.graph[atom].hydrogens = h;
+                    } else {
+                        for _ in 0..h {
+                            let hy = self.graph.add_node(Atom::new(1));
+                            self.graph.add_edge(atom, hy, Bond::Single);
+                        }
                     }
                     self.graph[atom].scratch |= 4;
                 }
@@ -495,24 +499,25 @@ impl<'a> SmilesParser<'a> {
                 _ => None,
             };
             if let Some(ex_bonds) = ex_bonds {
-                let bond_count = self
+                let bond_count = (self
                     .graph
                     .edges(atom)
                     .fold(0f32, |c, b| c + b.weight().bond_count())
-                    .floor()
-                    .clamp(0.0, 127.0) as i8;
-                if self.suppress_hydrogens && bond_count == ex_bonds {
+                    .ceil()
+                    .clamp(0.0, 127.0) as i8)
+                    + (self.graph[atom].hydrogens as i8);
+                if self.suppress_hydrogens {
                     let mut walk = self.graph.neighbors(atom).detach();
-                    while let Some(n) = walk.next_node(&self.graph) {
-                        if self.graph[n].protons == 1 {
+                    while let Some((e, n)) = walk.next(&self.graph) {
+                        if self.graph[n].protons == 1 && self.graph[e] == Bond::Single {
+                            self.graph[n].hydrogens += 1;
                             self.graph.remove_node(n);
                         }
                     }
-                    self.graph[atom].scratch |= 1;
-                } else if !self.suppress_hydrogens
-                    && bond_count < ex_bonds
-                    && self.graph[atom].scratch & 4 == 0
-                {
+                    if bond_count < ex_bonds && self.graph[atom].scratch & 4 == 0 {
+                        self.graph[atom].hydrogens += (ex_bonds - bond_count) as u8;
+                    }
+                } else if bond_count < ex_bonds && self.graph[atom].scratch & 4 == 0 {
                     for _ in 0..(ex_bonds - bond_count) {
                         let hy = self.graph.add_node(Atom::new(1));
                         self.graph.add_edge(atom, hy, Bond::Single);

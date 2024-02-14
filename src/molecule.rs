@@ -30,11 +30,10 @@ pub struct Atom {
     pub charge: i8,
     pub isotope: u16,
     pub chirality: Chirality,
+    pub hydrogens: u8,
     /// Scratch buffer for use in a parser, ignored by all equality checks. Probably shouldn't be
     /// used after parsing
-    /// IMPORTANT: bit 0 (the LSB) is used to track whether hydrogen supression is active on this
-    /// atom! It can't be used for other things!
-    pub scratch: u8,
+    pub scratch: u16,
 }
 impl Atom {
     pub fn new(protons: u8) -> Self {
@@ -43,15 +42,17 @@ impl Atom {
             isotope: 0,
             charge: 0,
             chirality: Chirality::None,
+            hydrogens: 0,
             scratch: 0,
         }
     }
-    pub fn new_scratch(protons: u8, scratch: u8) -> Self {
+    pub fn new_scratch(protons: u8, scratch: u16) -> Self {
         Self {
             protons,
             isotope: 0,
             charge: 0,
             chirality: Chirality::None,
+            hydrogens: 0,
             scratch,
         }
     }
@@ -61,15 +62,17 @@ impl Atom {
             isotope,
             charge: 0,
             chirality: Chirality::None,
+            hydrogens: 0,
             scratch: 0,
         }
     }
-    pub fn new_isotope_scratch(protons: u8, isotope: u16, scratch: u8) -> Self {
+    pub fn new_isotope_scratch(protons: u8, isotope: u16, scratch: u16) -> Self {
         Self {
             protons,
             isotope,
             charge: 0,
             chirality: Chirality::None,
+            hydrogens: 0,
             scratch,
         }
     }
