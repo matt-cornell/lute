@@ -34,20 +34,25 @@ impl Display for TooMany {
 #[error("too many {0} bonds: attempted to set {1}, the max is 16")]
 pub struct TooManyBonds(pub TooMany, pub usize);
 
-c_enum! {
-    #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-    #[repr(transparent)]
-    pub enum Chirality: u8 {
-        None,
-        Ccw,
-        Cw,
-    }
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, BitfieldSpecifier)]
+pub enum Chirality {
+    #[default]
+    None,
+    Ccw,
+    Cw,
+    /// Shouldn't ever be used
+    Error,
 }
 impl Chirality {
     pub fn is_chiral(self) -> bool {
         self != Self::None
     }
+    pub fn is_valid(self) -> bool {
+        self != Self::Error
+    }
 }
+
+/// Bit-packed field for tracking bonds, plus two scratch bits
 #[bitfield]
 #[repr(u16)]
 #[derive(Debug, Clone, Copy)]
@@ -55,17 +60,82 @@ pub struct AtomData {
     pub hydrogen: B4,
     pub unknown: B4,
     pub other: B4,
-    pub scratch: B4,
+    pub scratch: B2,
+    pub chirality: Chirality,
+}
+impl AtomData {
+    /// Count the total number of bonded atoms
+    #[inline(always)]
+    pub fn total_bonds(self) -> u8 {
+        self.hydrogen() + self.unknown() + self.other()
+    }
+    /// Check if two bonding layouts are compatible
+    pub fn is_compatible(self, other: Self) -> bool {
+        let h1 = self.hydrogen();
+        let o1 = self.other();
+        let mut u1 = self.unknown();
+        let h2 = other.hydrogen();
+        let o2 = other.other();
+        let mut u2 = other.unknown();
+        if h1 + u1 + o1 != h2 + u2 + o2 {
+            return false;
+        }
+        if h1 > h2 {
+            let diff = h1 - h2;
+            if u2 >= diff {
+                u2 -= diff;
+            } else {
+                return false;
+            }
+        } else {
+            let diff = h2 - h1;
+            if u1 >= diff {
+                u1 -= diff;
+            } else {
+                return false;
+            }
+        }
+        if o1 > o2 {
+            let diff = o1 - o2;
+            if u2 >= diff {
+                u2 -= diff;
+            } else {
+                return false;
+            }
+        } else {
+            let diff = o2 - o1;
+            if u1 >= diff {
+                u1 -= diff;
+            } else {
+                return false;
+            }
+        }
+        debug_assert_eq!(u1, u2, "u1 == u2 should hold because their sums are equal!");
+        true
+    }
+}
+impl PartialEq for AtomData {
+    fn eq(&self, other: &Self) -> bool {
+        (self.chirality() == Chirality::None
+            || other.chirality() == Chirality::None
+            || self.chirality() == other.chirality())
+            && self.is_compatible(*other)
+    }
+}
+impl Eq for AtomData {}
+impl Hash for AtomData {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        state.write_u8(self.total_bonds());
+    }
 }
 
 /// An atom in the molecule graph
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(C)]
 pub struct Atom {
     pub protons: u8,
     pub charge: i8,
     pub isotope: u16,
-    pub chirality: Chirality,
     pub data: AtomData,
 }
 impl Atom {
@@ -74,7 +144,6 @@ impl Atom {
             protons,
             isotope: 0,
             charge: 0,
-            chirality: Chirality::None,
             data: AtomData::new(),
         }
     }
@@ -83,7 +152,6 @@ impl Atom {
             protons,
             isotope: 0,
             charge: 0,
-            chirality: Chirality::None,
             data: AtomData::new().with_scratch(scratch),
         }
     }
@@ -92,7 +160,6 @@ impl Atom {
             protons,
             isotope,
             charge: 0,
-            chirality: Chirality::None,
             data: AtomData::new(),
         }
     }
@@ -101,7 +168,6 @@ impl Atom {
             protons,
             isotope,
             charge: 0,
-            chirality: Chirality::None,
             data: AtomData::new().with_scratch(scratch),
         }
     }
@@ -180,24 +246,6 @@ impl Display for Atom {
             }
         }
         Ok(())
-    }
-}
-impl PartialEq for Atom {
-    fn eq(&self, other: &Self) -> bool {
-        self.protons == other.protons
-            && self.isotope == other.isotope
-            && self.charge == other.charge
-            && (self.chirality == Chirality::None
-                || other.chirality == Chirality::None
-                || self.chirality == other.chirality)
-    }
-}
-impl Eq for Atom {}
-impl Hash for Atom {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.protons.hash(state);
-        self.isotope.hash(state);
-        self.charge.hash(state);
     }
 }
 

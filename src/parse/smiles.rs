@@ -279,31 +279,31 @@ impl<'a> SmilesParser<'a> {
             }
             Some(&b'n') => {
                 self.index += 1;
-                Ok(Some(self.graph.add_node(Atom::new_scratch(7, 1))))
+                Ok(Some(self.graph.add_node(Atom::new_scratch(7, 2))))
             }
             Some(&b'o') => {
                 self.index += 1;
-                Ok(Some(self.graph.add_node(Atom::new_scratch(8, 1))))
+                Ok(Some(self.graph.add_node(Atom::new_scratch(8, 2))))
             }
             Some(&b'p') => {
                 self.index += 1;
-                Ok(Some(self.graph.add_node(Atom::new_scratch(15, 1))))
+                Ok(Some(self.graph.add_node(Atom::new_scratch(15, 2))))
             }
             Some(&b's') => {
                 self.index += 1;
-                Ok(Some(self.graph.add_node(Atom::new_scratch(16, 1))))
+                Ok(Some(self.graph.add_node(Atom::new_scratch(16, 2))))
             }
             Some(&b'b') => {
                 self.index += 1;
-                Ok(Some(self.graph.add_node(Atom::new_scratch(5, 1))))
+                Ok(Some(self.graph.add_node(Atom::new_scratch(5, 2))))
             }
             Some(&b'c') => {
                 self.index += 1;
-                Ok(Some(self.graph.add_node(Atom::new_scratch(6, 1))))
+                Ok(Some(self.graph.add_node(Atom::new_scratch(6, 2))))
             }
             Some(&b'r') => {
                 self.index += 1;
-                Ok(Some(self.graph.add_node(Atom::new_scratch(0, 1))))
+                Ok(Some(self.graph.add_node(Atom::new_scratch(0, 2))))
             }
             Some(&b'[') => {
                 self.index += 1;
@@ -313,25 +313,25 @@ impl<'a> SmilesParser<'a> {
                     None => Err(SmilesError::new(self.index, ExpectedAtom))?,
                     Some(&b'b') => self
                         .graph
-                        .add_node(Atom::new_isotope_scratch(5, isotope, 1)),
+                        .add_node(Atom::new_isotope_scratch(5, isotope, 2)),
                     Some(&b'c') => self
                         .graph
-                        .add_node(Atom::new_isotope_scratch(6, isotope, 1)),
+                        .add_node(Atom::new_isotope_scratch(6, isotope, 2)),
                     Some(&b'n') => self
                         .graph
-                        .add_node(Atom::new_isotope_scratch(7, isotope, 1)),
+                        .add_node(Atom::new_isotope_scratch(7, isotope, 2)),
                     Some(&b'o') => self
                         .graph
-                        .add_node(Atom::new_isotope_scratch(8, isotope, 1)),
+                        .add_node(Atom::new_isotope_scratch(8, isotope, 2)),
                     Some(&b'p') => self
                         .graph
-                        .add_node(Atom::new_isotope_scratch(15, isotope, 1)),
+                        .add_node(Atom::new_isotope_scratch(15, isotope, 2)),
                     Some(&b's') => self
                         .graph
-                        .add_node(Atom::new_isotope_scratch(16, isotope, 1)),
+                        .add_node(Atom::new_isotope_scratch(16, isotope, 2)),
                     Some(&b'r') => self
                         .graph
-                        .add_node(Atom::new_isotope_scratch(0, isotope, 1)),
+                        .add_node(Atom::new_isotope_scratch(0, isotope, 2)),
                     Some(c) if c.is_ascii_uppercase() => {
                         let start = self.index;
                         let len = self.input[(self.index + 1)..]
@@ -363,9 +363,9 @@ impl<'a> SmilesParser<'a> {
                     self.index += 1;
                     if self.input.get(self.index) == Some(&b'@') {
                         self.index += 1;
-                        self.graph[atom].chirality = Chirality::Cw;
+                        self.graph[atom].data.set_chirality(Chirality::Cw);
                     } else {
-                        self.graph[atom].chirality = Chirality::Ccw;
+                        self.graph[atom].data.set_chirality(Chirality::Ccw);
                     }
                 }
                 if self.input.get(self.index) == Some(&b'H') {
@@ -387,7 +387,7 @@ impl<'a> SmilesParser<'a> {
                             self.graph.add_edge(atom, hy, Bond::Single);
                         }
                     }
-                    self.graph[atom].with_scratch(|s| *s |= 4);
+                    self.graph[atom].with_scratch(|s| *s |= 1);
                 }
                 match self.input.get(self.index) {
                     Some(&b'+') => {
@@ -540,10 +540,10 @@ impl<'a> SmilesParser<'a> {
                             self.graph.remove_node(n);
                         }
                     }
-                    if bond_count < ex_bonds && self.graph[atom].data.scratch() & 4 == 0 {
+                    if bond_count < ex_bonds && self.graph[atom].data.scratch() & 1 == 0 {
                         self.graph[atom].add_hydrogens((ex_bonds - bond_count) as u8)?;
                     }
-                } else if bond_count < ex_bonds && self.graph[atom].data.scratch() & 4 == 0 {
+                } else if bond_count < ex_bonds && self.graph[atom].data.scratch() & 1 == 0 {
                     for _ in 0..(ex_bonds - bond_count) {
                         let hy = self.graph.add_node(Atom::new(1));
                         self.graph.add_edge(atom, hy, Bond::Single);
@@ -568,7 +568,7 @@ impl<'a> SmilesParser<'a> {
                 else {
                     continue;
                 };
-                if self.graph[neighbor].chirality.is_chiral() || self.graph[edge] != Bond::Single {
+                if self.graph[neighbor].data.chirality().is_chiral() || self.graph[edge] != Bond::Single {
                     continue;
                 }
                 self.graph[neighbor].add_rs(1)?;
