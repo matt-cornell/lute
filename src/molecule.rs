@@ -6,6 +6,33 @@ use c_enum::*;
 use petgraph::prelude::*;
 use std::fmt::{self, Display, Formatter};
 use std::hash::{Hash, Hasher};
+use modular_bitfield::prelude::*;
+use thiserror::Error;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TooMany {
+    H,
+    R,
+    Other,
+}
+impl TooMany {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::H => "hydrogen",
+            Self::R => "unknown",
+            Self::Other => "other",
+        }
+    }
+}
+impl Display for TooMany {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Error)]
+#[error("too many {0} bonds: attempted to set {1}, the max is 16")]
+pub struct TooManyBonds(pub TooMany, pub usize);
 
 c_enum! {
     #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -21,6 +48,15 @@ impl Chirality {
         self != Self::None
     }
 }
+#[bitfield]
+#[repr(u16)]
+#[derive(Debug, Clone, Copy)]
+pub struct AtomData {
+    pub hydrogen: B4,
+    pub unknown: B4,
+    pub other: B4,
+    pub scratch: B4,
+}
 
 /// An atom in the molecule graph
 #[derive(Debug, Clone, Copy)]
@@ -30,10 +66,7 @@ pub struct Atom {
     pub charge: i8,
     pub isotope: u16,
     pub chirality: Chirality,
-    pub hydrogens: u8,
-    /// Scratch buffer for use in a parser, ignored by all equality checks. Probably shouldn't be
-    /// used after parsing
-    pub scratch: u16,
+    pub data: AtomData,
 }
 impl Atom {
     pub fn new(protons: u8) -> Self {
@@ -42,18 +75,16 @@ impl Atom {
             isotope: 0,
             charge: 0,
             chirality: Chirality::None,
-            hydrogens: 0,
-            scratch: 0,
+            data: AtomData::new(),
         }
     }
-    pub fn new_scratch(protons: u8, scratch: u16) -> Self {
+    pub fn new_scratch(protons: u8, scratch: u8) -> Self {
         Self {
             protons,
             isotope: 0,
             charge: 0,
             chirality: Chirality::None,
-            hydrogens: 0,
-            scratch,
+            data: AtomData::new().with_scratch(scratch),
         }
     }
     pub fn new_isotope(protons: u8, isotope: u16) -> Self {
@@ -62,19 +93,59 @@ impl Atom {
             isotope,
             charge: 0,
             chirality: Chirality::None,
-            hydrogens: 0,
-            scratch: 0,
+            data: AtomData::new(),
         }
     }
-    pub fn new_isotope_scratch(protons: u8, isotope: u16, scratch: u16) -> Self {
+    pub fn new_isotope_scratch(protons: u8, isotope: u16, scratch: u8) -> Self {
         Self {
             protons,
             isotope,
             charge: 0,
             chirality: Chirality::None,
-            hydrogens: 0,
-            scratch,
+            data: AtomData::new().with_scratch(scratch),
         }
+    }
+    
+    pub fn add_hydrogens(&mut self, h: u8) -> Result<(), TooManyBonds> {
+        let h = self.data.hydrogen() + h;
+        if h < 16 {
+            self.data.set_hydrogen(h);
+            Ok(())
+        }
+        else {
+            Err(TooManyBonds(TooMany::H, h as _))
+        }
+    }
+    pub fn add_rs(&mut self, r: u8) -> Result<(), TooManyBonds> {
+        let h = self.data.unknown() + r;
+        if h < 16 {
+            self.data.set_unknown(r);
+            Ok(())
+        }
+        else {
+            Err(TooManyBonds(TooMany::R, r as _))
+        }
+    }
+    pub fn set_other_bonds(&mut self, b: u8) -> Result<(), TooManyBonds> {
+        if b < 16 {
+            self.data.set_other(b);
+            Ok(())
+        }
+        else {
+            Err(TooManyBonds(TooMany::Other, b as _))
+        }
+    }
+    
+    #[inline(always)]
+    pub fn map_scratch<F: FnOnce(u8) -> u8>(&mut self, f: F) {
+        self.data.set_scratch(f(self.data.scratch()));
+    }
+    #[inline(always)]
+    pub fn with_scratch<R, F: FnOnce(&mut u8) -> R>(&mut self, f: F) -> R {
+        let mut scratch = self.data.scratch();
+        let r = f(&mut scratch);
+        self.data.set_scratch(scratch);
+        r
     }
 
     pub fn mass(self) -> f32 {
