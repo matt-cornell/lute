@@ -7,6 +7,7 @@ use std::fmt::{self, Debug, Display};
 
 pub const SVG_SUPPRESSED_R: &str = "#407F00";
 pub const SVG_SUPPRESSED_H: &str = "#577478";
+pub const SVG_BOND_COLOR: &str = "#444";
 
 pub fn dot_atom_color(num: u8) -> &'static str {
     match num {
@@ -49,7 +50,7 @@ pub fn svg_atom_color(num: u8) -> &'static str {
         3 => "#9400D3",
         4 => "#8B008B",
         5 => "#CC7000",
-        6 => "#050505",
+        6 => "#0F0F0F",
         7 => "#00BFFF",
         8 => "#CC0000",
         9 => "#00C000",
@@ -236,11 +237,11 @@ where
             let (dx, dy) = ((dx / mag) as i16, (dy / mag) as i16);
             match *edge.weight() {
                 Bond::Non => {},
-                Bond::Single | Bond::Left | Bond::Right => write!(f, "  <line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" style=\"stroke:black;stroke-width:2\"/>\n")?,
-                Bond::Double => write!(f, "  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n", x1 - dx, y1 - dy, x2 - dx, y2 - dy, x1 + dx, y1 + dy, x2 + dx, y2 + dy)?,
-                Bond::Triple => write!(f, "  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n", x1 - 2 * dx, y1 - 2 * dy, x2 - 2 * dx, y2 - 2 * dy, x1 + 2 * dx, y1 + 2 * dy, x2 + 2 * dx, y2 + 2 * dy, x1, y1, x2, y2)?,
-                Bond::Quad => write!(f, "  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n", x1 - 3 * dx, y1 - 3 * dy, x2 - 3 * dx, y2 - 3 * dy, x1 - dx, y1 - dy, x2 - dx, y2 - dy, x1 + dx, y1 + dy, x2 + dx, y2 + dy, x1 + 3 * dx, y1 + 3 * dy, x2 + 3 * dx, y2 + 3 * dy)?,
-                Bond::Aromatic => write!(f, "  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\"  stroke-dasharray=\"10,10\"/>\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:black;stroke-width:2\" />\n", x1 - dx, y1 - dy, x2 - dx, y2 - dy, x1 + dx, y1 + dy, x2 + dx, y2 + dy)?,
+                Bond::Single | Bond::Left | Bond::Right => write!(f, "  <line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\"/>\n")?,
+                Bond::Double => write!(f, "  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n", x1 - dx, y1 - dy, x2 - dx, y2 - dy, x1 + dx, y1 + dy, x2 + dx, y2 + dy)?,
+                Bond::Triple => write!(f, "  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n", x1 - 2 * dx, y1 - 2 * dy, x2 - 2 * dx, y2 - 2 * dy, x1 + 2 * dx, y1 + 2 * dy, x2 + 2 * dx, y2 + 2 * dy, x1, y1, x2, y2)?,
+                Bond::Quad => write!(f, "  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n", x1 - 3 * dx, y1 - 3 * dy, x2 - 3 * dx, y2 - 3 * dy, x1 - dx, y1 - dy, x2 - dx, y2 - dy, x1 + dx, y1 + dy, x2 + dx, y2 + dy, x1 + 3 * dx, y1 + 3 * dy, x2 + 3 * dx, y2 + 3 * dy)?,
+                Bond::Aromatic => write!(f, "  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\"  stroke-dasharray=\"10,10\"/>\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n", x1 - dx, y1 - dy, x2 - dx, y2 - dy, x1 + dx, y1 + dy, x2 + dx, y2 + dy)?,
                 _ => panic!("invalid bond!")
             }
         }
@@ -257,13 +258,13 @@ where
             for i in 0..data.hydrogen() {
                 let (x2, y2) = locs[idx + (i as usize)];
                 let r = atom_radius(1);
-                write!(f, "  <line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" style=\"stroke:black;stroke-width:2\"/>\n  <circle r=\"{r}\" cx=\"{x2}\" cy=\"{y2}\" fill=\"{}\" />\n  <text x=\"{x2}\" y=\"{y2}\" font-size=\"{r}\" text-anchor=\"middle\" alignment-baseline=\"middle\" fill=\"#333\">H</text>\n", SVG_SUPPRESSED_H)?;
+                write!(f, "  <line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\"/>\n  <circle r=\"{r}\" cx=\"{x2}\" cy=\"{y2}\" fill=\"{}\" />\n  <text x=\"{x2}\" y=\"{y2}\" font-size=\"{r}\" text-anchor=\"middle\" alignment-baseline=\"middle\" fill=\"#444\">H</text>\n", SVG_SUPPRESSED_H)?;
             }
             idx += data.hydrogen() as usize;
             for i in 0..data.unknown() {
                 let (x2, y2) = locs[idx + (i as usize)];
                 let r = atom_radius(0);
-                write!(f, "  <line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" style=\"stroke:black;stroke-width:2\"/>\n  <circle r=\"{r}\" cx=\"{x2}\" cy=\"{y2}\" fill=\"{}\" />\n  <text x=\"{x2}\" y=\"{y2}\" font-size=\"{r}\" text-anchor=\"middle\" alignment-baseline=\"middle\" fill=\"#333\">R</text>\n", SVG_SUPPRESSED_R)?;
+                write!(f, "  <line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\"/>\n  <circle r=\"{r}\" cx=\"{x2}\" cy=\"{y2}\" fill=\"{}\" />\n  <text x=\"{x2}\" y=\"{y2}\" font-size=\"{r}\" text-anchor=\"middle\" alignment-baseline=\"middle\" fill=\"#444\">R</text>\n", SVG_SUPPRESSED_R)?;
             }
             idx += data.unknown() as usize;
         }
@@ -275,7 +276,7 @@ where
         for (atom, (cx, cy)) in self.0.node_references().zip(&locs) {
             let atom = atom.weight();
             let r = atom_radius(atom.protons);
-            write!(f, "  <circle r=\"{r}\" cx=\"{cx}\" cy=\"{cy}\" fill=\"{}\" />\n  <text x=\"{cx}\" y=\"{cy}\" font-size=\"{r}\" text-anchor=\"middle\" alignment-baseline=\"middle\" fill=\"#333\">{atom}</text>\n", svg_atom_color(atom.protons))?;
+            write!(f, "  <circle r=\"{r}\" cx=\"{cx}\" cy=\"{cy}\" fill=\"{}\" />\n  <text x=\"{cx}\" y=\"{cy}\" font-size=\"{r}\" text-anchor=\"middle\" alignment-baseline=\"middle\" fill=\"#444\">{atom}</text>\n", svg_atom_color(atom.protons))?;
         }
 
         f.write_str("</svg>")
