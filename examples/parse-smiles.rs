@@ -27,6 +27,8 @@ struct Cli {
     fmt: OutputType,
     #[arg(short, long)]
     out: Option<PathBuf>,
+    #[arg(short, long)]
+    suppress: bool,
     input: String,
 }
 
@@ -43,7 +45,8 @@ fn write_output<O: Display>(path: Option<&Path>, out: O) {
 
 fn main() {
     let cli = Cli::parse();
-    let parser = chem_sim::parse::SmilesParser::new_unsuppressed(&cli.input);
+    let mut parser = chem_sim::parse::SmilesParser::new_unsuppressed(&cli.input);
+    parser.suppress = cli.suppress;
     match parser.parse() {
         Ok(graph) => match cli.fmt {
             OutputType::Dot => write_output(cli.out.as_deref(), chem_sim::disp::fmt_as_dot(&graph)),

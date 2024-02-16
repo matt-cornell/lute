@@ -551,6 +551,9 @@ impl<'a> SmilesParser<'a> {
     fn update_rs(&mut self) -> Result<(), SmilesError<'a>> {
         if self.suppress {
             for n in self.graph.node_indices() {
+                if self.graph.node_count() <= n.index() {
+                    break;
+                }
                 if self.graph[n].protons != 0 {
                     continue;
                 };
