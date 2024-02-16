@@ -5,6 +5,9 @@ use petgraph::visit::*;
 use petgraph::Undirected;
 use std::fmt::{self, Debug, Display};
 
+pub const SVG_SUPPRESSED_R: &str = "#407F00";
+pub const SVG_SUPPRESSED_H: &str = "#577478";
+
 pub fn dot_atom_color(num: u8) -> &'static str {
     match num {
         0 => "chartreuse",
@@ -137,7 +140,7 @@ where
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct SvgFormatter<G>(G);
+pub struct SvgFormatter<G>(pub G);
 impl<G> Display for SvgFormatter<G>
 where
     G: Data<NodeWeight = Atom, EdgeWeight = Bond>
@@ -148,7 +151,7 @@ where
 {
     #[allow(clippy::write_with_newline)]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let atoms = self
+        let mut atoms = self
             .0
             .node_references()
             .map(|a| {
@@ -159,7 +162,7 @@ where
                 }
             })
             .collect::<Vec<_>>();
-        let edges = self
+        let mut edges = self
             .0
             .edge_references()
             .map(|e| {
@@ -170,6 +173,18 @@ where
                 ]
             })
             .collect::<Vec<_>>();
+        for atom in self.0.node_references() {
+            let idx = self.0.to_index(atom.id());
+            let data = atom.weight().data;
+            for _ in 0..data.hydrogen() {
+                edges.push([idx as _, atoms.len() as _, 1]);
+                atoms.push(1);
+            }
+            for _ in 0..data.unknown() {
+                edges.push([idx as _, atoms.len() as _, 1]);
+                atoms.push(85);
+            }
+        }
         let locs = coordgen::gen_coords(&atoms, &edges).unwrap();
         let mut out = String::new();
         let min_x = locs
@@ -234,16 +249,35 @@ where
             out.push('\n')
         }
 
+        let mut idx = self.0.node_count();
+
+        for (atom, (x1, y1)) in self.0.node_references().zip(&locs) {
+            let atom = atom.weight();
+            let data = atom.data;
+            for i in 0..data.hydrogen() {
+                let (x2, y2) = locs[idx + (i as usize)];
+                let r = atom_radius(1);
+                write!(f, "  <line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" style=\"stroke:black;stroke-width:2\"/>\n  <circle r=\"{r}\" cx=\"{x2}\" cy=\"{y2}\" fill=\"{}\" />\n  <text x=\"{x2}\" y=\"{y2}\" font-size=\"{r}\" text-anchor=\"middle\" alignment-baseline=\"middle\" fill=\"#333\">H</text>\n", SVG_SUPPRESSED_H)?;
+            }
+            idx += data.hydrogen() as usize;
+            for i in 0..data.unknown() {
+                let (x2, y2) = locs[idx + (i as usize)];
+                let r = atom_radius(0);
+                write!(f, "  <line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" style=\"stroke:black;stroke-width:2\"/>\n  <circle r=\"{r}\" cx=\"{x2}\" cy=\"{y2}\" fill=\"{}\" />\n  <text x=\"{x2}\" y=\"{y2}\" font-size=\"{r}\" text-anchor=\"middle\" alignment-baseline=\"middle\" fill=\"#333\">R</text>\n", SVG_SUPPRESSED_R)?;
+            }
+            idx += data.unknown() as usize;
+        }
+
+        if idx != self.0.node_count() {
+            out.push('\n');
+        }
+
         for (atom, (cx, cy)) in self.0.node_references().zip(&locs) {
             let atom = atom.weight();
             let r = atom_radius(atom.protons);
-            write!(f,
-                "  <circle r=\"{r}\" cx=\"{cx}\" cy=\"{cy}\" fill=\"{}\" />\n  <text x=\"{}\" y=\"{}\" font-size=\"{r}\" fill=\"#333\">{atom}</text>\n",
-                svg_atom_color(atom.protons),
-                cx - r as i16 * 6 / 13,
-                cy + r as i16 * 6 / 13,
-            )?;
+            write!(f, "  <circle r=\"{r}\" cx=\"{cx}\" cy=\"{cy}\" fill=\"{}\" />\n  <text x=\"{cx}\" y=\"{cy}\" font-size=\"{r}\" text-anchor=\"middle\" alignment-baseline=\"middle\" fill=\"#333\">{atom}</text>\n", svg_atom_color(atom.protons))?;
         }
+
         f.write_str("</svg>")
     }
 }

@@ -1,13 +1,13 @@
 use crate::atom_info::ATOM_DATA;
-use crate::molecule::{*, TooManyBonds};
+use crate::molecule::{TooManyBonds, *};
 use atoi::FromRadix10;
 use petgraph::prelude::*;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::fmt::{self, Display, Formatter};
 use thiserror::Error;
 use SmilesErrorKind::*;
-use std::fmt::{self, Display, Formatter};
 
 /// Inner enum for `SmilesError`
 #[derive(Debug, Clone, Error)]
@@ -58,8 +58,7 @@ impl Display for IdxPrint {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         if self.0 == usize::MAX {
             f.write_str("unknown index")
-        }
-        else {
+        } else {
             write!(f, "byte {}", self.0)
         }
     }
@@ -162,7 +161,11 @@ impl<'a> SmilesParser<'a> {
                     self.graph.add_edge(
                         last_atom,
                         atom,
-                        if !ex && self.graph[last_atom].data.scratch() & self.graph[atom].data.scratch() & 2 != 0
+                        if !ex
+                            && self.graph[last_atom].data.scratch()
+                                & self.graph[atom].data.scratch()
+                                & 2
+                                != 0
                         {
                             Bond::Aromatic
                         } else {
@@ -191,7 +194,9 @@ impl<'a> SmilesParser<'a> {
                                 last_atom,
                                 atom,
                                 if !ex
-                                    && self.graph[last_atom].data.scratch() & self.graph[atom].data.scratch() & 2
+                                    && self.graph[last_atom].data.scratch()
+                                        & self.graph[atom].data.scratch()
+                                        & 2
                                         != 0
                                 {
                                     Bond::Aromatic
@@ -474,7 +479,9 @@ impl<'a> SmilesParser<'a> {
                             last_atom,
                             other,
                             if !ex
-                                && self.graph[last_atom].data.scratch() & self.graph[other].data.scratch() & 2
+                                && self.graph[last_atom].data.scratch()
+                                    & self.graph[other].data.scratch()
+                                    & 2
                                     != 0
                             {
                                 Bond::Aromatic
@@ -557,8 +564,9 @@ impl<'a> SmilesParser<'a> {
                 if self.graph[n].protons != 0 {
                     continue;
                 };
-                let Some((edge, neighbor)) = self.graph.neighbors(n).detach().next(&self.graph) else {
-                    continue
+                let Some((edge, neighbor)) = self.graph.neighbors(n).detach().next(&self.graph)
+                else {
+                    continue;
                 };
                 if self.graph[neighbor].chirality.is_chiral() || self.graph[edge] != Bond::Single {
                     continue;
@@ -566,8 +574,7 @@ impl<'a> SmilesParser<'a> {
                 self.graph[neighbor].add_rs(1)?;
                 self.graph.remove_node(n);
             }
-        }
-        else {
+        } else {
             let mut found = HashSet::new();
             for n in self.graph.node_weights_mut() {
                 if n.protons != 0 {
@@ -584,7 +591,10 @@ impl<'a> SmilesParser<'a> {
     fn update_bonds(&mut self) -> Result<(), SmilesError<'a>> {
         for n in self.graph.node_indices() {
             let bc = self.graph.edges(n).count();
-            self.graph[n].set_other_bonds(bc.try_into().map_err(|_| TooManyBonds(TooMany::Other, bc))?)?;
+            self.graph[n].set_other_bonds(
+                bc.try_into()
+                    .map_err(|_| TooManyBonds(TooMany::Other, bc))?,
+            )?;
         }
         Ok(())
     }

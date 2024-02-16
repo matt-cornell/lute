@@ -1,7 +1,7 @@
 use clap::{Parser, ValueEnum};
 use std::fmt::{self, Display, Formatter};
+use std::io::{stdout, Write};
 use std::path::{Path, PathBuf};
-use std::io::{Write, stdout};
 
 #[derive(Debug, Default, Clone, Copy, ValueEnum)]
 enum OutputType {

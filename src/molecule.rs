@@ -3,10 +3,10 @@
 
 use crate::atom_info::ATOM_DATA;
 use c_enum::*;
+use modular_bitfield::prelude::*;
 use petgraph::prelude::*;
 use std::fmt::{self, Display, Formatter};
 use std::hash::{Hash, Hasher};
-use modular_bitfield::prelude::*;
 use thiserror::Error;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -105,14 +105,13 @@ impl Atom {
             data: AtomData::new().with_scratch(scratch),
         }
     }
-    
+
     pub fn add_hydrogens(&mut self, h: u8) -> Result<(), TooManyBonds> {
         let h = self.data.hydrogen() + h;
         if h < 16 {
             self.data.set_hydrogen(h);
             Ok(())
-        }
-        else {
+        } else {
             Err(TooManyBonds(TooMany::H, h as _))
         }
     }
@@ -121,8 +120,7 @@ impl Atom {
         if h < 16 {
             self.data.set_unknown(r);
             Ok(())
-        }
-        else {
+        } else {
             Err(TooManyBonds(TooMany::R, r as _))
         }
     }
@@ -130,12 +128,11 @@ impl Atom {
         if b < 16 {
             self.data.set_other(b);
             Ok(())
-        }
-        else {
+        } else {
             Err(TooManyBonds(TooMany::Other, b as _))
         }
     }
-    
+
     #[inline(always)]
     pub fn map_scratch<F: FnOnce(u8) -> u8>(&mut self, f: F) {
         self.data.set_scratch(f(self.data.scratch()));
