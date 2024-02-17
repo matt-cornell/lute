@@ -150,6 +150,9 @@ impl<'a> SmilesParser<'a> {
                     let (atom, bond, ex) = self
                         .parse_chain(true)?
                         .ok_or(SmilesError::new(self.index, ExpectedAtom))?;
+                    if bond == Bond::Non {
+                        continue;
+                    }
                     if self.graph.contains_edge(last_atom, atom) {
                         Err(SmilesError::new(start_idx, DuplicateBond))?
                     }
@@ -568,7 +571,9 @@ impl<'a> SmilesParser<'a> {
                 else {
                     continue;
                 };
-                if self.graph[neighbor].data.chirality().is_chiral() || self.graph[edge] != Bond::Single {
+                if self.graph[neighbor].data.chirality().is_chiral()
+                    || self.graph[edge] != Bond::Single
+                {
                     continue;
                 }
                 self.graph[neighbor].add_rs(1)?;
