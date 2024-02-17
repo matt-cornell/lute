@@ -8,6 +8,7 @@ use std::collections::HashSet;
 use std::fmt::{self, Display, Formatter};
 use thiserror::Error;
 use SmilesErrorKind::*;
+use petgraph::visit::*;
 
 /// Inner enum for `SmilesError`
 #[derive(Debug, Clone, Error)]
@@ -89,6 +90,8 @@ impl From<TooManyBonds> for SmilesError<'_> {
         Self::new(usize::MAX, value.into())
     }
 }
+
+#[derive(Debug, Clone)]
 /// Parser for a SMILES string
 pub struct SmilesParser<'a> {
     // use byte slice because SMILES shouldn't have non-ASCII data
@@ -97,6 +100,7 @@ pub struct SmilesParser<'a> {
     rings: HashMap<usize, (NodeIndex, Option<Bond>)>,
     graph: MoleculeGraph,
     pub suppress: bool,
+    pub validate: bool,
 }
 impl<'a> SmilesParser<'a> {
     pub fn new<I: AsRef<[u8]> + ?Sized>(input: &'a I) -> Self {
@@ -108,8 +112,10 @@ impl<'a> SmilesParser<'a> {
             rings: Default::default(),
             graph: Default::default(),
             suppress: true,
+            validate: cfg!(debug_assertions),
         }
     }
+
     pub fn new_unsuppressed<I: AsRef<[u8]> + ?Sized>(input: &'a I) -> Self {
         let input = input.as_ref();
         debug_assert!(input.is_ascii());
@@ -119,8 +125,27 @@ impl<'a> SmilesParser<'a> {
             rings: Default::default(),
             graph: Default::default(),
             suppress: false,
+            validate: true,
         }
     }
+
+    pub fn with_suppression(mut self, suppress: bool) -> Self {
+        self.suppress = suppress;
+        self
+    }
+    pub fn with_validation(mut self, validate: bool) -> Self {
+        self.validate = validate;
+        self
+    }
+    pub fn set_suppression(&mut self, suppress: bool) -> &mut Self {
+        self.suppress = suppress;
+        self
+    }
+    pub fn set_validation(&mut self, validate: bool) -> &mut Self {
+        self.validate = validate;
+        self
+    }
+
     /// Parse a "chain". This can really be anything, though, it just returns the first atom in the
     /// group so it can be bonded to something else
     fn parse_chain(
@@ -603,6 +628,16 @@ impl<'a> SmilesParser<'a> {
         }
         Ok(())
     }
+    
+    /// Perform some checks on the molecule.
+    fn validate(&self) {
+        for node in self.graph.node_references() {
+            assert_eq!(self.graph.edges(node.id()).count(), node.weight().data.other() as usize);
+        }
+        for &edge in self.graph.edge_weights() {
+            assert_ne!(edge, Bond::Non);
+        }
+    }
 
     /// Parse the molecule, consuming self. This is taken by value to avoid cleanup.
     pub fn parse(mut self) -> Result<MoleculeGraph, SmilesError<'a>> {
@@ -610,6 +645,9 @@ impl<'a> SmilesParser<'a> {
         self.update_hydrogens()?;
         self.update_rs()?;
         self.update_bonds()?;
+        if self.validate {
+            self.validate();
+        }
         if let Some(id) = self.rings.into_keys().next() {
             Err(SmilesError::new(self.index, UnclosedLoop(id)))
         } else {
