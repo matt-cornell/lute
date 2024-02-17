@@ -37,6 +37,7 @@ pub enum SmilesErrorKind<'a> {
     MultiBondedR,
 }
 impl SmilesErrorKind<'_> {
+    /// Take ownership of string in `UnknownElement`
     pub fn into_owned(self) -> SmilesErrorKind<'static> {
         match self {
             Self::TooManyBonds(b) => SmilesErrorKind::TooManyBonds(b),
@@ -54,6 +55,7 @@ impl SmilesErrorKind<'_> {
     }
 }
 
+/// Simple intermediate for index printer that doesn't allocate
 struct IdxPrint(usize);
 impl Display for IdxPrint {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -103,6 +105,7 @@ pub struct SmilesParser<'a> {
     pub validate: bool,
 }
 impl<'a> SmilesParser<'a> {
+    /// Create a new parser from an input string
     pub fn new<I: AsRef<[u8]> + ?Sized>(input: &'a I) -> Self {
         let input = input.as_ref();
         debug_assert!(input.is_ascii());
@@ -116,6 +119,7 @@ impl<'a> SmilesParser<'a> {
         }
     }
 
+    /// Create a new parser from an input string, without suppressing hydrogens and r-groups
     pub fn new_unsuppressed<I: AsRef<[u8]> + ?Sized>(input: &'a I) -> Self {
         let input = input.as_ref();
         debug_assert!(input.is_ascii());
@@ -255,6 +259,7 @@ impl<'a> SmilesParser<'a> {
             Ok(Some((first_atom, first_bond.0, first_bond.1)))
         }
     }
+
     /// Parse an atom or an atom with hydrogens attached (in brackets)
     fn get_atom(&mut self) -> Result<Option<NodeIndex>, SmilesError<'a>> {
         match self.input.get(self.index) {
@@ -460,6 +465,7 @@ impl<'a> SmilesParser<'a> {
             _ => Err(SmilesError::new(self.index, ExpectedAtom)),
         }
     }
+
     /// Handle loops. Since this needs to know which bond to use, it also parses a bond.
     fn handle_loops(&mut self, last_atom: NodeIndex) -> Result<(Bond, bool), SmilesError<'a>> {
         loop {
@@ -525,6 +531,7 @@ impl<'a> SmilesParser<'a> {
             }
         }
     }
+
     /// Parse a single bond
     fn get_bond(&mut self) -> (Bond, bool) {
         let (bond, incr) = match self.input.get(self.index) {
@@ -582,7 +589,7 @@ impl<'a> SmilesParser<'a> {
         Ok(())
     }
 
-    /// Update R-groups to avoid any duplicates
+    /// Update R-groups to avoid any duplicates (unsuppressed) or suppress them
     fn update_rs(&mut self) -> Result<(), SmilesError<'a>> {
         if self.suppress {
             for n in self.graph.node_indices() {
@@ -618,6 +625,8 @@ impl<'a> SmilesParser<'a> {
         }
         Ok(())
     }
+
+    /// Update bons counts
     fn update_bonds(&mut self) -> Result<(), SmilesError<'a>> {
         for n in self.graph.node_indices() {
             let bc = self.graph.edges(n).count();
@@ -629,7 +638,7 @@ impl<'a> SmilesParser<'a> {
         Ok(())
     }
     
-    /// Perform some checks on the molecule.
+    /// Perform some checks on the molecule. Panics on failure (which should be impossible).
     fn validate(&self) {
         for node in self.graph.node_references() {
             assert_eq!(self.graph.edges(node.id()).count(), node.weight().data.other() as usize);
