@@ -80,6 +80,29 @@ impl<G: GetAdjacencyMatrix> GetAdjacencyMatrix for GraphCompactor<G> {
     }
 }
 
+impl<'a, G: Data> IntoNodeIdentifiers for &'a GraphCompactor<G>
+where
+    &'a G: IntoNodeIdentifiers<NodeId = G::NodeId>,
+{
+    type NodeIdentifiers = <&'a G as IntoNodeIdentifiers>::NodeIdentifiers;
+
+    fn node_identifiers(self) -> Self::NodeIdentifiers {
+        self.graph.node_identifiers()
+    }
+}
+
+impl<'a, G: Data> IntoNodeReferences for &'a GraphCompactor<G>
+where
+    &'a G: IntoNodeReferences<NodeId = G::NodeId, NodeWeight = G::NodeWeight>,
+{
+    type NodeRef = <&'a G as IntoNodeReferences>::NodeRef;
+    type NodeReferences = <&'a G as IntoNodeReferences>::NodeReferences;
+
+    fn node_references(self) -> Self::NodeReferences {
+        self.graph.node_references()
+    }
+}
+
 impl<'a, G: Data> IntoEdges for &'a GraphCompactor<G>
 where
     &'a G: IntoEdges<EdgeId = G::EdgeId, NodeId = G::NodeId, EdgeWeight = G::EdgeWeight>,

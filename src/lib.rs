@@ -6,3 +6,11 @@ pub mod graph;
 pub mod molecule;
 pub mod parse;
 pub mod utils;
+
+pub mod prelude {
+    pub use crate::molecule::{Atom, Bond};
+    pub use crate::graph::arena::{Arena, Container, Molecule};
+    pub use crate::graph::compact::GraphCompactor;
+    pub use crate::parse::smiles::SmilesParser;
+    pub use crate::disp::{fmt_as_dot, fmt_as_svg};
+}

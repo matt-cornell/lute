@@ -10,7 +10,7 @@ use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use petgraph::data::DataMap;
 use petgraph::prelude::*;
 use petgraph::visit::*;
-use petgraph::graph::IndexType;
+use petgraph::graph::{IndexType, DefaultIx};
 use smallvec::SmallVec;
 use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashMap;
@@ -49,7 +49,7 @@ enum MolRepr<Ix> {
 /// The `Arena` is the backing storage for everything. It tracks all molecules and handles
 /// deduplication.
 #[derive(Debug, Default, Clone)]
-pub struct Arena<Ix: IndexType> {
+pub struct Arena<Ix: IndexType = DefaultIx> {
     graph: Graph<Ix>,
     parts: SmallVec<(MolRepr<Ix>, Ix), 16>,
 }
@@ -95,7 +95,8 @@ impl<Ix: IndexType> Arena<Ix> {
         Molecule::from_arena(self, mol)
     }
 
-    /// Insert a molecule into the arena,
+    /// Insert a molecule into the arena, deduplicating common parts. May misbehave if multiple
+    /// disjoint molecules are in the graph.
     #[allow(clippy::needless_range_loop)]
     pub fn insert_mol<G>(&mut self, mol: G) -> Ix
     where
@@ -126,7 +127,7 @@ impl<Ix: IndexType> Arena<Ix> {
             })
             .collect::<Vec<_>>();
         // keep track of matched atoms so there's no overlap
-        let mut matched = BSType::with_capacity(mol.node_count());
+        let mut matched = BSType::with_capacity(mol.node_bound());
         // keep track of found isomorphisms, don't try to handle them in the search
         let mut found = SmallVec::<_, 8>::new();
         for (n, cmp) in &compacted {
@@ -142,7 +143,7 @@ impl<Ix: IndexType> Arena<Ix> {
         }
         let (ret, news) = if found.len() == 1 {
             // simple case: no subgraph isomorhpisms found
-            let mut map = vec![NodeIndex::end(); mol.node_count()];
+            let mut map = vec![NodeIndex::end(); mol.node_bound()];
             let mut bits = BSType::new();
             mol.node_references().for_each(|n| {
                 let idx = self.graph.add_node(*n.weight());
@@ -161,7 +162,7 @@ impl<Ix: IndexType> Arena<Ix> {
                 .push((MolRepr::Atomic(bits), Ix::new(mol.node_count())));
             (out, None)
         } else {
-            let mut nb = BSType::with_capacity(mol.node_count());
+            let mut nb = BSType::with_capacity(mol.node_bound());
             let mut needs_clear = false;
             let mut frags = SmallVec::with_capacity(found.len() + 1);
             frags.push(Ix::new(self.parts.len()));
@@ -219,11 +220,13 @@ impl<Ix: IndexType> Arena<Ix> {
             }
 
             {
-                let mut map = vec![NodeIndex::end(); mol.node_count()];
+                let mut map = vec![NodeIndex::end(); mol.node_bound()];
                 let mut bits = BSType::new();
+                let mut count = 0;
                 mol.node_references().for_each(|n| {
                     let ni = mol.to_index(n.id());
                     if !matched.get(ni) {
+                        count += 1;
                         let idx = self.graph.add_node(*n.weight());
                         map[ni] = idx;
                         bits.set(idx.index(), true);
@@ -247,7 +250,7 @@ impl<Ix: IndexType> Arena<Ix> {
                 }
 
                 self.parts
-                    .push((MolRepr::Atomic(bits), Ix::new(mol.node_count())));
+                    .push((MolRepr::Atomic(bits), Ix::new(count)));
             }
 
             let out = Ix::new(self.parts.len());

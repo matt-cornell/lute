@@ -68,79 +68,126 @@ impl<G: GetAdjacencyMatrix, T, const N: usize> GetAdjacencyMatrix for BitFiltere
 
 impl<'a, G: Data, T: PrimInt, const N: usize> IntoNodeIdentifiers for &'a BitFiltered<G, T, N>
 where
-    &'a G: IntoNodeIdentifiers<NodeId = G::NodeId>,
+    &'a G: IntoNodeIdentifiers<NodeId = G::NodeId> + NodeIndexable,
 {
-    type NodeIdentifiers = <&'a G as IntoNodeIdentifiers>::NodeIdentifiers;
+    type NodeIdentifiers = iter::NodeIdFilter<'a, <&'a G as IntoNodeIdentifiers>::NodeIdentifiers, &'a G, T, {N}>;
 
     fn node_identifiers(self) -> Self::NodeIdentifiers {
-        todo!()
+        iter::NodeIdFilter(self.graph.node_identifiers(), &self.graph, &self.filter)
     }
 }
 
-// impl<'a, G: Data> IntoNodeReferences for &'a BitFiltered<G>
-// where
-//     &'a G: IntoNodeReferences<NodeWeight = G::NodeWeight, NodeId = G::NodeId>,
-// {
-//     type NodeRef = <&'a G as IntoNodeReferences>::NodeRef;
-//     type NodeReferences = <&'a G as IntoNodeReferences>::NodeReferences;
-
-//     fn node_references(self) -> Self::NodeReferences {
-//         self.graph.node_references()
-//     }
-// }
-
-impl<'a, G: Data, T: PrimInt, const N: usize> IntoEdges for &'a BitFiltered<G, T, N>
+impl<'a, G: Data, T: PrimInt, const N: usize> IntoNodeReferences for &'a BitFiltered<G, T, N>
 where
-    &'a G: IntoEdges<EdgeId = G::EdgeId, NodeId = G::NodeId, EdgeWeight = G::EdgeWeight>,
+    &'a G: IntoNodeReferences<NodeWeight = G::NodeWeight, NodeId = G::NodeId> + NodeIndexable,
 {
-    type Edges = <&'a G as IntoEdges>::Edges;
+    type NodeRef = <&'a G as IntoNodeReferences>::NodeRef;
+    type NodeReferences = iter::NodeRefFilter<'a, <&'a G as IntoNodeReferences>::NodeReferences, &'a G, T, {N}>;
 
-    fn edges(self, a: Self::NodeId) -> Self::Edges {
-        self.graph.edges(a)
+    fn node_references(self) -> Self::NodeReferences {
+        iter::NodeRefFilter(self.graph.node_references(), &self.graph, &self.filter)
     }
 }
 
 impl<'a, G: Data, T: PrimInt, const N: usize> IntoEdgeReferences for &'a BitFiltered<G, T, N>
 where
-    &'a G: IntoEdgeReferences<EdgeId = G::EdgeId, NodeId = G::NodeId, EdgeWeight = G::EdgeWeight>,
+    &'a G: IntoEdgeReferences<EdgeId = G::EdgeId, NodeId = G::NodeId, EdgeWeight = G::EdgeWeight> + NodeIndexable,
 {
     type EdgeRef = <&'a G as IntoEdgeReferences>::EdgeRef;
-    type EdgeReferences = <&'a G as IntoEdgeReferences>::EdgeReferences;
+    type EdgeReferences = iter::EdgeRefFilter<'a, <&'a G as IntoEdgeReferences>::EdgeReferences, &'a G, T, {N}>;
 
     fn edge_references(self) -> Self::EdgeReferences {
-        self.graph.edge_references()
+        iter::EdgeRefFilter(self.graph.edge_references(), &self.graph, &self.filter)
+    }
+}
+
+impl<'a, G: Data, T: PrimInt, const N: usize> IntoEdges for &'a BitFiltered<G, T, N>
+where
+    &'a G: IntoEdges<EdgeId = G::EdgeId, NodeId = G::NodeId, EdgeWeight = G::EdgeWeight> + NodeIndexable,
+{
+    type Edges = iter::EdgeRefFilter<'a, <&'a G as IntoEdges>::Edges, &'a G, T, {N}>;
+
+    fn edges(self, a: Self::NodeId) -> Self::Edges {
+        iter::EdgeRefFilter(self.graph.edges(a), &self.graph, &self.filter)
     }
 }
 
 impl<'a, G: Data, T: PrimInt, const N: usize> IntoNeighbors for &'a BitFiltered<G, T, N>
 where
-    &'a G: IntoNeighbors<EdgeId = G::EdgeId, NodeId = G::NodeId>,
+    &'a G: IntoNeighbors<EdgeId = G::EdgeId, NodeId = G::NodeId> + NodeIndexable,
 {
-    type Neighbors = <&'a G as IntoNeighbors>::Neighbors;
+    type Neighbors = iter::NodeIdFilter<'a, <&'a G as IntoNeighbors>::Neighbors, &'a G, T, {N}>;
 
     fn neighbors(self, a: Self::NodeId) -> Self::Neighbors {
-        self.graph.neighbors(a)
+        iter::NodeIdFilter(self.graph.neighbors(a), &self.graph, &self.filter)
     }
 }
 
 impl<'a, G: Data, T: PrimInt, const N: usize> IntoNeighborsDirected for &'a BitFiltered<G, T, N>
 where
-    &'a G: IntoNeighborsDirected<EdgeId = G::EdgeId, NodeId = G::NodeId>,
+    &'a G: IntoNeighborsDirected<EdgeId = G::EdgeId, NodeId = G::NodeId> + NodeIndexable,
 {
-    type NeighborsDirected = <&'a G as IntoNeighborsDirected>::NeighborsDirected;
+    type NeighborsDirected = iter::NodeIdFilter<'a, <&'a G as IntoNeighborsDirected>::NeighborsDirected, &'a G, T, {N}>;
 
     fn neighbors_directed(self, a: Self::NodeId, dir: Direction) -> Self::NeighborsDirected {
-        self.graph.neighbors_directed(a, dir)
+        iter::NodeIdFilter(self.graph.neighbors_directed(a, dir), &self.graph, &self.filter)
     }
 }
 
 impl<'a, G: Data, T: PrimInt, const N: usize> IntoEdgesDirected for &'a BitFiltered<G, T, N>
 where
-    &'a G: IntoEdgesDirected<EdgeId = G::EdgeId, NodeId = G::NodeId, EdgeWeight = G::EdgeWeight>,
+    &'a G: IntoEdgesDirected<EdgeId = G::EdgeId, NodeId = G::NodeId, EdgeWeight = G::EdgeWeight> + NodeIndexable,
 {
-    type EdgesDirected = <&'a G as IntoEdgesDirected>::EdgesDirected;
+    type EdgesDirected = iter::EdgeRefFilter<'a, <&'a G as IntoEdgesDirected>::EdgesDirected, &'a G, T, {N}>;
 
     fn edges_directed(self, a: Self::NodeId, dir: Direction) -> Self::EdgesDirected {
-        self.graph.edges_directed(a, dir)
+        iter::EdgeRefFilter(self.graph.edges_directed(a, dir), &self.graph, &self.filter)
+    }
+}
+
+#[doc(hidden)]
+pub mod iter {
+    use super::*;
+
+    #[derive(Debug, Clone)]
+    pub struct NodeIdFilter<'a, I, G, T, const N: usize>(pub I, pub G, pub &'a BitSet<T, N>);
+    impl<G: NodeIndexable, I: Iterator<Item = G::NodeId>, T: PrimInt, const N: usize> Iterator for NodeIdFilter<'_, I, G, T, N> {
+        type Item = I::Item;
+        fn next(&mut self) -> Option<I::Item> {
+            while let Some(i) = self.0.next() {
+                if self.2.get(self.1.to_index(i)) {
+                    return Some(i);
+                }
+            }
+            None
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct NodeRefFilter<'a, I, G, T, const N: usize>(pub I, pub G, pub &'a BitSet<T, N>);
+    impl<G: NodeIndexable + IntoNodeReferences, I: Iterator<Item = G::NodeRef>, T: PrimInt, const N: usize> Iterator for NodeRefFilter<'_, I, G, T, N> {
+        type Item = I::Item;
+        fn next(&mut self) -> Option<I::Item> {
+            while let Some(i) = self.0.next() {
+                if self.2.get(self.1.to_index(i.id())) {
+                    return Some(i);
+                }
+            }
+            None
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct EdgeRefFilter<'a, I, G, T, const N: usize>(pub I, pub G, pub &'a BitSet<T, N>);
+    impl<G: NodeIndexable + IntoEdgeReferences, I: Iterator<Item = G::EdgeRef>, T: PrimInt, const N: usize> Iterator for EdgeRefFilter<'_, I, G, T, N> {
+        type Item = I::Item;
+        fn next(&mut self) -> Option<I::Item> {
+            while let Some(i) = self.0.next() {
+                if self.2.get(self.1.to_index(i.source())) && self.2.get(self.1.to_index(i.target())) {
+                    return Some(i);
+                }
+            }
+            None
+        }
     }
 }
