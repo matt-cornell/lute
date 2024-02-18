@@ -328,6 +328,55 @@ impl<T: ArenaAccessibleMut> ArenaAccessibleMut for &T {
 
 #[doc(hidden)]
 #[derive(Debug, Clone, Copy)]
+pub struct PtrAcc(*mut Arena);
+impl ArenaAccessor for PtrAcc {
+    type Ref<'a> = &'a Arena;
+    fn get_arena<'a>(&'a self) -> Self::Ref<'a> where Self: 'a {
+        // Safety: this was created with an `unsafe`, so the caller must know about the invariants
+        unsafe {
+            &*self.0
+        }
+    }
+}
+impl ArenaAccessorMut for PtrAcc {
+    type RefMut<'a> = &'a mut Arena;
+    fn get_arena_mut<'a>(&'a self) -> Self::RefMut<'a> where Self: 'a {
+        // Safety: this was created with an `unsafe`, so the caller must know about the invariants
+        unsafe {
+            &mut *self.0
+        }
+    }
+}
+
+/// Wrapper type around a `*mut Arena`. It has an `unsafe` constructor because the
+/// `ArenaAccessible` implementation can't be.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ArenaPtr(*mut Arena);
+impl ArenaPtr {
+    pub const unsafe fn new(ptr: *mut Arena) -> Self {
+        Self(ptr)
+    }
+    pub fn get_ptr(self) -> *mut Arena {
+        self.0
+    }
+}
+impl ArenaAccessible for ArenaPtr {
+    type Access<'a> = PtrAcc;
+
+    fn get_accessor(&self) -> PtrAcc {
+        PtrAcc(self.0)
+    }
+}
+impl ArenaAccessibleMut for ArenaPtr {
+    type AccessMut<'a> = PtrAcc;
+
+    fn get_accessor_mut(&self) -> PtrAcc {
+        PtrAcc(self.0)
+    }
+}
+
+#[doc(hidden)]
+#[derive(Debug, Clone, Copy)]
 pub struct RefAcc<'a>(&'a Arena);
 impl<'a> ArenaAccessor for RefAcc<'a> {
     type Ref<'b> = &'b Arena where 'a: 'b;
