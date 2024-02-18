@@ -410,7 +410,7 @@ impl<'a> SmilesParser<'a> {
                     if used == 0 {
                         h = 1;
                     } else {
-                        self.index += used as usize;
+                        self.index += used;
                     }
                     if self.suppress {
                         self.graph[atom].add_hydrogens(h)?;

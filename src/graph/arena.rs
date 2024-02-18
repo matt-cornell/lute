@@ -88,7 +88,8 @@ impl Arena {
     pub fn molecule(&self, mol: usize) -> Molecule<RefAcc> {
         Molecule::from_arena(self, mol)
     }
-
+    
+    #[allow(clippy::needless_range_loop)]
     pub fn insert_mol<G>(&mut self, mol: G) -> usize
     where
         G: Data<NodeWeight = Atom, EdgeWeight = Bond>
@@ -160,7 +161,7 @@ impl Arena {
             let mut bonds = SmallVec::new();
 
             for (n, (i, ism)) in found.iter().enumerate() {
-                let cmp = &compacted[*i as usize].1;
+                let cmp = &compacted[*i].1;
                 for j in 0..ism.len() {
                     let idx = cmp.node_map[j];
                     let atom = self.graph[idx];
@@ -189,7 +190,7 @@ impl Arena {
             };
             for (n, cmp) in &compacted {
                 if is_isomorphic_matching(
-                    &cmp,
+                    cmp,
                     &GraphCompactor::<BitFiltered<&StableUnGraph<Atom, Bond>>>::new(
                         BitFiltered::new(&self.graph, a.clone()),
                     ),
@@ -353,6 +354,9 @@ impl ArenaAccessorMut for PtrAcc {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ArenaPtr(*mut Arena);
 impl ArenaPtr {
+    /// # Safety
+    /// This type basically wraps a pointer, but moves the `unsafe` to its construction. All
+    /// pointer invariants must hold, as they won't be checked elsewhere.
     pub const unsafe fn new(ptr: *mut Arena) -> Self {
         Self(ptr)
     }

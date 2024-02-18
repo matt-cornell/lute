@@ -1,3 +1,4 @@
+#![allow(clippy::identity_op)]
 //! Utilities for modeling molecules as graphs
 // This top-level file handles definitions and parsing
 
@@ -53,6 +54,7 @@ impl Chirality {
 }
 
 /// Bit-packed field for tracking bonds, plus two scratch bits
+#[allow(clippy::identity_op)]
 #[bitfield]
 #[repr(u16)]
 #[derive(Debug, Clone, Copy)]
