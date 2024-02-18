@@ -9,9 +9,9 @@ use std::hash::Hash;
 /// Override `NodeIndexable` so that they're always compact
 #[derive(Debug, Clone)]
 pub struct GraphCompactor<G: GraphBase> {
-    graph: G,
-    node_map: Vec<G::NodeId>,
-    inv_map: HashMap<G::NodeId, usize>,
+    pub graph: G,
+    pub node_map: Vec<G::NodeId>,
+    pub inv_map: HashMap<G::NodeId, usize>,
 }
 impl<N: Hash + Eq + Copy, G: GraphBase<NodeId = N>> GraphCompactor<G>
 where

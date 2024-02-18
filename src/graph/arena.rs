@@ -4,32 +4,29 @@
 
 use crate::graph::bitfilter::BitFiltered;
 use crate::graph::compact::GraphCompactor;
-use crate::graph::isomorphism::subgraph_isomorphisms_iter;
+use crate::graph::isomorphism::*;
 use crate::molecule::{Atom, Bond};
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use petgraph::data::DataMap;
 use petgraph::prelude::*;
 use petgraph::visit::*;
-use smallbitvec::{InternalStorage, SmallBitVec};
-use smallvec::SmallVec;
+use smallbitvec::SmallBitVec;
+use smallvec::{smallvec, SmallVec};
 use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashMap;
-use std::io::{self, Read, Write};
-use std::mem::ManuallyDrop;
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 use std::sync::Arc;
 
 type Ix = petgraph::graph::DefaultIx;
-const IX_SIZE: usize = std::mem::size_of::<Ix>();
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(C)]
 struct InterFragBond {
+    an: Ix,
     ai: Ix,
-    ar: Ix,
+    bn: Ix,
     bi: Ix,
-    br: Ix,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,79 +34,12 @@ struct BrokenMol {
     frags: SmallVec<[Ix; 8]>,
     bonds: SmallVec<[InterFragBond; 8]>,
 }
-impl BrokenMol {
-    pub fn comp_size(&self) -> usize {
-        (2 + self.frags.len() + self.bonds.len() * 4) * IX_SIZE
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum MolRepr {
     Atomic(SmallBitVec),
     Broken(BrokenMol),
-}
-impl MolRepr {
-    pub fn comp_size(&self) -> usize {
-        const US_SIZE: usize = std::mem::size_of::<usize>() * 8;
-        match self {
-            Self::Atomic(a) => IX_SIZE + (a.len() * (US_SIZE - 1)) / US_SIZE,
-            Self::Broken(b) => b.comp_size(),
-        }
-    }
-}
-
-/// Write a slice of POD data to a writer
-fn write_pod_slice<T: Copy, W: Write>(data: &[T], buf: &mut W) -> io::Result<()> {
-    // Safety: we're reinterpreting as bytes here, which will always be valid
-    unsafe {
-        let ptr = data.as_ptr() as *const u8;
-        let len = std::mem::size_of_val(data);
-        buf.write_all(&len.to_ne_bytes())?;
-        buf.write_all(std::slice::from_raw_parts(ptr, len))?;
-        Ok(())
-    }
-}
-/// Read a slice of data from a reader, reinterpreting the bytes
-/// # Safety
-/// `T` must be valid for any memory contents
-unsafe fn read_pod_slice<T: Copy, R: Read>(buf: &mut R) -> io::Result<Vec<T>> {
-    let mut arr = [0u8; std::mem::size_of::<usize>()];
-    buf.read_exact(&mut arr)?;
-    let len = usize::from_ne_bytes(arr);
-    let mut mdv = ManuallyDrop::new(Vec::<T>::with_capacity(len));
-    let ptr = mdv.as_mut_ptr();
-    let cap = mdv.capacity();
-    assert!(cap >= len);
-    buf.read_exact(std::slice::from_raw_parts_mut(ptr as *mut _, len))?;
-    Ok(Vec::from_raw_parts(ptr, len, cap))
-}
-/// Read a slice of data from a reader, reinterpreting the bytes
-/// # Safety
-/// `T` must be valid for any memory contents
-unsafe fn read_pod_slice_with_buf<T: Copy, R: Read>(
-    buf: &mut R,
-    vec: &mut Vec<T>,
-) -> io::Result<()> {
-    let mut arr = [0u8; std::mem::size_of::<usize>()];
-    buf.read_exact(&mut arr)?;
-    let len = usize::from_ne_bytes(arr);
-    vec.clear();
-    vec.reserve(len);
-    let mut mdv = ManuallyDrop::new(std::mem::take(vec));
-    let ptr = mdv.as_mut_ptr();
-    let cap = mdv.capacity();
-    assert!(cap >= len);
-    buf.read_exact(std::slice::from_raw_parts_mut(ptr as *mut _, len))?;
-    *vec = Vec::from_raw_parts(ptr, len, cap);
-    Ok(())
-}
-
-#[derive(Clone, Copy)]
-#[repr(C)]
-struct EdgeRepr {
-    source: Ix,
-    target: Ix,
-    weight: Bond,
+    Redirect(Ix),
 }
 
 /// The `Arena` is the backing storage for everything. It tracks all molecules and handles
@@ -117,116 +47,15 @@ struct EdgeRepr {
 #[derive(Debug, Default, Clone)]
 pub struct Arena {
     graph: StableUnGraph<Atom, Bond>,
-    parts: SmallVec<[MolRepr; 16]>,
+    parts: SmallVec<[(MolRepr, Ix); 16]>,
 }
 impl Arena {
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Load a previously compiled graph. Note that this doesn't perform additional verification,
-    /// it assumes that the previously compiled graph was valid.
-    pub fn from_compiled<R: Read>(mut buf: R) -> io::Result<Self> {
-        let mut ibuf = [0u8; IX_SIZE];
-        let mut abuf = Vec::with_capacity(1);
-        let mut fbuf = Vec::new();
-        let mut bbuf = Vec::new();
-        unsafe {
-            let nodes = read_pod_slice::<Atom, R>(&mut buf)?;
-            let edges = read_pod_slice::<EdgeRepr, R>(&mut buf)?;
-            let mut graph = StableGraph::with_capacity(nodes.len() as _, edges.len() as _);
-            for node in nodes {
-                graph.add_node(node);
-            }
-            for EdgeRepr {
-                source,
-                target,
-                weight,
-            } in edges
-            {
-                graph.add_edge(source.into(), target.into(), weight);
-            }
-            buf.read_exact(&mut ibuf)?;
-            let part_count = Ix::from_ne_bytes(ibuf) as usize;
-            let mut parts = SmallVec::with_capacity(part_count);
-            let mut i = 0u8;
-            for _ in 0..part_count {
-                buf.read_exact(std::slice::from_mut(&mut i))?;
-                if i == 0 {
-                    read_pod_slice_with_buf(&mut buf, &mut abuf)?;
-                    let is = if abuf.len() == 1 {
-                        InternalStorage::Inline(abuf[0])
-                    } else {
-                        InternalStorage::Spilled(Box::from(abuf.as_slice()))
-                    };
-                    parts.push(MolRepr::Atomic(SmallBitVec::from_storage(is)));
-                } else {
-                    read_pod_slice_with_buf(&mut buf, &mut fbuf)?;
-                    read_pod_slice_with_buf(&mut buf, &mut bbuf)?;
-                    parts.push(MolRepr::Broken(BrokenMol {
-                        frags: SmallVec::from_slice(&fbuf),
-                        bonds: SmallVec::from_slice(&bbuf),
-                    }));
-                }
-            }
-            Ok(Self { graph, parts })
-        }
-    }
-
-    /// Return the size of the binary output in bytes
-    pub fn comp_size(&self) -> usize {
-        const NODE_SIZE: usize = 5;
-        const EDGE_SIZE: usize = 2 * IX_SIZE + 1;
-        3 * IX_SIZE
-            + self.graph.node_count() * NODE_SIZE
-            + self.graph.edge_count() * EDGE_SIZE
-            + self.parts.iter().map(MolRepr::comp_size).sum::<usize>()
-    }
-
-    /// Create a binary output from which this graph can be reconstructed
-    pub fn compile<W: Write>(&self, mut buf: W) -> io::Result<()> {
-        let mut table = vec![None; self.graph.node_count()];
-        let mut c: Ix = 0;
-        let nodes = self
-            .graph
-            .node_indices()
-            .map(|i| {
-                table[i.index()] = Some(c);
-                c += 1;
-                self.graph[i]
-            })
-            .collect::<Vec<_>>();
-        let edges = self
-            .graph
-            .edge_references()
-            .map(|e| EdgeRepr {
-                source: table[e.source().index()].unwrap(),
-                target: table[e.target().index()].unwrap(),
-                weight: *e.weight(),
-            })
-            .collect::<Vec<_>>();
-        write_pod_slice(&nodes, &mut buf)?;
-        write_pod_slice(&edges, &mut buf)?;
-        buf.write_all(&(self.parts.len() as Ix).to_ne_bytes())?;
-        for part in &self.parts {
-            match part {
-                MolRepr::Atomic(a) => {
-                    let i = a.clone().into_storage();
-                    let s = match &i {
-                        InternalStorage::Inline(s) => std::slice::from_ref(s),
-                        InternalStorage::Spilled(s) => &**s,
-                    };
-                    buf.write_all(&[0])?;
-                    write_pod_slice(s, &mut buf)?;
-                }
-                MolRepr::Broken(b) => {
-                    buf.write_all(&[1])?;
-                    write_pod_slice(&b.frags, &mut buf)?;
-                    write_pod_slice(&b.bonds, &mut buf)?;
-                }
-            }
-        }
-        Ok(())
+    pub fn graph(&self) -> &StableUnGraph<Atom, Bond> {
+        &self.graph
     }
 
     fn contains_group_impl(&self, mol: usize, group: usize, seen: &mut SmallBitVec) -> bool {
@@ -237,17 +66,21 @@ impl Arena {
             return false;
         }
         seen.set(mol, true);
-        if let Some(MolRepr::Broken(b)) = self.parts.get(mol) {
-            b.frags
+        match self.parts.get(mol) {
+            Some((MolRepr::Broken(b), _)) => b
+                .frags
                 .iter()
-                .any(|f| self.contains_group_impl(*f as _, group, seen))
-        } else {
-            false
+                .any(|f| self.contains_group_impl(*f as _, group, seen)),
+            Some((MolRepr::Redirect(r), _)) => self.contains_group_impl(*r as _, group, seen),
+            _ => false,
         }
     }
 
     /// Check if `mol` contains `group`
-    pub fn contains_group(&self, mol: usize, group: usize) -> bool {
+    pub fn contains_group(&self, mol: usize, mut group: usize) -> bool {
+        while let Some((MolRepr::Redirect(r), _)) = self.parts.get(group) {
+            group = *r as _;
+        }
         let mut seen = SmallBitVec::from_elem(self.parts.len(), false);
         self.contains_group_impl(mol, group, &mut seen)
     }
@@ -264,29 +97,111 @@ impl Arena {
             + GraphRef
             + GetAdjacencyMatrix
             + NodeCompactIndexable
-            + IntoEdgesDirected,
+            + IntoEdgesDirected
+            + IntoNodeReferences,
     {
         let compacted = (0..self.parts.len())
             .filter_map(|i| {
-                if let MolRepr::Atomic(a) = &self.parts[i] {
-                    Some(
+                if let (MolRepr::Atomic(a), _) = &self.parts[i] {
+                    Some((
+                        i,
                         GraphCompactor::<BitFiltered<&StableUnGraph<Atom, Bond>>>::new(
-                            BitFiltered::new(&self.graph, a),
+                            BitFiltered::new(unsafe {&*std::ptr::addr_of!(self.graph)}, a.clone()),
                         ),
-                    )
+                    ))
                 } else {
                     None
                 }
             })
             .collect::<Vec<_>>();
-        #[allow(unused_variables)]
-        for (n, cmp) in compacted.iter().enumerate() {
+        // keep track of matched atoms so there's no overlap
+        let mut matched = SmallBitVec::from_elem(mol.node_count(), false);
+        // keep track of found isomorphisms, don't try to handle them in the search
+        let mut found = SmallVec::<[_; 8]>::new();
+        for (n, cmp) in &compacted {
             for ism in
                 subgraph_isomorphisms_iter(&cmp, &mol, &mut Atom::eq_or_r, &mut PartialEq::eq)
             {
+                if ism.iter().any(|&i| matched[i]) {
+                    continue;
+                }
+                ism.iter().for_each(|&i| matched.set(i, true));
+                found.push((*n, ism));
             }
         }
-        todo!()
+        let (ret, news): (_, SmallVec<[_; 8]>) = if found.len() == 1 {
+            // simple case: no subgraph isomorhpisms found
+            let mut map = vec![NodeIndex::end(); mol.node_count()];
+            let mut bits = SmallBitVec::new();
+            mol.node_references().for_each(|n| {
+                let idx = self.graph.add_node(*n.weight());
+                map[mol.to_index(n.id())] = idx;
+                let idx = idx.index();
+                if idx >= bits.len() {
+                    bits.resize(idx, false);
+                }
+                bits.set(idx, true);
+            });
+            mol.edge_references().for_each(|e| {
+                self.graph.add_edge(
+                    map[mol.to_index(e.source())],
+                    map[mol.to_index(e.target())],
+                    *e.weight(),
+                );
+            });
+            let out = self.parts.len() as Ix;
+            self.parts
+                .push((MolRepr::Atomic(bits), mol.node_count() as Ix));
+            (out, smallvec![out])
+        } else {
+            let mut frags = SmallVec::with_capacity(found.len() + 1);
+            frags.push(self.parts.len() as Ix);
+            frags.extend(found.iter().map(|(i, _)| *i as Ix));
+            let mut bonds = SmallVec::new();
+
+            for (n, (i, ism)) in found.iter().enumerate() {
+                let cmp = &compacted[*i as usize].1;
+                for j in 0..ism.len() {
+                    let idx = cmp.node_map[j];
+                    let atom = self.graph[idx];
+                    if atom.protons == 0 {
+                        let an = 0;
+                        let ai = ism[j] as Ix;
+                        let bn = n as Ix + 1;
+                        let bi = idx.index() as Ix;
+                        bonds.push(InterFragBond { an, ai, bn, bi });
+                    } else {
+                       todo!()
+                    }
+                }
+            }
+
+            self.parts.push((
+                MolRepr::Broken(BrokenMol { frags, bonds }),
+                mol.node_count() as Ix,
+            ));
+
+            todo!()
+        };
+        for new in news {
+            let Some((MolRepr::Atomic(a), _)) = self.parts.get(new as usize) else {
+                continue;
+            };
+            for (n, cmp) in &compacted {
+                if is_isomorphic_matching(
+                    &cmp,
+                    &GraphCompactor::<BitFiltered<&StableUnGraph<Atom, Bond>>>::new(
+                        BitFiltered::new(&self.graph, a.clone()),
+                    ),
+                    &mut Atom::eq_match_r,
+                    &mut PartialEq::eq,
+                ) {
+                    self.parts[new as usize].0 = MolRepr::Redirect(*n as _);
+                    break;
+                }
+            }
+        }
+        ret as _
     }
 }
 

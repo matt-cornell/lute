@@ -496,6 +496,27 @@ mod matching {
         st.1.push_mapping(nodes.1, st.0.graph.to_index(nodes.0));
     }
 
+    /// Return Some(bool) if isomorphism is decided, else None.
+    pub fn try_match<G0, G1, NM, EM>(
+        st: &mut (Vf2State<'_, G0>, Vf2State<'_, G1>),
+        node_match: &mut NM,
+        edge_match: &mut EM,
+        match_subgraph: bool,
+    ) -> Option<bool>
+    where
+        G0: NodeCompactIndexable + GetAdjacencyMatrix + GraphProp + IntoNeighborsDirected,
+        G1: NodeCompactIndexable + GetAdjacencyMatrix + GraphProp + IntoNeighborsDirected,
+        NM: NodeMatcher<G0, G1>,
+        EM: EdgeMatcher<G0, G1>,
+    {
+        let mut stack = vec![Frame::Outer];
+        if isomorphisms(st, node_match, edge_match, match_subgraph, &mut stack).is_some() {
+            Some(true)
+        } else {
+            None
+        }
+    }
+
     fn isomorphisms<G0, G1, NM, EM>(
         st: &mut (Vf2State<'_, G0>, Vf2State<'_, G1>),
         node_match: &mut NM,
@@ -720,4 +741,38 @@ where
     ))
     .into_iter()
     .flatten()
+}
+
+/// \[Generic\] Return `true` if the graphs `g0` and `g1` are isomorphic.
+///
+/// Using the VF2 algorithm, examining both syntactic and semantic
+/// graph isomorphism (graph structure and matching node and edge weights).
+///
+/// The graphs should not be multigraphs.
+pub fn is_isomorphic_matching<G0, G1, NM, EM>(
+    g0: G0,
+    g1: G1,
+    mut node_match: NM,
+    mut edge_match: EM,
+) -> bool
+where
+    G0: NodeCompactIndexable
+        + DataMap
+        + GetAdjacencyMatrix
+        + GraphProp<EdgeType = Undirected>
+        + IntoEdgesDirected,
+    G1: NodeCompactIndexable
+        + DataMap
+        + GetAdjacencyMatrix
+        + GraphProp<EdgeType = Undirected>
+        + IntoEdgesDirected,
+    NM: FnMut(&G0::NodeWeight, &G1::NodeWeight) -> bool,
+    EM: FnMut(&G0::EdgeWeight, &G1::EdgeWeight) -> bool,
+{
+    if g0.node_count() != g1.node_count() {
+        return false;
+    }
+
+    let mut st = (Vf2State::new(&g0), Vf2State::new(&g1));
+    self::matching::try_match(&mut st, &mut node_match, &mut edge_match, false).unwrap_or(false)
 }

@@ -3,35 +3,35 @@ use petgraph::visit::*;
 use petgraph::Direction;
 use smallbitvec::SmallBitVec;
 
-#[derive(Debug, Clone, Copy)]
-pub struct BitFiltered<'a, G: 'a> {
+#[derive(Debug, Clone)]
+pub struct BitFiltered<G> {
     pub graph: G,
-    pub filter: &'a SmallBitVec,
+    pub filter: SmallBitVec,
 }
-impl<'a, G: 'a> BitFiltered<'a, G> {
-    pub const fn new(graph: G, filter: &'a SmallBitVec) -> Self {
+impl<G> BitFiltered<G> {
+    pub const fn new(graph: G, filter: SmallBitVec) -> Self {
         Self { graph, filter }
     }
 }
 
-impl<G: GraphBase> GraphBase for BitFiltered<'_, G> {
+impl<G: GraphBase> GraphBase for BitFiltered<G> {
     type EdgeId = G::EdgeId;
     type NodeId = G::NodeId;
 }
 
-impl<G: GraphProp> GraphProp for BitFiltered<'_, G> {
+impl<G: GraphProp> GraphProp for BitFiltered<G> {
     type EdgeType = G::EdgeType;
     fn is_directed(&self) -> bool {
         self.graph.is_directed()
     }
 }
 
-impl<G: Data> Data for BitFiltered<'_, G> {
+impl<G: Data> Data for BitFiltered<G> {
     type NodeWeight = G::NodeWeight;
     type EdgeWeight = G::EdgeWeight;
 }
 
-impl<G: DataMap + NodeIndexable> DataMap for BitFiltered<'_, G> {
+impl<G: DataMap + NodeIndexable> DataMap for BitFiltered<G> {
     fn node_weight(&self, id: Self::NodeId) -> Option<&Self::NodeWeight> {
         self.filter
             .get(self.graph.to_index(id))?
@@ -42,7 +42,7 @@ impl<G: DataMap + NodeIndexable> DataMap for BitFiltered<'_, G> {
     }
 }
 
-impl<G: NodeIndexable> NodeIndexable for BitFiltered<'_, G> {
+impl<G: NodeIndexable> NodeIndexable for BitFiltered<G> {
     fn from_index(&self, i: usize) -> Self::NodeId {
         self.graph.from_index(i)
     }
@@ -54,7 +54,7 @@ impl<G: NodeIndexable> NodeIndexable for BitFiltered<'_, G> {
     }
 }
 
-impl<G: GetAdjacencyMatrix> GetAdjacencyMatrix for BitFiltered<'_, G> {
+impl<G: GetAdjacencyMatrix> GetAdjacencyMatrix for BitFiltered<G> {
     type AdjMatrix = G::AdjMatrix;
 
     fn adjacency_matrix(&self) -> Self::AdjMatrix {
@@ -65,7 +65,7 @@ impl<G: GetAdjacencyMatrix> GetAdjacencyMatrix for BitFiltered<'_, G> {
     }
 }
 
-impl<'a, G: Data> IntoNodeIdentifiers for &'a BitFiltered<'_, G>
+impl<'a, G: Data> IntoNodeIdentifiers for &'a BitFiltered<G>
 where
     &'a G: IntoNodeIdentifiers<NodeId = G::NodeId>,
 {
@@ -76,7 +76,7 @@ where
     }
 }
 
-// impl<'a, G: Data> IntoNodeReferences for &'a BitFiltered<'_, G>
+// impl<'a, G: Data> IntoNodeReferences for &'a BitFiltered<G>
 // where
 //     &'a G: IntoNodeReferences<NodeWeight = G::NodeWeight, NodeId = G::NodeId>,
 // {
@@ -88,7 +88,7 @@ where
 //     }
 // }
 
-impl<'a, G: Data> IntoEdges for &'a BitFiltered<'_, G>
+impl<'a, G: Data> IntoEdges for &'a BitFiltered<G>
 where
     &'a G: IntoEdges<EdgeId = G::EdgeId, NodeId = G::NodeId, EdgeWeight = G::EdgeWeight>,
 {
@@ -99,7 +99,7 @@ where
     }
 }
 
-impl<'a, G: Data> IntoEdgeReferences for &'a BitFiltered<'_, G>
+impl<'a, G: Data> IntoEdgeReferences for &'a BitFiltered<G>
 where
     &'a G: IntoEdgeReferences<EdgeId = G::EdgeId, NodeId = G::NodeId, EdgeWeight = G::EdgeWeight>,
 {
@@ -111,7 +111,7 @@ where
     }
 }
 
-impl<'a, G: Data> IntoNeighbors for &'a BitFiltered<'_, G>
+impl<'a, G: Data> IntoNeighbors for &'a BitFiltered<G>
 where
     &'a G: IntoNeighbors<EdgeId = G::EdgeId, NodeId = G::NodeId>,
 {
@@ -122,7 +122,7 @@ where
     }
 }
 
-impl<'a, G: Data> IntoNeighborsDirected for &'a BitFiltered<'_, G>
+impl<'a, G: Data> IntoNeighborsDirected for &'a BitFiltered<G>
 where
     &'a G: IntoNeighborsDirected<EdgeId = G::EdgeId, NodeId = G::NodeId>,
 {
@@ -133,7 +133,7 @@ where
     }
 }
 
-impl<'a, G: Data> IntoEdgesDirected for &'a BitFiltered<'_, G>
+impl<'a, G: Data> IntoEdgesDirected for &'a BitFiltered<G>
 where
     &'a G: IntoEdgesDirected<EdgeId = G::EdgeId, NodeId = G::NodeId, EdgeWeight = G::EdgeWeight>,
 {

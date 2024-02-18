@@ -2,13 +2,13 @@ use crate::atom_info::ATOM_DATA;
 use crate::molecule::{TooManyBonds, *};
 use atoi::FromRadix10;
 use petgraph::prelude::*;
+use petgraph::visit::*;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt::{self, Display, Formatter};
 use thiserror::Error;
 use SmilesErrorKind::*;
-use petgraph::visit::*;
 
 /// Inner enum for `SmilesError`
 #[derive(Debug, Clone, Error)]
@@ -637,11 +637,14 @@ impl<'a> SmilesParser<'a> {
         }
         Ok(())
     }
-    
+
     /// Perform some checks on the molecule. Panics on failure (which should be impossible).
     fn validate(&self) {
         for node in self.graph.node_references() {
-            assert_eq!(self.graph.edges(node.id()).count(), node.weight().data.other() as usize);
+            assert_eq!(
+                self.graph.edges(node.id()).count(),
+                node.weight().data.other() as usize
+            );
         }
         for &edge in self.graph.edge_weights() {
             assert_ne!(edge, Bond::Non);

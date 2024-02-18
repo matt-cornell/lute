@@ -116,10 +116,7 @@ impl AtomData {
 }
 impl PartialEq for AtomData {
     fn eq(&self, other: &Self) -> bool {
-        (self.chirality() == Chirality::None
-            || other.chirality() == Chirality::None
-            || self.chirality() == other.chirality())
-            && self.is_compatible(*other)
+        self.chirality() == other.chirality() && self.is_compatible(*other)
     }
 }
 impl Eq for AtomData {}
@@ -216,7 +213,8 @@ impl Atom {
     }
 
     pub fn eq_or_r(&self, other: &Self) -> bool {
-        self.protons == 0 || other.protons == 0 || self.eq_match_r(other)
+        (self.protons == 0 || other.protons == 0 || self.eq_match_r(other))
+            && self.data.is_compatible(other.data)
     }
     pub fn eq_match_r(&self, other: &Self) -> bool {
         (self.protons == 0 && other.protons == 0) || self == other
