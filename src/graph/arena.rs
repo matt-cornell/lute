@@ -134,14 +134,20 @@ impl<Ix: IndexType> Arena<Ix> {
             for ism in
                 subgraph_isomorphisms_iter(&cmp, &mol, &mut Atom::eq_or_r, &mut PartialEq::eq)
             {
+                if ism.len() == mol.node_count() {
+                    // simplest case, this molecule already exists
+                    return Ix::new(*n);
+                }
                 if ism.iter().any(|&i| matched.get(i)) {
                     continue;
                 }
-                ism.iter().for_each(|&i| matched.set(i, true));
+                ism.iter().for_each(|&i| {
+                    matched.set(i, true);
+                });
                 found.push((*n, ism));
             }
         }
-        let (ret, news) = if found.len() == 1 {
+        let (ret, news) = if found.is_empty() {
             // simple case: no subgraph isomorhpisms found
             let mut map = vec![NodeIndex::end(); mol.node_bound()];
             let mut bits = BSType::new();
@@ -265,8 +271,8 @@ impl<Ix: IndexType> Arena<Ix> {
 
             (out, Some(start..self.parts.len()))
         };
-        let mut handle = |new: Ix| {
-            let Some((MolRepr::Atomic(a), _)) = self.parts.get(new.index()) else {
+        let mut handle = |new: usize| {
+            let Some((MolRepr::Atomic(a), _)) = self.parts.get(new) else {
                 return;
             };
             let nc = GraphCompactor::<BitFiltered<&Graph<Ix>, _, ATOM_BIT_STORAGE>>::new(
@@ -274,15 +280,16 @@ impl<Ix: IndexType> Arena<Ix> {
             );
             for (n, cmp) in &compacted {
                 if is_isomorphic_matching(cmp, &nc, &mut Atom::eq_match_r, &mut PartialEq::eq) {
-                    self.parts[new.index()].0 = MolRepr::Redirect(Ix::new(*n));
+                    self.parts[new].0 = MolRepr::Redirect(Ix::new(*n));
                     break;
                 }
             }
         };
         if let Some(r) = news {
-            r.for_each(|a| handle(Ix::new(a)));
+            handle(ret.index() - 1);
+            r.for_each(handle);
         } else {
-            handle(ret);
+            handle(ret.index());
         }
         ret
     }
