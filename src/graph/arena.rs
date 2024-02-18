@@ -10,19 +10,22 @@ use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use petgraph::data::DataMap;
 use petgraph::prelude::*;
 use petgraph::visit::*;
-use smallbitvec::SmallBitVec;
-use smallvec::{smallvec, SmallVec};
+use petgraph::graph::IndexType;
+use smallvec::SmallVec;
 use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 use std::sync::Arc;
 
-type Ix = petgraph::graph::DefaultIx;
+const ATOM_BIT_STORAGE: usize = 8;
+
+type Graph<Ix> = StableGraph<Atom, Bond, Undirected, Ix>;
+type BSType = crate::utils::bitset::BitSet<usize, ATOM_BIT_STORAGE>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(C)]
-struct InterFragBond {
+struct InterFragBond<Ix> {
     an: Ix,
     ai: Ix,
     bn: Ix,
@@ -30,67 +33,71 @@ struct InterFragBond {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct BrokenMol {
-    frags: SmallVec<[Ix; 8]>,
-    bonds: SmallVec<[InterFragBond; 8]>,
+struct BrokenMol<Ix> {
+    frags: SmallVec<Ix, 8>,
+    bonds: SmallVec<InterFragBond<Ix>, 8>,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum MolRepr {
-    Atomic(SmallBitVec),
-    Broken(BrokenMol),
+enum MolRepr<Ix> {
+    Atomic(BSType),
+    Broken(BrokenMol<Ix>),
     Redirect(Ix),
 }
 
 /// The `Arena` is the backing storage for everything. It tracks all molecules and handles
 /// deduplication.
 #[derive(Debug, Default, Clone)]
-pub struct Arena {
-    graph: StableUnGraph<Atom, Bond>,
-    parts: SmallVec<[(MolRepr, Ix); 16]>,
+pub struct Arena<Ix: IndexType> {
+    graph: Graph<Ix>,
+    parts: SmallVec<(MolRepr<Ix>, Ix), 16>,
 }
-impl Arena {
+impl<Ix: IndexType> Arena<Ix> {
     pub fn new() -> Self {
         Self::default()
     }
 
-    pub fn graph(&self) -> &StableUnGraph<Atom, Bond> {
+    pub fn graph(&self) -> &Graph<Ix> {
         &self.graph
     }
 
-    fn contains_group_impl(&self, mol: usize, group: usize, seen: &mut SmallBitVec) -> bool {
+    fn contains_group_impl(&self, mol: Ix, group: Ix, seen: &mut BSType) -> bool {
         if mol == group {
             return true;
         }
-        if seen[mol] {
+        if seen.get(mol.index()) {
             return false;
         }
-        seen.set(mol, true);
-        match self.parts.get(mol) {
+        seen.set(mol.index(), true);
+        match self.parts.get(mol.index()) {
             Some((MolRepr::Broken(b), _)) => b
                 .frags
                 .iter()
                 .any(|f| self.contains_group_impl(*f as _, group, seen)),
-            Some((MolRepr::Redirect(r), _)) => self.contains_group_impl(*r as _, group, seen),
+            Some((MolRepr::Redirect(r), _)) => self.contains_group_impl(*r, group, seen),
             _ => false,
         }
     }
 
     /// Check if `mol` contains `group`
-    pub fn contains_group(&self, mol: usize, mut group: usize) -> bool {
-        while let Some((MolRepr::Redirect(r), _)) = self.parts.get(group) {
-            group = *r as _;
+    pub fn contains_group(&self, mol: Ix, mut group: Ix) -> bool {
+        while let Some((MolRepr::Redirect(r), _)) = self.parts.get(group.index()) {
+            group = *r;
         }
-        let mut seen = SmallBitVec::from_elem(self.parts.len(), false);
+        let mut seen = BSType::with_capacity(self.parts.len());
         self.contains_group_impl(mol, group, &mut seen)
     }
 
-    pub fn molecule(&self, mol: usize) -> Molecule<RefAcc> {
+    /// Get a graph of the molecule at the given index. Note that `Molecule::from_arena` could give
+    /// better results as it can borrow from `RefCell`s and `RwLock`s.
+    pub fn molecule(&self, mol: Ix) -> Molecule<Ix, RefAcc<Ix>> {
         Molecule::from_arena(self, mol)
     }
-    
+
+    /// Insert a molecule into the arena,
     #[allow(clippy::needless_range_loop)]
-    pub fn insert_mol<G>(&mut self, mol: G) -> usize
+    pub fn insert_mol<G>(&mut self, mol: G) -> Ix
     where
         G: Data<NodeWeight = Atom, EdgeWeight = Bond>
             + DataMap
@@ -106,8 +113,11 @@ impl Arena {
                 if let (MolRepr::Atomic(a), _) = &self.parts[i] {
                     Some((
                         i,
-                        GraphCompactor::<BitFiltered<&StableUnGraph<Atom, Bond>>>::new(
-                            BitFiltered::new(unsafe {&*std::ptr::addr_of!(self.graph)}, a.clone()),
+                        GraphCompactor::<BitFiltered<&Graph<Ix>, _, ATOM_BIT_STORAGE>>::new(
+                            BitFiltered::new(
+                                unsafe { &*std::ptr::addr_of!(self.graph) },
+                                a.clone(),
+                            ),
                         ),
                     ))
                 } else {
@@ -116,32 +126,28 @@ impl Arena {
             })
             .collect::<Vec<_>>();
         // keep track of matched atoms so there's no overlap
-        let mut matched = SmallBitVec::from_elem(mol.node_count(), false);
+        let mut matched = BSType::with_capacity(mol.node_count());
         // keep track of found isomorphisms, don't try to handle them in the search
-        let mut found = SmallVec::<[_; 8]>::new();
+        let mut found = SmallVec::<_, 8>::new();
         for (n, cmp) in &compacted {
             for ism in
                 subgraph_isomorphisms_iter(&cmp, &mol, &mut Atom::eq_or_r, &mut PartialEq::eq)
             {
-                if ism.iter().any(|&i| matched[i]) {
+                if ism.iter().any(|&i| matched.get(i)) {
                     continue;
                 }
                 ism.iter().for_each(|&i| matched.set(i, true));
                 found.push((*n, ism));
             }
         }
-        let (ret, news): (_, SmallVec<[_; 8]>) = if found.len() == 1 {
+        let (ret, news) = if found.len() == 1 {
             // simple case: no subgraph isomorhpisms found
             let mut map = vec![NodeIndex::end(); mol.node_count()];
-            let mut bits = SmallBitVec::new();
+            let mut bits = BSType::new();
             mol.node_references().for_each(|n| {
                 let idx = self.graph.add_node(*n.weight());
                 map[mol.to_index(n.id())] = idx;
-                let idx = idx.index();
-                if idx >= bits.len() {
-                    bits.resize(idx, false);
-                }
-                bits.set(idx, true);
+                bits.set(idx.index(), true);
             });
             mol.edge_references().for_each(|e| {
                 self.graph.add_edge(
@@ -150,59 +156,132 @@ impl Arena {
                     *e.weight(),
                 );
             });
-            let out = self.parts.len() as Ix;
+            let out = Ix::new(self.parts.len());
             self.parts
-                .push((MolRepr::Atomic(bits), mol.node_count() as Ix));
-            (out, smallvec![out])
+                .push((MolRepr::Atomic(bits), Ix::new(mol.node_count())));
+            (out, None)
         } else {
+            let mut nb = BSType::with_capacity(mol.node_count());
+            let mut needs_clear = false;
             let mut frags = SmallVec::with_capacity(found.len() + 1);
-            frags.push(self.parts.len() as Ix);
-            frags.extend(found.iter().map(|(i, _)| *i as Ix));
+            frags.push(Ix::new(self.parts.len()));
+            frags.extend(found.iter().map(|(i, _)| Ix::new(*i)));
             let mut bonds = SmallVec::new();
 
             for (n, (i, ism)) in found.iter().enumerate() {
                 let cmp = &compacted[*i].1;
-                for j in 0..ism.len() {
+                for (j, &mi) in ism.iter().enumerate() {
                     let idx = cmp.node_map[j];
                     let atom = self.graph[idx];
-                    if atom.protons == 0 {
-                        let an = 0;
-                        let ai = ism[j] as Ix;
-                        let bn = n as Ix + 1;
-                        let bi = idx.index() as Ix;
+                    let ma = mol.node_weight(mol.from_index(mi)).unwrap();
+                    if atom.protons == 0 && ma.protons != 0 {
+                        let an = Ix::new(0);
+                        let ai = Ix::new(mi);
+                        let bn = Ix::new(n + 1);
+                        let bi = Ix::new(idx.index());
                         bonds.push(InterFragBond { an, ai, bn, bi });
-                    } else {
-                       todo!()
+                    }
+                    if atom.data.unknown() > 0 {
+                        if needs_clear {
+                            nb.clear();
+                        }
+                        needs_clear = true;
+                        for c in self.graph.neighbors(idx) {
+                            nb.set(c.index(), true);
+                        }
+                        #[cfg(debug_assertions)]
+                        let mut matched_count = 0;
+
+                        // look for atoms bonded to this atom that don't have a corresponding node
+                        // in the fragment, those *must* be an R-group
+                        bonds.extend(mol.neighbors(mol.from_index(mi)).filter_map(|mi| {
+                            let mix = mol.to_index(mi);
+                            if nb.get(mix) {
+                                None // already accounted for
+                            } else {
+                                #[cfg(debug_assertions)]
+                                {
+                                    matched_count += 1;
+                                }
+                                Some(InterFragBond {
+                                    an: Ix::new(0),
+                                    ai: Ix::new(mix),
+                                    bn: Ix::new(n + 1),
+                                    bi: Ix::new(idx.index()),
+                                })
+                            }
+                        }));
+
+                        #[cfg(debug_assertions)]
+                        assert_eq!(matched_count, atom.data.unknown());
                     }
                 }
             }
 
+            {
+                let mut map = vec![NodeIndex::end(); mol.node_count()];
+                let mut bits = BSType::new();
+                mol.node_references().for_each(|n| {
+                    let ni = mol.to_index(n.id());
+                    if !matched.get(ni) {
+                        let idx = self.graph.add_node(*n.weight());
+                        map[ni] = idx;
+                        bits.set(idx.index(), true);
+                    }
+                });
+                mol.edge_references().for_each(|e| {
+                    let si = mol.to_index(e.source());
+                    let ti = mol.to_index(e.target());
+                    if matched.get(ti) || matched.get(si) {
+                        return;
+                    }
+                    self.graph.add_edge(
+                        map[mol.to_index(e.source())],
+                        map[mol.to_index(e.target())],
+                        *e.weight(),
+                    );
+                });
+
+                for bond in &mut bonds {
+                    bond.ai = Ix::new(map[bond.ai.index()].index());
+                }
+
+                self.parts
+                    .push((MolRepr::Atomic(bits), Ix::new(mol.node_count())));
+            }
+
+            let out = Ix::new(self.parts.len());
             self.parts.push((
                 MolRepr::Broken(BrokenMol { frags, bonds }),
-                mol.node_count() as Ix,
+                Ix::new(mol.node_count()),
             ));
 
-            todo!()
+            let start = self.parts.len();
+
+            // TODO: split the fragment if disjoint!
+
+            (out, Some(start..self.parts.len()))
         };
-        for new in news {
-            let Some((MolRepr::Atomic(a), _)) = self.parts.get(new as usize) else {
-                continue;
+        let mut handle = |new: Ix| {
+            let Some((MolRepr::Atomic(a), _)) = self.parts.get(new.index()) else {
+                return;
             };
+            let nc = GraphCompactor::<BitFiltered<&Graph<Ix>, _, ATOM_BIT_STORAGE>>::new(
+                BitFiltered::new(&self.graph, a.clone()),
+            );
             for (n, cmp) in &compacted {
-                if is_isomorphic_matching(
-                    cmp,
-                    &GraphCompactor::<BitFiltered<&StableUnGraph<Atom, Bond>>>::new(
-                        BitFiltered::new(&self.graph, a.clone()),
-                    ),
-                    &mut Atom::eq_match_r,
-                    &mut PartialEq::eq,
-                ) {
-                    self.parts[new as usize].0 = MolRepr::Redirect(*n as _);
+                if is_isomorphic_matching(cmp, &nc, &mut Atom::eq_match_r, &mut PartialEq::eq) {
+                    self.parts[new.index()].0 = MolRepr::Redirect(Ix::new(*n));
                     break;
                 }
             }
+        };
+        if let Some(r) = news {
+            r.for_each(|a| handle(Ix::new(a)));
+        } else {
+            handle(ret);
         }
-        ret as _
+        ret
     }
 }
 
@@ -217,14 +296,14 @@ pub struct Container {
 /// A `Molecule` acts like a graph, and can have graph algorithms used on it. It's immutable, with all
 /// mutations making (efficient) copies.
 #[derive(Debug, Clone, Copy)]
-pub struct Molecule<R> {
+pub struct Molecule<Ix, R> {
     arena: R,
-    index: usize,
+    index: Ix,
 }
-impl<R> Molecule<R> {
-    pub fn from_arena<'a, 'b: 'a, A: ArenaAccessible<Access<'a> = R> + 'a>(
+impl<Ix: IndexType, R> Molecule<Ix, R> {
+    pub fn from_arena<'a, 'b: 'a, A: ArenaAccessible<Ix = Ix, Access<'a> = R> + 'a>(
         arena: &'b A,
-        index: usize,
+        index: Ix,
     ) -> Self
     where
         Self: 'a,
@@ -235,9 +314,9 @@ impl<R> Molecule<R> {
         }
     }
 
-    pub fn from_mut_arena<'a, 'b: 'a, A: ArenaAccessibleMut<AccessMut<'a> = R> + 'a>(
+    pub fn from_mut_arena<'a, 'b: 'a, A: ArenaAccessibleMut<Ix = Ix, AccessMut<'a> = R> + 'a>(
         arena: &'b A,
-        index: usize,
+        index: Ix,
     ) -> Self
     where
         Self: 'a,
@@ -250,21 +329,23 @@ impl<R> Molecule<R> {
 
     pub fn arena(&self) -> R::Ref<'_>
     where
-        R: ArenaAccessor,
+        R: ArenaAccessor<Ix = Ix>,
     {
         self.arena.get_arena()
     }
 
     pub fn arena_mut(&self) -> R::RefMut<'_>
     where
-        R: ArenaAccessorMut,
+        R: ArenaAccessorMut<Ix = Ix>,
     {
         self.arena.get_arena_mut()
     }
+}
 
-    pub fn contains(&self, group: usize) -> bool
+impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
+    pub fn contains(&self, group: Ix) -> bool
     where
-        R: ArenaAccessor,
+        R: ArenaAccessor<Ix = Ix>,
     {
         self.arena.get_arena().contains_group(self.index, group)
     }
@@ -274,7 +355,8 @@ impl<R> Molecule<R> {
 /// this allows for lock guards to be used while not forcing them to live for as long as the
 /// accessor.
 pub trait ArenaAccessor {
-    type Ref<'a>: Deref<Target = Arena>
+    type Ix: IndexType;
+    type Ref<'a>: Deref<Target = Arena<Self::Ix>>
     where
         Self: 'a;
 
@@ -285,7 +367,7 @@ pub trait ArenaAccessor {
 
 /// This trait provides mutable access to the underlying arena.
 pub trait ArenaAccessorMut: ArenaAccessor {
-    type RefMut<'a>: DerefMut<Target = Arena>
+    type RefMut<'a>: DerefMut<Target = Arena<Self::Ix>>
     where
         Self: 'a;
 
@@ -296,7 +378,8 @@ pub trait ArenaAccessorMut: ArenaAccessor {
 
 /// This trait allows access to a backing arena.
 pub trait ArenaAccessible {
-    type Access<'a>: ArenaAccessor + 'a
+    type Ix: IndexType;
+    type Access<'a>: ArenaAccessor<Ix = Self::Ix> + 'a
     where
         Self: 'a;
 
@@ -305,7 +388,7 @@ pub trait ArenaAccessible {
 
 /// This trait also allows access to a graph through an internally mutable type.
 pub trait ArenaAccessibleMut: ArenaAccessible {
-    type AccessMut<'a>: ArenaAccessorMut + 'a
+    type AccessMut<'a>: ArenaAccessorMut<Ix = Self::Ix> + 'a
     where
         Self: 'a;
 
@@ -313,6 +396,7 @@ pub trait ArenaAccessibleMut: ArenaAccessible {
 }
 
 impl<T: ArenaAccessible> ArenaAccessible for &T {
+    type Ix = T::Ix;
     type Access<'a> = T::Access<'a> where Self: 'a;
 
     fn get_accessor(&self) -> Self::Access<'_> {
@@ -329,61 +413,68 @@ impl<T: ArenaAccessibleMut> ArenaAccessibleMut for &T {
 
 #[doc(hidden)]
 #[derive(Debug, Clone, Copy)]
-pub struct PtrAcc(*mut Arena);
-impl ArenaAccessor for PtrAcc {
-    type Ref<'a> = &'a Arena;
-    fn get_arena<'a>(&'a self) -> Self::Ref<'a> where Self: 'a {
+pub struct PtrAcc<Ix: IndexType>(*mut Arena<Ix>);
+impl<Ix: IndexType> ArenaAccessor for PtrAcc<Ix> {
+    type Ix = Ix;
+    type Ref<'a> = &'a Arena<Ix>;
+
+    fn get_arena<'a>(&'a self) -> Self::Ref<'a>
+    where
+        Self: 'a,
+    {
         // Safety: this was created with an `unsafe`, so the caller must know about the invariants
-        unsafe {
-            &*self.0
-        }
+        unsafe { &*self.0 }
     }
 }
-impl ArenaAccessorMut for PtrAcc {
-    type RefMut<'a> = &'a mut Arena;
-    fn get_arena_mut<'a>(&'a self) -> Self::RefMut<'a> where Self: 'a {
+impl<Ix: IndexType> ArenaAccessorMut for PtrAcc<Ix> {
+    type RefMut<'a> = &'a mut Arena<Ix>;
+
+    fn get_arena_mut<'a>(&'a self) -> Self::RefMut<'a>
+    where
+        Self: 'a,
+    {
         // Safety: this was created with an `unsafe`, so the caller must know about the invariants
-        unsafe {
-            &mut *self.0
-        }
+        unsafe { &mut *self.0 }
     }
 }
 
 /// Wrapper type around a `*mut Arena`. It has an `unsafe` constructor because the
 /// `ArenaAccessible` implementation can't be.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ArenaPtr(*mut Arena);
-impl ArenaPtr {
+pub struct ArenaPtr<Ix: IndexType>(*mut Arena<Ix>);
+impl<Ix: IndexType> ArenaPtr<Ix> {
     /// # Safety
     /// This type basically wraps a pointer, but moves the `unsafe` to its construction. All
     /// pointer invariants must hold, as they won't be checked elsewhere.
-    pub const unsafe fn new(ptr: *mut Arena) -> Self {
+    pub const unsafe fn new(ptr: *mut Arena<Ix>) -> Self {
         Self(ptr)
     }
-    pub fn get_ptr(self) -> *mut Arena {
+    pub fn get_ptr(self) -> *mut Arena<Ix> {
         self.0
     }
 }
-impl ArenaAccessible for ArenaPtr {
-    type Access<'a> = PtrAcc;
+impl<Ix: IndexType> ArenaAccessible for ArenaPtr<Ix> {
+    type Ix = Ix;
+    type Access<'a> = PtrAcc<Ix>;
 
-    fn get_accessor(&self) -> PtrAcc {
+    fn get_accessor(&self) -> PtrAcc<Ix> {
         PtrAcc(self.0)
     }
 }
-impl ArenaAccessibleMut for ArenaPtr {
-    type AccessMut<'a> = PtrAcc;
+impl<Ix: IndexType> ArenaAccessibleMut for ArenaPtr<Ix> {
+    type AccessMut<'a> = PtrAcc<Ix>;
 
-    fn get_accessor_mut(&self) -> PtrAcc {
+    fn get_accessor_mut(&self) -> PtrAcc<Ix> {
         PtrAcc(self.0)
     }
 }
 
 #[doc(hidden)]
 #[derive(Debug, Clone, Copy)]
-pub struct RefAcc<'a>(&'a Arena);
-impl<'a> ArenaAccessor for RefAcc<'a> {
-    type Ref<'b> = &'b Arena where 'a: 'b;
+pub struct RefAcc<'a, Ix: IndexType>(&'a Arena<Ix>);
+impl<'a, Ix: IndexType> ArenaAccessor for RefAcc<'a, Ix> {
+    type Ix = Ix;
+    type Ref<'b> = &'b Arena<Ix> where 'a: 'b;
 
     fn get_arena<'b>(&'b self) -> Self::Ref<'b>
     where
@@ -393,19 +484,21 @@ impl<'a> ArenaAccessor for RefAcc<'a> {
     }
 }
 
-impl ArenaAccessible for Arena {
-    type Access<'a> = RefAcc<'a>;
+impl<Ix: IndexType> ArenaAccessible for Arena<Ix> {
+    type Ix = Ix;
+    type Access<'a> = RefAcc<'a, Ix>;
 
-    fn get_accessor(&self) -> RefAcc {
+    fn get_accessor(&self) -> RefAcc<Ix> {
         RefAcc(self)
     }
 }
 
 #[doc(hidden)]
 #[derive(Debug, Clone, Copy)]
-pub struct RefCellAcc<'a>(&'a RefCell<Arena>);
-impl<'a> ArenaAccessor for RefCellAcc<'a> {
-    type Ref<'b> = Ref<'b, Arena> where 'a: 'b;
+pub struct RefCellAcc<'a, Ix: IndexType>(&'a RefCell<Arena<Ix>>);
+impl<'a, Ix: IndexType> ArenaAccessor for RefCellAcc<'a, Ix> {
+    type Ix = Ix;
+    type Ref<'b> = Ref<'b, Arena<Ix>> where 'a: 'b;
 
     fn get_arena<'b>(&'b self) -> Self::Ref<'b>
     where
@@ -414,8 +507,8 @@ impl<'a> ArenaAccessor for RefCellAcc<'a> {
         self.0.borrow()
     }
 }
-impl<'a> ArenaAccessorMut for RefCellAcc<'a> {
-    type RefMut<'b> = RefMut<'b, Arena> where 'a: 'b;
+impl<'a, Ix: IndexType> ArenaAccessorMut for RefCellAcc<'a, Ix> {
+    type RefMut<'b> = RefMut<'b, Arena<Ix>> where 'a: 'b;
 
     fn get_arena_mut<'b>(&'b self) -> Self::RefMut<'b>
     where
@@ -425,26 +518,28 @@ impl<'a> ArenaAccessorMut for RefCellAcc<'a> {
     }
 }
 
-impl ArenaAccessible for RefCell<Arena> {
-    type Access<'a> = RefCellAcc<'a>;
+impl<Ix: IndexType> ArenaAccessible for RefCell<Arena<Ix>> {
+    type Ix = Ix;
+    type Access<'a> = RefCellAcc<'a, Ix>;
 
-    fn get_accessor(&self) -> RefCellAcc {
+    fn get_accessor(&self) -> RefCellAcc<Ix> {
         RefCellAcc(self)
     }
 }
-impl ArenaAccessibleMut for RefCell<Arena> {
-    type AccessMut<'a> = RefCellAcc<'a>;
+impl<Ix: IndexType> ArenaAccessibleMut for RefCell<Arena<Ix>> {
+    type AccessMut<'a> = RefCellAcc<'a, Ix>;
 
-    fn get_accessor_mut(&self) -> RefCellAcc {
+    fn get_accessor_mut(&self) -> RefCellAcc<Ix> {
         RefCellAcc(self)
     }
 }
 
 #[doc(hidden)]
 #[derive(Debug, Clone, Copy)]
-pub struct RwLockAcc<'a>(&'a RwLock<Arena>);
-impl<'a> ArenaAccessor for RwLockAcc<'a> {
-    type Ref<'b> = RwLockReadGuard<'b, Arena> where 'a: 'b;
+pub struct RwLockAcc<'a, Ix: IndexType>(&'a RwLock<Arena<Ix>>);
+impl<'a, Ix: IndexType> ArenaAccessor for RwLockAcc<'a, Ix> {
+    type Ix = Ix;
+    type Ref<'b> = RwLockReadGuard<'b, Arena<Ix>> where 'a: 'b;
 
     fn get_arena<'b>(&'b self) -> Self::Ref<'b>
     where
@@ -453,8 +548,8 @@ impl<'a> ArenaAccessor for RwLockAcc<'a> {
         self.0.read()
     }
 }
-impl<'a> ArenaAccessorMut for RwLockAcc<'a> {
-    type RefMut<'b> = RwLockWriteGuard<'b, Arena> where 'a: 'b;
+impl<'a, Ix: IndexType> ArenaAccessorMut for RwLockAcc<'a, Ix> {
+    type RefMut<'b> = RwLockWriteGuard<'b, Arena<Ix>> where 'a: 'b;
 
     fn get_arena_mut<'b>(&'b self) -> Self::RefMut<'b>
     where
@@ -464,22 +559,24 @@ impl<'a> ArenaAccessorMut for RwLockAcc<'a> {
     }
 }
 
-impl ArenaAccessible for RwLock<Arena> {
-    type Access<'a> = RwLockAcc<'a>;
+impl<Ix: IndexType> ArenaAccessible for RwLock<Arena<Ix>> {
+    type Ix = Ix;
+    type Access<'a> = RwLockAcc<'a, Ix>;
 
-    fn get_accessor(&self) -> RwLockAcc {
+    fn get_accessor(&self) -> RwLockAcc<Ix> {
         RwLockAcc(self)
     }
 }
-impl ArenaAccessibleMut for RwLock<Arena> {
-    type AccessMut<'a> = RwLockAcc<'a>;
+impl<Ix: IndexType> ArenaAccessibleMut for RwLock<Arena<Ix>> {
+    type AccessMut<'a> = RwLockAcc<'a, Ix>;
 
-    fn get_accessor_mut(&self) -> RwLockAcc {
+    fn get_accessor_mut(&self) -> RwLockAcc<Ix> {
         RwLockAcc(self)
     }
 }
 
 impl<T: ArenaAccessible> ArenaAccessible for Rc<T> {
+    type Ix = T::Ix;
     type Access<'a> = T::Access<'a> where T: 'a;
 
     fn get_accessor(&self) -> Self::Access<'_> {
@@ -495,6 +592,7 @@ impl<T: ArenaAccessibleMut> ArenaAccessibleMut for Rc<T> {
 }
 
 impl<T: ArenaAccessible> ArenaAccessible for Arc<T> {
+    type Ix = T::Ix;
     type Access<'a> = T::Access<'a> where T: 'a;
 
     fn get_accessor(&self) -> Self::Access<'_> {

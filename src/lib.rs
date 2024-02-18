@@ -5,3 +5,4 @@ pub mod disp;
 pub mod graph;
 pub mod molecule;
 pub mod parse;
+pub mod utils;

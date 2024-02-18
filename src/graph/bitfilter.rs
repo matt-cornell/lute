@@ -1,40 +1,41 @@
+use crate::utils::bitset::BitSet;
+use num_traits::PrimInt;
 use petgraph::data::*;
 use petgraph::visit::*;
 use petgraph::Direction;
-use smallbitvec::SmallBitVec;
 
 #[derive(Debug, Clone)]
-pub struct BitFiltered<G> {
+pub struct BitFiltered<G, T, const N: usize> {
     pub graph: G,
-    pub filter: SmallBitVec,
+    pub filter: BitSet<T, N>,
 }
-impl<G> BitFiltered<G> {
-    pub const fn new(graph: G, filter: SmallBitVec) -> Self {
+impl<G, T, const N: usize> BitFiltered<G, T, N> {
+    pub const fn new(graph: G, filter: BitSet<T, N>) -> Self {
         Self { graph, filter }
     }
 }
 
-impl<G: GraphBase> GraphBase for BitFiltered<G> {
+impl<G: GraphBase, T, const N: usize> GraphBase for BitFiltered<G, T, N> {
     type EdgeId = G::EdgeId;
     type NodeId = G::NodeId;
 }
 
-impl<G: GraphProp> GraphProp for BitFiltered<G> {
+impl<G: GraphProp, T, const N: usize> GraphProp for BitFiltered<G, T, N> {
     type EdgeType = G::EdgeType;
     fn is_directed(&self) -> bool {
         self.graph.is_directed()
     }
 }
 
-impl<G: Data> Data for BitFiltered<G> {
+impl<G: Data, T, const N: usize> Data for BitFiltered<G, T, N> {
     type NodeWeight = G::NodeWeight;
     type EdgeWeight = G::EdgeWeight;
 }
 
-impl<G: DataMap + NodeIndexable> DataMap for BitFiltered<G> {
+impl<G: DataMap + NodeIndexable, T: PrimInt, const N: usize> DataMap for BitFiltered<G, T, N> {
     fn node_weight(&self, id: Self::NodeId) -> Option<&Self::NodeWeight> {
         self.filter
-            .get(self.graph.to_index(id))?
+            .get(self.graph.to_index(id))
             .then(|| self.graph.node_weight(id))?
     }
     fn edge_weight(&self, id: Self::EdgeId) -> Option<&Self::EdgeWeight> {
@@ -42,7 +43,7 @@ impl<G: DataMap + NodeIndexable> DataMap for BitFiltered<G> {
     }
 }
 
-impl<G: NodeIndexable> NodeIndexable for BitFiltered<G> {
+impl<G: NodeIndexable, T, const N: usize> NodeIndexable for BitFiltered<G, T, N> {
     fn from_index(&self, i: usize) -> Self::NodeId {
         self.graph.from_index(i)
     }
@@ -54,7 +55,7 @@ impl<G: NodeIndexable> NodeIndexable for BitFiltered<G> {
     }
 }
 
-impl<G: GetAdjacencyMatrix> GetAdjacencyMatrix for BitFiltered<G> {
+impl<G: GetAdjacencyMatrix, T, const N: usize> GetAdjacencyMatrix for BitFiltered<G, T, N> {
     type AdjMatrix = G::AdjMatrix;
 
     fn adjacency_matrix(&self) -> Self::AdjMatrix {
@@ -65,7 +66,7 @@ impl<G: GetAdjacencyMatrix> GetAdjacencyMatrix for BitFiltered<G> {
     }
 }
 
-impl<'a, G: Data> IntoNodeIdentifiers for &'a BitFiltered<G>
+impl<'a, G: Data, T: PrimInt, const N: usize> IntoNodeIdentifiers for &'a BitFiltered<G, T, N>
 where
     &'a G: IntoNodeIdentifiers<NodeId = G::NodeId>,
 {
@@ -88,7 +89,7 @@ where
 //     }
 // }
 
-impl<'a, G: Data> IntoEdges for &'a BitFiltered<G>
+impl<'a, G: Data, T: PrimInt, const N: usize> IntoEdges for &'a BitFiltered<G, T, N>
 where
     &'a G: IntoEdges<EdgeId = G::EdgeId, NodeId = G::NodeId, EdgeWeight = G::EdgeWeight>,
 {
@@ -99,7 +100,7 @@ where
     }
 }
 
-impl<'a, G: Data> IntoEdgeReferences for &'a BitFiltered<G>
+impl<'a, G: Data, T: PrimInt, const N: usize> IntoEdgeReferences for &'a BitFiltered<G, T, N>
 where
     &'a G: IntoEdgeReferences<EdgeId = G::EdgeId, NodeId = G::NodeId, EdgeWeight = G::EdgeWeight>,
 {
@@ -111,7 +112,7 @@ where
     }
 }
 
-impl<'a, G: Data> IntoNeighbors for &'a BitFiltered<G>
+impl<'a, G: Data, T: PrimInt, const N: usize> IntoNeighbors for &'a BitFiltered<G, T, N>
 where
     &'a G: IntoNeighbors<EdgeId = G::EdgeId, NodeId = G::NodeId>,
 {
@@ -122,7 +123,7 @@ where
     }
 }
 
-impl<'a, G: Data> IntoNeighborsDirected for &'a BitFiltered<G>
+impl<'a, G: Data, T: PrimInt, const N: usize> IntoNeighborsDirected for &'a BitFiltered<G, T, N>
 where
     &'a G: IntoNeighborsDirected<EdgeId = G::EdgeId, NodeId = G::NodeId>,
 {
@@ -133,7 +134,7 @@ where
     }
 }
 
-impl<'a, G: Data> IntoEdgesDirected for &'a BitFiltered<G>
+impl<'a, G: Data, T: PrimInt, const N: usize> IntoEdgesDirected for &'a BitFiltered<G, T, N>
 where
     &'a G: IntoEdgesDirected<EdgeId = G::EdgeId, NodeId = G::NodeId, EdgeWeight = G::EdgeWeight>,
 {
