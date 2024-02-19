@@ -1,9 +1,9 @@
+use chem_sim::prelude::*;
 use clap::{Parser, ValueEnum};
+use petgraph::prelude::*;
 use std::fmt::{self, Display, Formatter};
 use std::io::{stdout, Write};
 use std::path::{Path, PathBuf};
-use chem_sim::prelude::*;
-use petgraph::prelude::*;
 
 #[derive(Debug, Default, Clone, Copy, ValueEnum)]
 enum OutputType {
@@ -29,6 +29,8 @@ struct Cli {
     fmt: OutputType,
     #[arg(short, long)]
     out: Option<PathBuf>,
+    #[arg(short, long)]
+    arena: bool,
     inputs: Vec<String>,
 }
 
@@ -46,7 +48,7 @@ fn write_output<O: Display>(path: Option<&Path>, out: O) {
 fn main() {
     let cli = Cli::parse();
     let mut arena = Arena::<u16>::new();
-    
+
     for input in &cli.inputs {
         match SmilesParser::new(&input).parse() {
             Ok(graph) => {
@@ -54,6 +56,10 @@ fn main() {
             }
             Err(err) => eprintln!("{err}"),
         }
+    }
+
+    if cli.arena {
+        eprintln!("arena: {arena:#?}");
     }
 
     let graph = GraphCompactor::<&StableUnGraph<Atom, Bond, u16>>::new(arena.graph());

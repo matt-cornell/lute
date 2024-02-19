@@ -62,8 +62,8 @@ pub struct AtomData {
     pub hydrogen: B4,
     pub unknown: B4,
     pub other: B4,
-    pub scratch: B2,
     pub chirality: Chirality,
+    pub scratch: B2,
 }
 impl AtomData {
     /// Count the total number of bonded atoms
@@ -215,8 +215,8 @@ impl Atom {
     }
 
     pub fn eq_or_r(&self, other: &Self) -> bool {
-        (self.protons == 0 || other.protons == 0 || self.eq_match_r(other))
-            && self.data.is_compatible(other.data)
+        (self.protons == 0 || other.protons == 0)
+            || (self.eq_match_r(other) && self.data.is_compatible(other.data))
     }
     pub fn eq_match_r(&self, other: &Self) -> bool {
         (self.protons == 0 && other.protons == 0) || self == other

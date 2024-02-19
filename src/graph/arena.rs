@@ -8,9 +8,9 @@ use crate::graph::isomorphism::*;
 use crate::molecule::{Atom, Bond};
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use petgraph::data::DataMap;
+use petgraph::graph::{DefaultIx, IndexType};
 use petgraph::prelude::*;
 use petgraph::visit::*;
-use petgraph::graph::{IndexType, DefaultIx};
 use smallvec::SmallVec;
 use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashMap;
@@ -141,12 +141,15 @@ impl<Ix: IndexType> Arena<Ix> {
                 if ism.iter().any(|&i| matched.get(i)) {
                     continue;
                 }
-                ism.iter().for_each(|&i| {
-                    matched.set(i, true);
+                ism.iter().enumerate().for_each(|(n, &i)| {
+                    if self.graph[cmp.node_map[n]].protons != 0 {
+                        matched.set(i, true);
+                    }
                 });
                 found.push((*n, ism));
             }
         }
+
         let (ret, news) = if found.is_empty() {
             // simple case: no subgraph isomorhpisms found
             let mut map = vec![NodeIndex::end(); mol.node_bound()];
@@ -255,8 +258,7 @@ impl<Ix: IndexType> Arena<Ix> {
                     bond.ai = Ix::new(map[bond.ai.index()].index());
                 }
 
-                self.parts
-                    .push((MolRepr::Atomic(bits), Ix::new(count)));
+                self.parts.push((MolRepr::Atomic(bits), Ix::new(count)));
             }
 
             let out = Ix::new(self.parts.len());

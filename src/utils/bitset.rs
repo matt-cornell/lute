@@ -1,7 +1,8 @@
 use num_traits::*;
 use smallvec::SmallVec;
+use std::fmt::{self, Binary, Debug, Formatter};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct BitSet<T, const N: usize>(SmallVec<T, N>);
 impl<T: PrimInt + Zero, const N: usize> BitSet<T, N> {
     pub const fn new() -> Self {
@@ -40,5 +41,15 @@ impl<T: PrimInt + Zero, const N: usize> BitSet<T, N> {
         for i in &mut self.0 {
             *i = T::zero();
         }
+    }
+}
+
+impl<T: Binary, const N: usize> Debug for BitSet<T, N> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let mut l = f.debug_list();
+        for i in &self.0 {
+            l.entry(&format_args!("{i:0>8b}"));
+        }
+        l.finish()
     }
 }
