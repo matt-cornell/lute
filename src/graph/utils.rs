@@ -25,6 +25,12 @@ impl<T: PrimInt, const N: usize> DisjointGraphIter<T, N> {
         let seen = BitSet::with_capacity(max);
         Self { full, seen }
     }
+    pub fn from_full(full: BitSet<T, N>) -> Self {
+        Self {
+            full,
+            seen: BitSet::new(),
+        }
+    }
 }
 
 impl<T: Binary, const N: usize> Debug for DisjointGraphIter<T, N> {
@@ -62,11 +68,9 @@ impl<G: IntoNeighbors + NodeIndexable, T: PrimInt, const N: usize> Walker<G>
             let idx = graph.to_index(id);
             self.seen.set(idx, true);
             out.set(idx, true);
-            for n in graph.neighbors(id) {
-                if !self.seen.get(graph.to_index(n)) {
-                    stack.push(n);
-                }
-            }
+            stack.extend(graph.neighbors(id).filter(|&id| {
+                self.full.get(graph.to_index(id)) && !self.seen.get(graph.to_index(id))
+            }))
         }
         Some(out)
     }
