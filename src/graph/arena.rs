@@ -227,7 +227,7 @@ impl<Ix: IndexType> Arena<Ix> {
                     }
                 }
             }
-            
+
             let rng = if matched.iter().all(|m| m.0 != 0) {
                 // all atoms make up other molecules
                 // TODO: maybe use `swap_remove` here?
@@ -245,8 +245,7 @@ impl<Ix: IndexType> Arena<Ix> {
                 }
 
                 0..0
-            }
-            else {
+            } else {
                 let mut map = vec![NodeIndex::end(); mol.node_bound()];
                 let mut bits = BSType::new();
                 let mut count = 0;
@@ -291,7 +290,7 @@ impl<Ix: IndexType> Arena<Ix> {
                 let start = self.parts.len();
 
                 self.parts.push((MolRepr::Atomic(bits), Ix::new(count)));
-                
+
                 // TODO: split the fragment if disjoint!
 
                 start..self.parts.len()
@@ -319,7 +318,7 @@ impl<Ix: IndexType> Arena<Ix> {
                     break;
                 }
             }
-        };
+        }
 
         ret
     }
