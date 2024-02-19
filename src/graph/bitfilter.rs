@@ -182,12 +182,7 @@ pub mod iter {
     {
         type Item = I::Item;
         fn next(&mut self) -> Option<I::Item> {
-            while let Some(i) = self.0.next() {
-                if self.2.get(self.1.to_index(i)) {
-                    return Some(i);
-                }
-            }
-            None
+            self.0.by_ref().find(|&i| self.2.get(self.1.to_index(i)))
         }
     }
 
@@ -201,12 +196,9 @@ pub mod iter {
     {
         type Item = I::Item;
         fn next(&mut self) -> Option<I::Item> {
-            while let Some(i) = self.0.next() {
-                if self.2.get(self.1.to_index(i.id())) {
-                    return Some(i);
-                }
-            }
-            None
+            self.0
+                .by_ref()
+                .find(|i| self.2.get(self.1.to_index(i.id())))
         }
     }
 
@@ -220,14 +212,9 @@ pub mod iter {
     {
         type Item = I::Item;
         fn next(&mut self) -> Option<I::Item> {
-            while let Some(i) = self.0.next() {
-                if self.2.get(self.1.to_index(i.source()))
-                    && self.2.get(self.1.to_index(i.target()))
-                {
-                    return Some(i);
-                }
-            }
-            None
+            self.0.by_ref().find(|i| {
+                self.2.get(self.1.to_index(i.source())) && self.2.get(self.1.to_index(i.target()))
+            })
         }
     }
 }

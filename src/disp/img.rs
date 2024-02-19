@@ -1,10 +1,10 @@
 use crate::atom_info::*;
 use crate::molecule::*;
 use fimg::Image;
+use image::*;
 use petgraph::visit::*;
 use petgraph::Undirected;
 use std::num::NonZeroU32;
-use image::*;
 use std::ops::Deref;
 
 const RAW_FONT_DATA: &[u8] = include_bytes!("../../data/Font.ttf");
@@ -145,7 +145,7 @@ where
             max_y = *y + r;
         }
     }
-    
+
     let diff_x = max_x - min_x + 80.0;
     let diff_y = max_y - min_y + 80.0;
     let max_axis = std::cmp::max_by(diff_x, diff_y, f32::total_cmp);
@@ -166,7 +166,11 @@ where
         assert_ne!(ma, 0);
         let buf = gen(ma);
         assert_eq!(buf.as_ref().len(), (ma * ma * 4) as usize);
-        Image::new(NonZeroU32::new_unchecked(ma), NonZeroU32::new_unchecked(ma), buf)
+        Image::new(
+            NonZeroU32::new_unchecked(ma),
+            NonZeroU32::new_unchecked(ma),
+            buf,
+        )
     };
 
     for edge in graph.edge_references() {
@@ -300,14 +304,7 @@ where
                     iy = metrics.height;
                 }
             }
-            img.text(
-                lef - ix as u32 - 2,
-                top,
-                f,
-                &FONT_DATA,
-                &txt,
-                tc
-            );
+            img.text(lef - ix as u32 - 2, top, f, &FONT_DATA, &txt, tc);
         }
 
         if atom.charge != 0 {
@@ -324,24 +321,10 @@ where
                     iy = metrics.height;
                 }
             }
-            img.text(
-                rig + 2,
-                top,
-                f,
-                &FONT_DATA,
-                &txt,
-                tc
-            );
+            img.text(rig + 2, top, f, &FONT_DATA, &txt, tc);
         }
 
-        img.text(
-            lef,
-            top,
-            f,
-            &FONT_DATA,
-            &txt,
-            tc,
-        );
+        img.text(lef, top, f, &FONT_DATA, txt, tc);
     }
 
     ImageBuffer::from_raw(ma, ma, img.take_buffer()).unwrap()

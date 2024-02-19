@@ -1,9 +1,9 @@
-use clap::{Parser, ValueEnum};
-use std::fmt::{self, Display, Formatter};
-use std::io::{self, stdout, Write, Cursor};
-use std::path::{Path, PathBuf};
-use image::*;
 use chem_sim::prelude::*;
+use clap::{Parser, ValueEnum};
+use image::*;
+use std::fmt::{self, Display, Formatter};
+use std::io::{self, stdout, Cursor, Write};
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum OutputType {
@@ -57,7 +57,10 @@ fn write_out<F: FnOnce(&mut dyn Write) -> io::Result<()>>(path: Option<&Path>, c
     }
 }
 
-fn save_img(img: ImageBuffer<Rgba<u8>, Vec<u8>>, fmt: ImageOutputFormat) -> impl FnOnce(&mut dyn Write) -> io::Result<()> {
+fn save_img(
+    img: ImageBuffer<Rgba<u8>, Vec<u8>>,
+    fmt: ImageOutputFormat,
+) -> impl FnOnce(&mut dyn Write) -> io::Result<()> {
     move |w| {
         let mut buf = Vec::new();
         if let Err(err) = img.write_to(&mut Cursor::new(&mut buf), fmt) {
@@ -76,8 +79,14 @@ fn main() {
         Ok(graph) => match cli.fmt {
             OutputType::Dot => write_output(cli.out.as_deref(), fmt_as_dot(&graph)),
             OutputType::Svg => write_output(cli.out.as_deref(), fmt_as_svg(&graph)),
-            OutputType::Png => write_out(cli.out.as_deref(), save_img(make_img_vec(&graph), ImageOutputFormat::Png)),
-            OutputType::Jpg => write_out(cli.out.as_deref(), save_img(make_img_vec(&graph), ImageOutputFormat::Jpeg(80))),
+            OutputType::Png => write_out(
+                cli.out.as_deref(),
+                save_img(make_img_vec(&graph), ImageOutputFormat::Png),
+            ),
+            OutputType::Jpg => write_out(
+                cli.out.as_deref(),
+                save_img(make_img_vec(&graph), ImageOutputFormat::Jpeg(80)),
+            ),
         },
         Err(err) => eprintln!("{err}"),
     }

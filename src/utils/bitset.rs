@@ -1,6 +1,8 @@
+use itertools::{EitherOrBoth::*, Itertools};
 use num_traits::*;
 use smallvec::SmallVec;
 use std::fmt::{self, Binary, Debug, Formatter};
+use std::ops::*;
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct BitSet<T, const N: usize>(SmallVec<T, N>);
@@ -11,6 +13,9 @@ impl<T: PrimInt + Zero, const N: usize> BitSet<T, N> {
     pub fn with_capacity(cap: usize) -> Self {
         let len = (cap + std::mem::size_of::<T>() - 1) / std::mem::size_of::<T>();
         Self(SmallVec::from_elem(T::zero(), len))
+    }
+    pub fn from_buf(buf: SmallVec<T, N>) -> Self {
+        Self(buf)
     }
 
     pub fn as_slice(&self) -> &[T] {
@@ -60,5 +65,204 @@ impl<T: Binary, const N: usize> Debug for BitSet<T, N> {
             l.entry(&format_args!("{i:0>8b}"));
         }
         l.finish()
+    }
+}
+
+impl<T: PrimInt, const N: usize> BitAnd for BitSet<T, N> {
+    type Output = BitSet<T, N>;
+
+    fn bitand(mut self, rhs: Self) -> BitSet<T, N> {
+        self &= rhs;
+        self
+    }
+}
+
+impl<T: PrimInt, const N: usize> BitAnd<&Self> for BitSet<T, N> {
+    type Output = BitSet<T, N>;
+
+    fn bitand(mut self, rhs: &Self) -> BitSet<T, N> {
+        self &= rhs;
+        self
+    }
+}
+
+impl<T: PrimInt, const N: usize> BitAnd for &BitSet<T, N> {
+    type Output = BitSet<T, N>;
+
+    fn bitand(self, rhs: Self) -> BitSet<T, N> {
+        BitSet(self.0.iter().zip(&rhs.0).map(|(l, r)| *l & *r).collect())
+    }
+}
+
+impl<T: PrimInt, const N: usize> BitAndAssign for BitSet<T, N> {
+    fn bitand_assign(&mut self, rhs: Self) {
+        *self &= &rhs;
+    }
+}
+
+impl<T: PrimInt, const N: usize> BitAndAssign<&Self> for BitSet<T, N> {
+    fn bitand_assign(&mut self, rhs: &Self) {
+        self.0
+            .iter_mut()
+            .zip(&rhs.0)
+            .for_each(|(l, r)| *l = *l & *r);
+    }
+}
+
+impl<T: PrimInt, const N: usize> BitOr for BitSet<T, N> {
+    type Output = BitSet<T, N>;
+
+    fn bitor(mut self, rhs: Self) -> BitSet<T, N> {
+        self |= rhs;
+        self
+    }
+}
+
+impl<T: PrimInt, const N: usize> BitOr<&Self> for BitSet<T, N> {
+    type Output = BitSet<T, N>;
+
+    fn bitor(mut self, rhs: &Self) -> BitSet<T, N> {
+        self |= rhs;
+        self
+    }
+}
+
+impl<T: PrimInt, const N: usize> BitOr for &BitSet<T, N> {
+    type Output = BitSet<T, N>;
+
+    fn bitor(self, rhs: Self) -> BitSet<T, N> {
+        BitSet(
+            self.0
+                .iter()
+                .zip_longest(&rhs.0)
+                .map(|e| match e {
+                    Left(i) | Right(i) => *i,
+                    Both(l, r) => *l | *r,
+                })
+                .collect(),
+        )
+    }
+}
+
+impl<T: PrimInt, const N: usize> BitOrAssign for BitSet<T, N> {
+    fn bitor_assign(&mut self, rhs: Self) {
+        *self |= &rhs;
+    }
+}
+
+impl<T: PrimInt, const N: usize> BitOrAssign<&Self> for BitSet<T, N> {
+    fn bitor_assign(&mut self, rhs: &Self) {
+        let mut iter = rhs.0.iter();
+        self.0
+            .iter_mut()
+            .zip(iter.by_ref())
+            .for_each(|(l, r)| *l = *l | *r);
+        self.0.extend(iter.copied());
+    }
+}
+
+impl<T: PrimInt, const N: usize> BitXor for BitSet<T, N> {
+    type Output = BitSet<T, N>;
+
+    fn bitxor(mut self, rhs: Self) -> BitSet<T, N> {
+        self ^= rhs;
+        self
+    }
+}
+
+impl<T: PrimInt, const N: usize> BitXor<&Self> for BitSet<T, N> {
+    type Output = BitSet<T, N>;
+
+    fn bitxor(mut self, rhs: &Self) -> BitSet<T, N> {
+        self ^= rhs;
+        self
+    }
+}
+
+impl<T: PrimInt, const N: usize> BitXor for &BitSet<T, N> {
+    type Output = BitSet<T, N>;
+
+    fn bitxor(self, rhs: Self) -> BitSet<T, N> {
+        BitSet(
+            self.0
+                .iter()
+                .zip_longest(&rhs.0)
+                .map(|e| match e {
+                    Left(i) | Right(i) => *i,
+                    Both(l, r) => *l ^ *r,
+                })
+                .collect(),
+        )
+    }
+}
+
+impl<T: PrimInt, const N: usize> BitXorAssign for BitSet<T, N> {
+    fn bitxor_assign(&mut self, rhs: Self) {
+        *self ^= &rhs;
+    }
+}
+
+impl<T: PrimInt, const N: usize> BitXorAssign<&Self> for BitSet<T, N> {
+    fn bitxor_assign(&mut self, rhs: &Self) {
+        let mut iter = rhs.0.iter();
+        self.0
+            .iter_mut()
+            .zip(iter.by_ref())
+            .for_each(|(l, r)| *l = *l ^ *r);
+        self.0.extend(iter.copied());
+    }
+}
+
+impl<'a, T, const N: usize> Not for &'a BitSet<T, N> {
+    type Output = InvSet<'a, T>;
+
+    fn not(self) -> InvSet<'a, T> {
+        InvSet(&self.0)
+    }
+}
+
+/// Since `BitSet` is a set, we can't construct its complement in a finite amount of space.
+/// Instead, we have an `InvSet` which does basically the same thing so operations can be used.
+#[derive(Debug, Clone, Copy)]
+pub struct InvSet<'a, T>(&'a [T]);
+
+impl<T: PrimInt, const N: usize> BitAnd<InvSet<'_, T>> for BitSet<T, N> {
+    type Output = BitSet<T, N>;
+
+    fn bitand(mut self, rhs: InvSet<'_, T>) -> BitSet<T, N> {
+        self &= rhs;
+        self
+    }
+}
+
+impl<T: PrimInt, const N: usize> BitAnd<&InvSet<'_, T>> for BitSet<T, N> {
+    type Output = BitSet<T, N>;
+
+    fn bitand(mut self, rhs: &InvSet<'_, T>) -> BitSet<T, N> {
+        self &= rhs;
+        self
+    }
+}
+
+impl<T: PrimInt, const N: usize> BitAnd<&InvSet<'_, T>> for &BitSet<T, N> {
+    type Output = BitSet<T, N>;
+
+    fn bitand(self, rhs: &InvSet<'_, T>) -> BitSet<T, N> {
+        BitSet(self.0.iter().zip(rhs.0).map(|(l, r)| *l & !*r).collect())
+    }
+}
+
+impl<T: PrimInt, const N: usize> BitAndAssign<InvSet<'_, T>> for BitSet<T, N> {
+    fn bitand_assign(&mut self, rhs: InvSet<'_, T>) {
+        *self &= &rhs;
+    }
+}
+
+impl<T: PrimInt, const N: usize> BitAndAssign<&InvSet<'_, T>> for BitSet<T, N> {
+    fn bitand_assign(&mut self, rhs: &InvSet<'_, T>) {
+        self.0
+            .iter_mut()
+            .zip(rhs.0)
+            .for_each(|(l, r)| *l = *l & !*r);
     }
 }
