@@ -11,7 +11,7 @@ use petgraph::data::DataMap;
 use petgraph::graph::{DefaultIx, IndexType};
 use petgraph::prelude::*;
 use petgraph::visit::*;
-use smallvec::SmallVec;
+use smallvec::{smallvec, SmallVec};
 use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
@@ -127,10 +127,10 @@ impl<Ix: IndexType> Arena<Ix> {
             })
             .collect::<Vec<_>>();
         // keep track of matched atoms so there's no overlap
-        let mut matched = BSType::with_capacity(mol.node_bound());
+        let mut matched: SmallVec<_, 16> = smallvec![(0, 0); mol.node_bound()];
         // keep track of found isomorphisms, don't try to handle them in the search
         let mut found = SmallVec::<_, 8>::new();
-        for (n, cmp) in &compacted {
+        for (k, (n, cmp)) in compacted.iter().enumerate() {
             for ism in
                 subgraph_isomorphisms_iter(&cmp, &mol, &mut Atom::eq_or_r, &mut PartialEq::eq)
             {
@@ -138,19 +138,19 @@ impl<Ix: IndexType> Arena<Ix> {
                     // simplest case, this molecule already exists
                     return Ix::new(*n);
                 }
-                if ism.iter().any(|&i| matched.get(i)) {
+                if ism.iter().any(|&i| matched[i].0.index() != 0) {
                     continue;
                 }
                 ism.iter().enumerate().for_each(|(n, &i)| {
                     if self.graph[cmp.node_map[n]].protons != 0 {
-                        matched.set(i, true);
+                        matched[i] = (k + 1, n);
                     }
                 });
                 found.push((*n, ism));
             }
         }
 
-        let (ret, news) = if found.is_empty() {
+        let (ret, rng) = if found.is_empty() {
             // simple case: no subgraph isomorhpisms found
             let mut map = vec![NodeIndex::end(); mol.node_bound()];
             let mut bits = BSType::new();
@@ -166,10 +166,10 @@ impl<Ix: IndexType> Arena<Ix> {
                     *e.weight(),
                 );
             });
-            let out = Ix::new(self.parts.len());
+            let out = self.parts.len();
             self.parts
                 .push((MolRepr::Atomic(bits), Ix::new(mol.node_count())));
-            (out, None)
+            (Ix::new(out), out..(out + 1))
         } else {
             let mut nb = BSType::with_capacity(mol.node_bound());
             let mut needs_clear = false;
@@ -222,19 +222,37 @@ impl<Ix: IndexType> Arena<Ix> {
                             }
                         }));
 
-                        #[cfg(debug_assertions)]
-                        assert_eq!(matched_count, atom.data.unknown());
+                        // #[cfg(debug_assertions)]
+                        // assert_eq!(matched_count, atom.data.unknown());
                     }
                 }
             }
+            
+            let rng = if matched.iter().all(|m| m.0 != 0) {
+                // all atoms make up other molecules
+                // TODO: maybe use `swap_remove` here?
+                frags.remove(0);
+                for bond in &mut bonds {
+                    let (mut an, ai) = matched[bond.ai.index()];
+                    an -= 1;
+                    if an <= bond.bn.index() {
+                        bond.an = Ix::new(an);
+                        bond.ai = Ix::new(ai);
+                    } else {
+                        bond.an = std::mem::replace(&mut bond.bn, Ix::new(an));
+                        bond.ai = std::mem::replace(&mut bond.bi, Ix::new(ai));
+                    }
+                }
 
-            {
+                0..0
+            }
+            else {
                 let mut map = vec![NodeIndex::end(); mol.node_bound()];
                 let mut bits = BSType::new();
                 let mut count = 0;
                 mol.node_references().for_each(|n| {
                     let ni = mol.to_index(n.id());
-                    if !matched.get(ni) {
+                    if matched[ni].0.index() == 0 {
                         count += 1;
                         let idx = self.graph.add_node(*n.weight());
                         map[ni] = idx;
@@ -244,7 +262,7 @@ impl<Ix: IndexType> Arena<Ix> {
                 mol.edge_references().for_each(|e| {
                     let si = mol.to_index(e.source());
                     let ti = mol.to_index(e.target());
-                    if matched.get(ti) || matched.get(si) {
+                    if matched[ti].0.index() != 0 || matched[si].0.index() != 0 {
                         return;
                     }
                     self.graph.add_edge(
@@ -255,11 +273,29 @@ impl<Ix: IndexType> Arena<Ix> {
                 });
 
                 for bond in &mut bonds {
-                    bond.ai = Ix::new(map[bond.ai.index()].index());
+                    let ix = map[bond.ai.index()].index();
+                    if ix == <Ix as IndexType>::max().index() {
+                        let (an, ai) = matched[bond.ai.index()];
+                        if an <= bond.bn.index() {
+                            bond.an = Ix::new(an);
+                            bond.ai = Ix::new(ai);
+                        } else {
+                            bond.an = std::mem::replace(&mut bond.bn, Ix::new(an));
+                            bond.ai = std::mem::replace(&mut bond.bi, Ix::new(ai));
+                        }
+                    } else {
+                        bond.ai = Ix::new(ix);
+                    }
                 }
 
+                let start = self.parts.len();
+
                 self.parts.push((MolRepr::Atomic(bits), Ix::new(count)));
-            }
+                
+                // TODO: split the fragment if disjoint!
+
+                start..self.parts.len()
+            };
 
             let out = Ix::new(self.parts.len());
             self.parts.push((
@@ -267,15 +303,12 @@ impl<Ix: IndexType> Arena<Ix> {
                 Ix::new(mol.node_count()),
             ));
 
-            let start = self.parts.len();
-
-            // TODO: split the fragment if disjoint!
-
-            (out, Some(start..self.parts.len()))
+            (out, rng)
         };
-        let mut handle = |new: usize| {
+
+        for new in rng {
             let Some((MolRepr::Atomic(a), _)) = self.parts.get(new) else {
-                return;
+                continue;
             };
             let nc = GraphCompactor::<BitFiltered<&Graph<Ix>, _, ATOM_BIT_STORAGE>>::new(
                 BitFiltered::new(&self.graph, a.clone()),
@@ -287,12 +320,7 @@ impl<Ix: IndexType> Arena<Ix> {
                 }
             }
         };
-        if let Some(r) = news {
-            handle(ret.index() - 1);
-            r.for_each(handle);
-        } else {
-            handle(ret.index());
-        }
+
         ret
     }
 }

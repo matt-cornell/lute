@@ -42,6 +42,15 @@ impl<T: PrimInt + Zero, const N: usize> BitSet<T, N> {
             *i = T::zero();
         }
     }
+
+    pub fn all_zero(&self) -> bool {
+        let zero = T::zero();
+        self.0.iter().all(|&i| i == zero)
+    }
+    pub fn all_ones(&self) -> bool {
+        let ones = !T::zero();
+        self.0.iter().all(|&i| i == ones)
+    }
 }
 
 impl<T: Binary, const N: usize> Debug for BitSet<T, N> {
