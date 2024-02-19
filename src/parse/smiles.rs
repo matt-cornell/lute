@@ -592,20 +592,22 @@ impl<'a> SmilesParser<'a> {
     /// Update R-groups to avoid any duplicates (unsuppressed) or suppress them
     fn update_rs(&mut self) -> Result<(), SmilesError<'a>> {
         if self.suppress {
-            for n in self.graph.node_indices() {
-                if self.graph.node_count() <= n.index() {
-                    break;
-                }
+            let mut i = 0;
+            while i < self.graph.node_count() {
+                let n = NodeIndex::new(i);
                 if self.graph[n].protons != 0 {
+                    i += 1;
                     continue;
                 };
                 let Some((edge, neighbor)) = self.graph.neighbors(n).detach().next(&self.graph)
                 else {
+                    i += 1;
                     continue;
                 };
                 if self.graph[neighbor].data.chirality().is_chiral()
                     || self.graph[edge] != Bond::Single
                 {
+                    i += 1;
                     continue;
                 }
                 self.graph[neighbor].add_rs(1)?;

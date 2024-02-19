@@ -181,8 +181,8 @@ impl Atom {
         }
     }
     pub fn add_rs(&mut self, r: u8) -> Result<(), TooManyBonds> {
-        let h = self.data.unknown() + r;
-        if h < 16 {
+        let r = self.data.unknown() + r;
+        if r < 16 {
             self.data.set_unknown(r);
             Ok(())
         } else {
