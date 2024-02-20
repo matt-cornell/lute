@@ -1,23 +1,32 @@
 use chem_sim::prelude::*;
 use clap::{Parser, ValueEnum};
+#[cfg(feature = "mol-bmp")]
 use image::*;
 use std::fmt::{self, Display, Formatter};
-use std::io::{self, stdout, Cursor, Write};
+#[cfg(feature = "mol-bmp")]
+use std::io::{self, Cursor};
+use std::io::{stdout, Write};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum OutputType {
     Dot,
+    #[cfg(feature = "mol-svg")]
     Svg,
+    #[cfg(feature = "mol-bmp")]
     Png,
+    #[cfg(feature = "mol-bmp")]
     Jpg,
 }
 impl Display for OutputType {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Dot => f.write_str("dot"),
+            #[cfg(feature = "mol-svg")]
             Self::Svg => f.write_str("svg"),
+            #[cfg(feature = "mol-bmp")]
             Self::Png => f.write_str("png"),
+            #[cfg(feature = "mol-bmp")]
             Self::Jpg => f.write_str("jpg"),
         }
     }
@@ -78,11 +87,14 @@ fn main() {
     match parser.parse() {
         Ok(graph) => match cli.fmt {
             OutputType::Dot => write_output(cli.out.as_deref(), fmt_as_dot(&graph)),
+            #[cfg(feature = "mol-svg")]
             OutputType::Svg => write_output(cli.out.as_deref(), fmt_as_svg(&graph)),
+            #[cfg(feature = "mol-bmp")]
             OutputType::Png => write_out(
                 cli.out.as_deref(),
                 save_img(make_img_vec(&graph), ImageOutputFormat::Png),
             ),
+            #[cfg(feature = "mol-bmp")]
             OutputType::Jpg => write_out(
                 cli.out.as_deref(),
                 save_img(make_img_vec(&graph), ImageOutputFormat::Jpeg(80)),
