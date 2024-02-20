@@ -27,8 +27,8 @@ impl<T: PrimInt, const N: usize> DisjointGraphIter<T, N> {
     }
     pub fn from_full(full: BitSet<T, N>) -> Self {
         Self {
+            seen: BitSet::with_capacity(full.as_slice().len() * std::mem::size_of::<T>()),
             full,
-            seen: BitSet::new(),
         }
     }
 }

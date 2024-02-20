@@ -56,13 +56,16 @@ impl<T: PrimInt + Zero, const N: usize> BitSet<T, N> {
         let ones = !T::zero();
         self.0.iter().all(|&i| i == ones)
     }
+    pub fn count_ones(&self) -> usize {
+        self.0.iter().map(|i| i.count_ones() as usize).sum()
+    }
 }
 
 impl<T: Binary, const N: usize> Debug for BitSet<T, N> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let mut l = f.debug_list();
         for i in &self.0 {
-            l.entry(&format_args!("{i:0>8b}"));
+            l.entry(&format_args!("{i:0>0$b}", std::mem::size_of::<T>() * 8));
         }
         l.finish()
     }

@@ -776,3 +776,32 @@ where
     let mut st = (Vf2State::new(&g0), Vf2State::new(&g1));
     self::matching::try_match(&mut st, &mut node_match, &mut edge_match, false).unwrap_or(false)
 }
+
+pub fn find_isomorphism_matching<'a, G0, G1, NM, EM>(
+    g0: &'a G0,
+    g1: &'a G1,
+    node_match: &'a mut NM,
+    edge_match: &'a mut EM,
+) -> Option<Vec<usize>>
+where
+    G0: 'a
+        + NodeCompactIndexable
+        + DataMap
+        + GetAdjacencyMatrix
+        + GraphProp<EdgeType = Undirected>
+        + IntoEdgesDirected,
+    G1: 'a
+        + NodeCompactIndexable
+        + DataMap
+        + GetAdjacencyMatrix
+        + GraphProp<EdgeType = Undirected>
+        + IntoEdgesDirected,
+    NM: 'a + FnMut(&G0::NodeWeight, &G1::NodeWeight) -> bool,
+    EM: 'a + FnMut(&G0::EdgeWeight, &G1::EdgeWeight) -> bool,
+{
+    if g0.node_count() != g1.node_count() {
+        return None;
+    }
+
+    self::matching::GraphMatcher::new(g0, g1, node_match, edge_match, false).next()
+}
