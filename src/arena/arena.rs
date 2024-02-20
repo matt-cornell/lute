@@ -2,24 +2,20 @@
 //! reactions often only involve a small part of the molecule, it would be inefficient to make
 //! copies of everything.
 
+use super::*;
 use crate::graph::bitfilter::BitFiltered;
 use crate::graph::compact::GraphCompactor;
 use crate::graph::isomorphism::*;
 use crate::graph::nodefilter::NodeFilter;
 use crate::graph::utils::DisjointGraphIter;
 use crate::molecule::{Atom, Bond};
-use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use petgraph::data::DataMap;
 use petgraph::graph::{DefaultIx, IndexType};
 use petgraph::prelude::*;
 use petgraph::visit::*;
 use smallvec::{smallvec, SmallVec};
-use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashMap;
 use std::hash::Hash;
-use std::ops::{Deref, DerefMut};
-use std::rc::Rc;
-use std::sync::Arc;
 
 const ATOM_BIT_STORAGE: usize = 2;
 
@@ -41,7 +37,7 @@ struct BrokenMol<Ix> {
     bonds: SmallVec<InterFragBond<Ix>, 8>,
 }
 
-#[allow(clippy::large_enum_variant)]
+#[allow(clippy::large_enum_variant, dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum MolRepr<Ix> {
     Atomic(BSType),
@@ -94,7 +90,7 @@ impl<Ix: IndexType> Arena<Ix> {
 
     /// Get a graph of the molecule at the given index. Note that `Molecule::from_arena` could give
     /// better results as it can borrow from `RefCell`s and `RwLock`s.
-    pub fn molecule(&self, mol: Ix) -> Molecule<Ix, RefAcc<Ix>> {
+    pub fn molecule(&self, mol: Ix) -> Molecule<Ix, access::RefAcc<Ix>> {
         Molecule::from_arena(self, mol)
     }
 
@@ -110,9 +106,8 @@ impl<Ix: IndexType> Arena<Ix> {
             + GetAdjacencyMatrix
             + NodeCompactIndexable
             + IntoEdgesDirected
-            + IntoNodeReferences
-            + std::fmt::Debug,
-        G::NodeId: Hash + Eq + std::fmt::Debug,
+            + IntoNodeReferences,
+        G::NodeId: Hash + Eq,
     {
         let compacted = (0..self.parts.len())
             .filter_map(|i| {
@@ -395,327 +390,5 @@ impl<Ix: IndexType> Arena<Ix> {
 
             out
         }
-    }
-}
-
-/// A `Container` corresponds to a reaction vessel. It's at this layer that actual reactions are
-/// handled.
-#[derive(Debug, Clone)]
-pub struct Container {
-    pub quantities: HashMap<usize, f64>,
-    pub temperature: f64,
-}
-
-/// A `Molecule` acts like a graph, and can have graph algorithms used on it. It's immutable, with all
-/// mutations making (efficient) copies.
-#[derive(Debug, Clone, Copy)]
-pub struct Molecule<Ix, R> {
-    arena: R,
-    index: Ix,
-}
-impl<Ix: IndexType, R> Molecule<Ix, R> {
-    pub fn from_arena<'a, 'b: 'a, A: ArenaAccessible<Ix = Ix, Access<'a> = R> + 'a>(
-        arena: &'b A,
-        index: Ix,
-    ) -> Self
-    where
-        Self: 'a,
-    {
-        Self {
-            arena: arena.get_accessor(),
-            index,
-        }
-    }
-
-    pub fn from_mut_arena<'a, 'b: 'a, A: ArenaAccessibleMut<Ix = Ix, AccessMut<'a> = R> + 'a>(
-        arena: &'b A,
-        index: Ix,
-    ) -> Self
-    where
-        Self: 'a,
-    {
-        Self {
-            arena: arena.get_accessor_mut(),
-            index,
-        }
-    }
-
-    pub fn arena(&self) -> R::Ref<'_>
-    where
-        R: ArenaAccessor<Ix = Ix>,
-    {
-        self.arena.get_arena()
-    }
-
-    pub fn arena_mut(&self) -> R::RefMut<'_>
-    where
-        R: ArenaAccessorMut<Ix = Ix>,
-    {
-        self.arena.get_arena_mut()
-    }
-}
-
-impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
-    pub fn contains(&self, group: Ix) -> bool
-    where
-        R: ArenaAccessor<Ix = Ix>,
-    {
-        self.arena.get_arena().contains_group(self.index, group)
-    }
-}
-
-/// This trait handles the access to the backing arena. Rather than just passing around references,
-/// this allows for lock guards to be used while not forcing them to live for as long as the
-/// accessor.
-pub trait ArenaAccessor {
-    type Ix: IndexType;
-    type Ref<'a>: Deref<Target = Arena<Self::Ix>>
-    where
-        Self: 'a;
-
-    fn get_arena<'a>(&'a self) -> Self::Ref<'a>
-    where
-        Self: 'a;
-}
-
-/// This trait provides mutable access to the underlying arena.
-pub trait ArenaAccessorMut: ArenaAccessor {
-    type RefMut<'a>: DerefMut<Target = Arena<Self::Ix>>
-    where
-        Self: 'a;
-
-    fn get_arena_mut<'a>(&'a self) -> Self::RefMut<'a>
-    where
-        Self: 'a;
-}
-
-/// This trait allows access to a backing arena.
-pub trait ArenaAccessible {
-    type Ix: IndexType;
-    type Access<'a>: ArenaAccessor<Ix = Self::Ix> + 'a
-    where
-        Self: 'a;
-
-    fn get_accessor(&self) -> Self::Access<'_>;
-}
-
-/// This trait also allows access to a graph through an internally mutable type.
-pub trait ArenaAccessibleMut: ArenaAccessible {
-    type AccessMut<'a>: ArenaAccessorMut<Ix = Self::Ix> + 'a
-    where
-        Self: 'a;
-
-    fn get_accessor_mut(&self) -> Self::AccessMut<'_>;
-}
-
-impl<T: ArenaAccessible> ArenaAccessible for &T {
-    type Ix = T::Ix;
-    type Access<'a> = T::Access<'a> where Self: 'a;
-
-    fn get_accessor(&self) -> Self::Access<'_> {
-        T::get_accessor(self)
-    }
-}
-impl<T: ArenaAccessibleMut> ArenaAccessibleMut for &T {
-    type AccessMut<'a> = T::AccessMut<'a> where Self: 'a;
-
-    fn get_accessor_mut(&self) -> Self::AccessMut<'_> {
-        T::get_accessor_mut(self)
-    }
-}
-
-#[doc(hidden)]
-#[derive(Debug, Clone, Copy)]
-pub struct PtrAcc<Ix: IndexType>(*mut Arena<Ix>);
-impl<Ix: IndexType> ArenaAccessor for PtrAcc<Ix> {
-    type Ix = Ix;
-    type Ref<'a> = &'a Arena<Ix>;
-
-    fn get_arena<'a>(&'a self) -> Self::Ref<'a>
-    where
-        Self: 'a,
-    {
-        // Safety: this was created with an `unsafe`, so the caller must know about the invariants
-        unsafe { &*self.0 }
-    }
-}
-impl<Ix: IndexType> ArenaAccessorMut for PtrAcc<Ix> {
-    type RefMut<'a> = &'a mut Arena<Ix>;
-
-    fn get_arena_mut<'a>(&'a self) -> Self::RefMut<'a>
-    where
-        Self: 'a,
-    {
-        // Safety: this was created with an `unsafe`, so the caller must know about the invariants
-        unsafe { &mut *self.0 }
-    }
-}
-
-/// Wrapper type around a `*mut Arena`. It has an `unsafe` constructor because the
-/// `ArenaAccessible` implementation can't be.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ArenaPtr<Ix: IndexType>(*mut Arena<Ix>);
-impl<Ix: IndexType> ArenaPtr<Ix> {
-    /// # Safety
-    /// This type basically wraps a pointer, but moves the `unsafe` to its construction. All
-    /// pointer invariants must hold, as they won't be checked elsewhere.
-    pub const unsafe fn new(ptr: *mut Arena<Ix>) -> Self {
-        Self(ptr)
-    }
-    pub fn get_ptr(self) -> *mut Arena<Ix> {
-        self.0
-    }
-}
-impl<Ix: IndexType> ArenaAccessible for ArenaPtr<Ix> {
-    type Ix = Ix;
-    type Access<'a> = PtrAcc<Ix>;
-
-    fn get_accessor(&self) -> PtrAcc<Ix> {
-        PtrAcc(self.0)
-    }
-}
-impl<Ix: IndexType> ArenaAccessibleMut for ArenaPtr<Ix> {
-    type AccessMut<'a> = PtrAcc<Ix>;
-
-    fn get_accessor_mut(&self) -> PtrAcc<Ix> {
-        PtrAcc(self.0)
-    }
-}
-
-#[doc(hidden)]
-#[derive(Debug, Clone, Copy)]
-pub struct RefAcc<'a, Ix: IndexType>(&'a Arena<Ix>);
-impl<'a, Ix: IndexType> ArenaAccessor for RefAcc<'a, Ix> {
-    type Ix = Ix;
-    type Ref<'b> = &'b Arena<Ix> where 'a: 'b;
-
-    fn get_arena<'b>(&'b self) -> Self::Ref<'b>
-    where
-        'a: 'b,
-    {
-        self.0
-    }
-}
-
-impl<Ix: IndexType> ArenaAccessible for Arena<Ix> {
-    type Ix = Ix;
-    type Access<'a> = RefAcc<'a, Ix>;
-
-    fn get_accessor(&self) -> RefAcc<Ix> {
-        RefAcc(self)
-    }
-}
-
-#[doc(hidden)]
-#[derive(Debug, Clone, Copy)]
-pub struct RefCellAcc<'a, Ix: IndexType>(&'a RefCell<Arena<Ix>>);
-impl<'a, Ix: IndexType> ArenaAccessor for RefCellAcc<'a, Ix> {
-    type Ix = Ix;
-    type Ref<'b> = Ref<'b, Arena<Ix>> where 'a: 'b;
-
-    fn get_arena<'b>(&'b self) -> Self::Ref<'b>
-    where
-        'a: 'b,
-    {
-        self.0.borrow()
-    }
-}
-impl<'a, Ix: IndexType> ArenaAccessorMut for RefCellAcc<'a, Ix> {
-    type RefMut<'b> = RefMut<'b, Arena<Ix>> where 'a: 'b;
-
-    fn get_arena_mut<'b>(&'b self) -> Self::RefMut<'b>
-    where
-        'a: 'b,
-    {
-        self.0.borrow_mut()
-    }
-}
-
-impl<Ix: IndexType> ArenaAccessible for RefCell<Arena<Ix>> {
-    type Ix = Ix;
-    type Access<'a> = RefCellAcc<'a, Ix>;
-
-    fn get_accessor(&self) -> RefCellAcc<Ix> {
-        RefCellAcc(self)
-    }
-}
-impl<Ix: IndexType> ArenaAccessibleMut for RefCell<Arena<Ix>> {
-    type AccessMut<'a> = RefCellAcc<'a, Ix>;
-
-    fn get_accessor_mut(&self) -> RefCellAcc<Ix> {
-        RefCellAcc(self)
-    }
-}
-
-#[doc(hidden)]
-#[derive(Debug, Clone, Copy)]
-pub struct RwLockAcc<'a, Ix: IndexType>(&'a RwLock<Arena<Ix>>);
-impl<'a, Ix: IndexType> ArenaAccessor for RwLockAcc<'a, Ix> {
-    type Ix = Ix;
-    type Ref<'b> = RwLockReadGuard<'b, Arena<Ix>> where 'a: 'b;
-
-    fn get_arena<'b>(&'b self) -> Self::Ref<'b>
-    where
-        'a: 'b,
-    {
-        self.0.read()
-    }
-}
-impl<'a, Ix: IndexType> ArenaAccessorMut for RwLockAcc<'a, Ix> {
-    type RefMut<'b> = RwLockWriteGuard<'b, Arena<Ix>> where 'a: 'b;
-
-    fn get_arena_mut<'b>(&'b self) -> Self::RefMut<'b>
-    where
-        'a: 'b,
-    {
-        self.0.write()
-    }
-}
-
-impl<Ix: IndexType> ArenaAccessible for RwLock<Arena<Ix>> {
-    type Ix = Ix;
-    type Access<'a> = RwLockAcc<'a, Ix>;
-
-    fn get_accessor(&self) -> RwLockAcc<Ix> {
-        RwLockAcc(self)
-    }
-}
-impl<Ix: IndexType> ArenaAccessibleMut for RwLock<Arena<Ix>> {
-    type AccessMut<'a> = RwLockAcc<'a, Ix>;
-
-    fn get_accessor_mut(&self) -> RwLockAcc<Ix> {
-        RwLockAcc(self)
-    }
-}
-
-impl<T: ArenaAccessible> ArenaAccessible for Rc<T> {
-    type Ix = T::Ix;
-    type Access<'a> = T::Access<'a> where T: 'a;
-
-    fn get_accessor(&self) -> Self::Access<'_> {
-        T::get_accessor(self)
-    }
-}
-impl<T: ArenaAccessibleMut> ArenaAccessibleMut for Rc<T> {
-    type AccessMut<'a> = T::AccessMut<'a> where T: 'a;
-
-    fn get_accessor_mut(&self) -> Self::AccessMut<'_> {
-        T::get_accessor_mut(&**self)
-    }
-}
-
-impl<T: ArenaAccessible> ArenaAccessible for Arc<T> {
-    type Ix = T::Ix;
-    type Access<'a> = T::Access<'a> where T: 'a;
-
-    fn get_accessor(&self) -> Self::Access<'_> {
-        T::get_accessor(self)
-    }
-}
-impl<T: ArenaAccessibleMut> ArenaAccessibleMut for Arc<T> {
-    type AccessMut<'a> = T::AccessMut<'a> where T: 'a;
-
-    fn get_accessor_mut(&self) -> Self::AccessMut<'_> {
-        T::get_accessor_mut(&**self)
     }
 }
