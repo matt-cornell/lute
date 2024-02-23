@@ -8,9 +8,8 @@ use crate::graph::compact::GraphCompactor;
 use crate::graph::isomorphism::*;
 use crate::graph::nodefilter::NodeFilter;
 use crate::graph::utils::DisjointGraphIter;
-use crate::molecule::{Atom, Bond};
 use petgraph::data::DataMap;
-use petgraph::graph::{DefaultIx, IndexType};
+use petgraph::graph::DefaultIx;
 use petgraph::prelude::*;
 use petgraph::visit::*;
 use smallvec::{smallvec, SmallVec};
@@ -37,11 +36,17 @@ struct BrokenMol<Ix> {
     bonds: SmallVec<InterFragBond<Ix>, 8>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ModdedMol<Ix> {
+    base: Ix,
+}
+
 #[allow(clippy::large_enum_variant, dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum MolRepr<Ix> {
     Atomic(BSType),
     Broken(BrokenMol<Ix>),
+    Modify(ModdedMol<Ix>),
     Redirect(Ix),
 }
 

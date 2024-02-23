@@ -11,3 +11,6 @@ pub use access::{ArenaAccessible, ArenaAccessibleMut, ArenaAccessor, ArenaAccess
 pub use arena::Arena;
 pub use container::Container;
 pub use molecule::Molecule;
+
+use petgraph::graph::IndexType;
+use crate::molecule::*;

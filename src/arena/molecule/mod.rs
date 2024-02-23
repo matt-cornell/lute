@@ -1,5 +1,7 @@
 use super::*;
-use petgraph::graph::IndexType;
+pub mod graph_traits;
+mod node_impls;
+pub use node_impls::*;
 
 /// A `Molecule` acts like a graph, and can have graph algorithms used on it. It's immutable, with all
 /// mutations making (efficient) copies.
@@ -8,7 +10,7 @@ pub struct Molecule<Ix, R> {
     arena: R,
     index: Ix,
 }
-impl<Ix: IndexType, R> Molecule<Ix, R> {
+impl<Ix, R> Molecule<Ix, R> {
     pub fn from_arena<'a, 'b: 'a, A: ArenaAccessible<Ix = Ix, Access<'a> = R> + 'a>(
         arena: &'b A,
         index: Ix,
@@ -51,10 +53,19 @@ impl<Ix: IndexType, R> Molecule<Ix, R> {
 }
 
 impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
-    pub fn contains(&self, group: Ix) -> bool
-    where
-        R: ArenaAccessor<Ix = Ix>,
-    {
+    /// Check if this molecule contains the underlying group.
+    pub fn contains(&self, group: Ix) -> bool {
         self.arena.get_arena().contains_group(self.index, group)
+    }
+
+    /// Get an atom in this molecule. Returns a value because of possible `MolRepr::Modify`s.
+    pub fn get_atom(&self, idx: NodeIndex<Ix>) -> Atom {
+        todo!()
+    }
+}
+
+impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>, S: ArenaAccessor<Ix = Ix>> PartialEq<Molecule<Ix, S>> for Molecule<Ix, R> {
+    fn eq(&self, other: &Molecule<Ix, S>) -> bool {
+        self.index == other.index && std::ptr::eq(&*self.arena(), &*other.arena())
     }
 }
