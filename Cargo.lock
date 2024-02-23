@@ -78,6 +78,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "atools"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe001963623067027db033ad0b1f6df648123c7f84dbc629a415da12e1984384"
+
+[[package]]
 name = "autocfg"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -269,10 +275,11 @@ checksum = "6a02dba6a60cd31533cf16561ced53239686d18f1464bff49579dd320fcea081"
 
 [[package]]
 name = "fimg"
-version = "0.4.36"
+version = "0.4.37"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ffb921da7eb457eaa0334514394384d856965e60e1ff18660baa9518fee16d55"
+checksum = "09403be2a5516fa98047a81fe9bca523fc1a6740531a485e1b004855030e74cd"
 dependencies = [
+ "atools",
  "clipline",
  "fer",
  "fontdue",
@@ -300,9 +307,9 @@ dependencies = [
 
 [[package]]
 name = "fmtastic"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "01e0788fd5d05fe28fb0a37654ac8ef55c2a069bb9e4e5ec5361de87f8f3a8dc"
+checksum = "de9a7c6eb89b213e79e7c2a2e8f0f9ace0f139f066417606d3975a0c7c861b05"
 
 [[package]]
 name = "fontdue"
@@ -337,9 +344,9 @@ checksum = "95505c38b4572b2d910cecb0281560f54b440a19336cbbcb27bf6ce6adc6f5a8"
 
 [[package]]
 name = "image"
-version = "0.24.8"
+version = "0.24.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "034bbe799d1909622a74d1193aa50147769440040ff36cb2baa947609b0a4e23"
+checksum = "5690139d2f55868e080017335e4b94cb7414274c74f1669c84fb5feba2c9f69d"
 dependencies = [
  "bytemuck",
  "byteorder",
