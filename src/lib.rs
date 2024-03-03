@@ -5,6 +5,7 @@ pub mod atom_info;
 pub mod arena;
 pub mod core;
 pub mod disp;
+pub mod empirical;
 pub mod graph;
 pub mod molecule;
 pub mod parse;
@@ -18,6 +19,7 @@ pub mod prelude {
     pub use crate::disp::fmt_as_svg;
     #[cfg(feature = "mol-bmp")]
     pub use crate::disp::{make_img, make_img_vec};
+    pub use crate::empirical::EmpiricalFormula;
     pub use crate::graph::compact::GraphCompactor;
     pub use crate::parse::smiles::SmilesParser;
 }
