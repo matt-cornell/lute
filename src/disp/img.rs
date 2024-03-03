@@ -1,5 +1,5 @@
 use crate::atom_info::*;
-use crate::molecule::*;
+use crate::core::*;
 use fimg::Image;
 use image::*;
 use petgraph::visit::*;

@@ -1,5 +1,5 @@
 use crate::atom_info::*;
-use crate::molecule::*;
+use crate::core::*;
 use petgraph::visit::*;
 use petgraph::Undirected;
 use std::fmt::{self, Debug, Display};

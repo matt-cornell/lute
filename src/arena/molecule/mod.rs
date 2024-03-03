@@ -64,7 +64,9 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
     }
 }
 
-impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>, S: ArenaAccessor<Ix = Ix>> PartialEq<Molecule<Ix, S>> for Molecule<Ix, R> {
+impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>, S: ArenaAccessor<Ix = Ix>> PartialEq<Molecule<Ix, S>>
+    for Molecule<Ix, R>
+{
     fn eq(&self, other: &Molecule<Ix, S>) -> bool {
         self.index == other.index && std::ptr::eq(&*self.arena(), &*other.arena())
     }

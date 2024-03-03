@@ -12,5 +12,5 @@ pub use arena::Arena;
 pub use container::Container;
 pub use molecule::Molecule;
 
+use crate::core::*;
 use petgraph::graph::IndexType;
-use crate::molecule::*;

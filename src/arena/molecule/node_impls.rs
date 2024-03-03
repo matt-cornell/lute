@@ -18,10 +18,13 @@ pub struct EdgeIndex<Ix> {
 pub struct NodeReference<Ix> {
     mol_idx: Ix,
     node_idx: NodeIndex<Ix>,
-    atom: Atom
+    atom: Atom,
 }
 impl<Ix> NodeReference<Ix> {
-    pub fn new<R: ArenaAccessor<Ix = Ix>>(mol_idx: Ix, node_idx: NodeIndex<Ix>, arena: R) -> Self where Ix: IndexType {
+    pub fn new<R: ArenaAccessor<Ix = Ix>>(mol_idx: Ix, node_idx: NodeIndex<Ix>, arena: R) -> Self
+    where
+        Ix: IndexType,
+    {
         Self {
             mol_idx,
             node_idx,

@@ -1,10 +1,10 @@
 use super::Arena;
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use petgraph::graph::IndexType;
 use std::cell::{Ref, RefCell, RefMut};
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 use std::sync::Arc;
-use petgraph::graph::IndexType;
 
 /// This trait handles the access to the backing arena. Rather than just passing around references,
 /// this allows for lock guards to be used while not forcing them to live for as long as the

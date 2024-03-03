@@ -1,5 +1,5 @@
-use petgraph::visit::*;
 use super::*;
+use petgraph::visit::*;
 
 impl<Ix: Copy + PartialEq, R> GraphBase for Molecule<Ix, R> {
     type NodeId = NodeIndex<Ix>;

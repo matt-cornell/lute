@@ -1,5 +1,5 @@
 use crate::atom_info::ATOM_DATA;
-use crate::molecule::{TooManyBonds, *};
+use crate::core::{TooManyBonds, *};
 use atoi::FromRadix10;
 use petgraph::prelude::*;
 use petgraph::visit::*;
