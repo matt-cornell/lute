@@ -47,7 +47,9 @@ impl<N: Hash + Eq + Copy, G: IntoNeighbors<NodeId = N>> Walker<G> for RingsItera
                     } else {
                         1
                     }
-                } else {1}
+                } else {
+                    1
+                }
             };
             'succs: for succ in context.neighbors(n) {
                 match self.paths.entry(succ) {

@@ -7,9 +7,7 @@ const ELECTRON_COUNTS: &[u8] = &[0, 2, 10, 18, 30, 36, 54, 86, 118];
 
 fn unshared_electrons(protons: u8, charge: i8, bonded: u8) -> u8 {
     let elecs = (protons as i8 - charge) as u8;
-    let shell = ELECTRON_COUNTS
-        .binary_search(&elecs)
-        .unwrap_or_else(|e| e);
+    let shell = ELECTRON_COUNTS.binary_search(&elecs).unwrap_or_else(|e| e);
     if shell == 0 {
         return 0;
     }

@@ -1,12 +1,12 @@
 use crate::atom_info::*;
 use crate::core::*;
 use crate::utils::echar::*;
+use bstr::ByteSlice;
 use fmtastic::*;
 use std::collections::BTreeMap;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::ops::{Add, AddAssign};
 use thiserror::Error;
-use bstr::ByteSlice;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Error)]
 pub enum EmpiricalErrorKind {
@@ -63,7 +63,10 @@ impl EmpiricalFormula {
                     } else {
                         let rem = &input[idx..];
                         let len = rem.char_indices().next().unwrap().1;
-                        Err(EmpiricalError::new(idx, AfterCharge(EChar::new(rem, len as _).unwrap())))
+                        Err(EmpiricalError::new(
+                            idx,
+                            AfterCharge(EChar::new(rem, len as _).unwrap()),
+                        ))
                     };
                 }
                 Some(&c) if c.is_ascii_uppercase() => {
@@ -94,7 +97,10 @@ impl EmpiricalFormula {
                 }
                 Some(_) => {
                     let len = input[idx..].char_indices().next().unwrap().1;
-                    Err(EmpiricalError::new(idx, UnexpectedChar(EChar::new(&input[idx..], len as _).unwrap())))?
+                    Err(EmpiricalError::new(
+                        idx,
+                        UnexpectedChar(EChar::new(&input[idx..], len as _).unwrap()),
+                    ))?
                 }
             }
         }
@@ -161,14 +167,19 @@ impl Display for EmpiricalFormula {
                 }
             }
         }
-        write!(f, "{}{}{}", ElemHelper("R", self.lower[0]), ElemHelper("C", self.lower[6]), ElemHelper("H", self.lower[1]))?;
+        write!(
+            f,
+            "{}{}{}",
+            ElemHelper("R", self.lower[0]),
+            ElemHelper("C", self.lower[6]),
+            ElemHelper("H", self.lower[1])
+        )?;
         let mut segs = self
             .lower
             .iter()
             .enumerate()
             .filter_map(|(n, &c)| {
-                (c > 0 && ![0, 1, 6].contains(&n))
-                    .then(|| ElemHelper(ATOM_DATA[n].sym, c))
+                (c > 0 && ![0, 1, 6].contains(&n)).then(|| ElemHelper(ATOM_DATA[n].sym, c))
             })
             .chain(
                 self.spill

@@ -1,12 +1,12 @@
 use crate::atom_info::ATOM_DATA;
 use crate::core::{TooManyBonds, *};
+use crate::utils::echar::*;
 use atoi::FromRadix10;
 use petgraph::prelude::*;
 use petgraph::visit::*;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use thiserror::Error;
-use crate::utils::echar::*;
 use SmilesErrorKind::*;
 
 /// Inner enum for `SmilesError`
