@@ -76,10 +76,8 @@ impl Display for EmpiricalFormula {
                 .iter()
                 .enumerate()
                 .filter_map(|(n, &c)| {
-                    (c > 0
-                        && ![0, 1, 6]
-                            .contains(&n))
-                            .then(|| format!("{}{}", ATOM_DATA[n as usize].sym, Subscript(c)))
+                    (c > 0 && ![0, 1, 6].contains(&n))
+                        .then(|| format!("{}{}", ATOM_DATA[n as usize].sym, Subscript(c)))
                 })
                 .chain(
                     self.spill
@@ -110,10 +108,8 @@ impl Display for EmpiricalFormula {
                 .iter()
                 .enumerate()
                 .filter_map(|(n, &c)| {
-                    (c > 0
-                        && ![0, 1, 6]
-                            .contains(&n))
-                            .then(|| format!("{}{c}", ATOM_DATA[n as usize].sym))
+                    (c > 0 && ![0, 1, 6].contains(&n))
+                        .then(|| format!("{}{c}", ATOM_DATA[n as usize].sym))
                 })
                 .chain(
                     self.spill

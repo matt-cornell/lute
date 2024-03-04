@@ -3,11 +3,7 @@
 //! copies of everything.
 
 use super::*;
-use crate::graph::bitfilter::BitFiltered;
-use crate::graph::compact::GraphCompactor;
-use crate::graph::isomorphism::*;
-use crate::graph::nodefilter::NodeFilter;
-use crate::graph::utils::DisjointGraphIter;
+use crate::graph::*;
 use petgraph::data::DataMap;
 use petgraph::graph::DefaultIx;
 use petgraph::prelude::*;
