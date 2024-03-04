@@ -9,7 +9,7 @@ fn unshared_electrons(protons: u8, charge: i8, bonded: u8) -> u8 {
     let elecs = (protons as i8 - charge) as u8;
     let shell = ELECTRON_COUNTS
         .binary_search(&elecs)
-        .map_or_else(|e| e, |t| t);
+        .unwrap_or_else(|e| e);
     if shell == 0 {
         return 0;
     }

@@ -77,7 +77,7 @@ impl Display for EmpiricalFormula {
                 .enumerate()
                 .filter_map(|(n, &c)| {
                     (c > 0 && ![0, 1, 6].contains(&n))
-                        .then(|| format!("{}{}", ATOM_DATA[n as usize].sym, Subscript(c)))
+                        .then(|| format!("{}{}", ATOM_DATA[n].sym, Subscript(c)))
                 })
                 .chain(
                     self.spill
@@ -109,7 +109,7 @@ impl Display for EmpiricalFormula {
                 .enumerate()
                 .filter_map(|(n, &c)| {
                     (c > 0 && ![0, 1, 6].contains(&n))
-                        .then(|| format!("{}{c}", ATOM_DATA[n as usize].sym))
+                        .then(|| format!("{}{c}", ATOM_DATA[n].sym))
                 })
                 .chain(
                     self.spill
@@ -133,6 +133,7 @@ impl Extend<Atom> for EmpiricalFormula {
     fn extend<T: IntoIterator<Item = Atom>>(&mut self, iter: T) {
         iter.into_iter().for_each(|a| {
             self.add(a.protons, 1);
+            self.add(1, a.data.hydrogen());
             self.charge += a.charge;
         });
     }

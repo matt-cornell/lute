@@ -1,4 +1,4 @@
-#![allow(clippy::identity_op)]
+#![allow(clippy::identity_op, clippy::excessive_precision)]
 //! Utilities for modeling molecules as graphs
 // This top-level file handles definitions and parsing
 
