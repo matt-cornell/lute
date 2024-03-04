@@ -3,20 +3,19 @@ use crate::core::{TooManyBonds, *};
 use atoi::FromRadix10;
 use petgraph::prelude::*;
 use petgraph::visit::*;
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::fmt::{self, Display, Formatter};
 use thiserror::Error;
+use crate::utils::echar::*;
 use SmilesErrorKind::*;
 
 /// Inner enum for `SmilesError`
-#[derive(Debug, Clone, Error)]
-pub enum SmilesErrorKind<'a> {
+#[derive(Debug, Clone, Copy, Error)]
+pub enum SmilesErrorKind {
     #[error(transparent)]
     TooManyBonds(#[from] TooManyBonds),
     #[error("{0} is not a recognized element")]
-    UnknownElement(Cow<'a, bstr::BStr>),
+    UnknownElement(EChar),
     #[error("a loop was opened without an atom")]
     LoopWithoutAtom,
     #[error("loop {0} was not closed by the end of the formula")]
@@ -36,58 +35,21 @@ pub enum SmilesErrorKind<'a> {
     #[error("multiple bonds on an R-group aren't allowed")]
     MultiBondedR,
 }
-impl SmilesErrorKind<'_> {
-    /// Take ownership of string in `UnknownElement`
-    pub fn into_owned(self) -> SmilesErrorKind<'static> {
-        match self {
-            Self::TooManyBonds(b) => SmilesErrorKind::TooManyBonds(b),
-            UnknownElement(e) => UnknownElement(e.into_owned().into()),
-            LoopWithoutAtom => LoopWithoutAtom,
-            UnclosedLoop(i) => UnclosedLoop(i),
-            ExpectedRingNumber => ExpectedRingNumber,
-            ExpectedAtom => ExpectedAtom,
-            ExpectedClosingBracket => ExpectedClosingBracket,
-            ExpectedClosingParen => ExpectedClosingParen,
-            LoopBondMismatch(b1, b2) => LoopBondMismatch(b1, b2),
-            DuplicateBond => DuplicateBond,
-            MultiBondedR => MultiBondedR,
-        }
-    }
-}
-
-/// Simple intermediate for index printer that doesn't allocate
-struct IdxPrint(usize);
-impl Display for IdxPrint {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        if self.0 == usize::MAX {
-            f.write_str("unknown index")
-        } else {
-            write!(f, "byte {}", self.0)
-        }
-    }
-}
 
 /// Something went wrong trying to parse a SMILES string
-#[derive(Debug, Clone, Error)]
+#[derive(Debug, Clone, Copy, Error)]
 #[error("an error occured at {} in the SMILES string: {kind}", IdxPrint(*.index))]
-pub struct SmilesError<'a> {
+pub struct SmilesError {
     pub index: usize,
-    pub kind: SmilesErrorKind<'a>,
+    pub kind: SmilesErrorKind,
 }
-impl<'a> SmilesError<'a> {
+impl SmilesError {
     /// Convenience method
-    pub const fn new(index: usize, kind: SmilesErrorKind<'a>) -> Self {
+    pub const fn new(index: usize, kind: SmilesErrorKind) -> Self {
         Self { index, kind }
     }
-    /// Convert self into a static lifetime by heap-allocating the string
-    pub fn into_owned(self) -> SmilesError<'static> {
-        SmilesError {
-            index: self.index,
-            kind: self.kind.into_owned(),
-        }
-    }
 }
-impl From<TooManyBonds> for SmilesError<'_> {
+impl From<TooManyBonds> for SmilesError {
     fn from(value: TooManyBonds) -> Self {
         Self::new(usize::MAX, value.into())
     }
@@ -155,7 +117,7 @@ impl<'a> SmilesParser<'a> {
     fn parse_chain(
         &mut self,
         nested: bool,
-    ) -> Result<Option<(NodeIndex, Bond, bool)>, SmilesError<'a>> {
+    ) -> Result<Option<(NodeIndex, Bond, bool)>, SmilesError> {
         if self.index >= self.input.len() {
             return Ok(None);
         }
@@ -261,7 +223,7 @@ impl<'a> SmilesParser<'a> {
     }
 
     /// Parse an atom or an atom with hydrogens attached (in brackets)
-    fn get_atom(&mut self) -> Result<Option<NodeIndex>, SmilesError<'a>> {
+    fn get_atom(&mut self) -> Result<Option<NodeIndex>, SmilesError> {
         match self.input.get(self.index) {
             None => Ok(None),
             Some(&b'B') => {
@@ -371,22 +333,19 @@ impl<'a> SmilesParser<'a> {
                             .iter()
                             .copied()
                             .take_while(u8::is_ascii_lowercase)
+                            .take(4)
                             .count();
                         let elem = &self.input[start..(start + len + 1)];
                         self.index += len;
-                        let protons = if elem == b"R" {
-                            0
-                        } else {
-                            ATOM_DATA
-                                .iter()
-                                .enumerate()
-                                .find(|(_, a)| a.sym.as_bytes() == elem)
-                                .ok_or(SmilesError::new(
-                                    start,
-                                    UnknownElement(bstr::BStr::new(elem).into()),
-                                ))?
-                                .0 as _
-                        };
+                        let protons = ATOM_DATA
+                            .iter()
+                            .enumerate()
+                            .find(|(_, a)| a.sym.as_bytes() == elem)
+                            .ok_or(SmilesError::new(
+                                start,
+                                UnknownElement(EChar::new(elem, (len + 1) as _).unwrap()),
+                            ))?
+                            .0 as _;
                         self.graph.add_node(Atom::new_isotope(protons, isotope))
                     }
                     _ => Err(SmilesError::new(self.index, ExpectedAtom))?,
@@ -467,7 +426,7 @@ impl<'a> SmilesParser<'a> {
     }
 
     /// Handle loops. Since this needs to know which bond to use, it also parses a bond.
-    fn handle_loops(&mut self, last_atom: NodeIndex) -> Result<(Bond, bool), SmilesError<'a>> {
+    fn handle_loops(&mut self, last_atom: NodeIndex) -> Result<(Bond, bool), SmilesError> {
         loop {
             let bond_idx = self.index;
             let prev_bond = self.get_bond();
@@ -552,7 +511,7 @@ impl<'a> SmilesParser<'a> {
     }
 
     /// Saturate all atoms with hydrogens
-    fn update_hydrogens(&mut self) -> Result<(), SmilesError<'a>> {
+    fn update_hydrogens(&mut self) -> Result<(), SmilesError> {
         for atom in self.graph.node_indices() {
             let ex_bonds = match self.graph[atom].protons {
                 x @ 6..=9 => Some(10 - (x as i8) + self.graph[atom].charge),
@@ -590,7 +549,7 @@ impl<'a> SmilesParser<'a> {
     }
 
     /// Update R-groups to avoid any duplicates (unsuppressed) or suppress them
-    fn update_rs(&mut self) -> Result<(), SmilesError<'a>> {
+    fn update_rs(&mut self) -> Result<(), SmilesError> {
         if self.suppress {
             let mut i = 0;
             while i < self.graph.node_count() {
@@ -629,7 +588,7 @@ impl<'a> SmilesParser<'a> {
     }
 
     /// Update bons counts
-    fn update_bonds(&mut self) -> Result<(), SmilesError<'a>> {
+    fn update_bonds(&mut self) -> Result<(), SmilesError> {
         for n in self.graph.node_indices() {
             let bc = self.graph.edges(n).count();
             self.graph[n].set_other_bonds(
@@ -654,7 +613,7 @@ impl<'a> SmilesParser<'a> {
     }
 
     /// Parse the molecule, consuming self. This is taken by value to avoid cleanup.
-    pub fn parse(mut self) -> Result<MoleculeGraph, SmilesError<'a>> {
+    pub fn parse(mut self) -> Result<MoleculeGraph, SmilesError> {
         self.parse_chain(false)?;
         self.update_hydrogens()?;
         self.update_rs()?;

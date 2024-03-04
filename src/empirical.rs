@@ -1,9 +1,33 @@
 use crate::atom_info::*;
 use crate::core::*;
+use crate::utils::echar::*;
 use fmtastic::*;
 use std::collections::BTreeMap;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::ops::{Add, AddAssign};
+use thiserror::Error;
+use bstr::ByteSlice;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Error)]
+pub enum EmpiricalErrorKind {
+    #[error("unknown atom {0}")]
+    UnknownElement(EChar),
+    #[error("unexpected character after charge: {0}")]
+    AfterCharge(EChar),
+    #[error("unexpected character: {0}")]
+    UnexpectedChar(EChar),
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Error)]
+#[error("error at {} in empirical formula: {kind}", IdxPrint(*.idx))]
+pub struct EmpiricalError {
+    kind: EmpiricalErrorKind,
+    idx: usize,
+}
+impl EmpiricalError {
+    pub const fn new(idx: usize, kind: EmpiricalErrorKind) -> Self {
+        Self { idx, kind }
+    }
+}
 
 #[derive(Default, Clone, PartialEq, Eq, Hash)]
 pub struct EmpiricalFormula {
@@ -15,14 +39,75 @@ impl EmpiricalFormula {
     pub fn new() -> Self {
         Self::default()
     }
-    pub fn get(&mut self, atom: u8) -> usize {
+    pub fn parse_str(s: impl AsRef<[u8]>) -> Result<Self, EmpiricalError> {
+        use atoi::FromRadix10;
+        use EmpiricalErrorKind::*;
+        let input = s.as_ref();
+        let mut idx = 0;
+        let mut this = Self::new();
+        loop {
+            match input.get(idx) {
+                None => return Ok(this),
+                Some(&b'+' | &b'-') => {
+                    let (mut c, u) = i8::from_radix_10(&input[(idx + 1)..]);
+                    if u == 0 {
+                        c = 1;
+                    }
+                    if input[idx] == b'-' {
+                        c = -c;
+                    }
+                    idx += u + 1;
+                    this.charge = c;
+                    return if idx == input.len() {
+                        Ok(this)
+                    } else {
+                        let rem = &input[idx..];
+                        let len = rem.char_indices().next().unwrap().1;
+                        Err(EmpiricalError::new(idx, AfterCharge(EChar::new(rem, len as _).unwrap())))
+                    };
+                }
+                Some(&c) if c.is_ascii_uppercase() => {
+                    let start = idx;
+                    let len = input[(idx + 1)..]
+                        .iter()
+                        .copied()
+                        .take_while(u8::is_ascii_lowercase)
+                        .take(3)
+                        .count();
+                    let elem = &input[start..(start + len + 1)];
+                    idx += len + 1;
+                    let protons = ATOM_DATA
+                        .iter()
+                        .enumerate()
+                        .find(|(_, a)| a.sym.as_bytes() == elem)
+                        .ok_or(EmpiricalError::new(
+                            start,
+                            UnknownElement(EChar::new(elem, (len + 1) as _).unwrap()),
+                        ))?
+                        .0 as _;
+                    let (mut n, u) = usize::from_radix_10(&input[idx..]);
+                    if u == 0 {
+                        n = 1;
+                    }
+                    idx += u;
+                    this.add_atom(protons, n);
+                }
+                Some(_) => {
+                    let len = input[idx..].char_indices().next().unwrap().1;
+                    Err(EmpiricalError::new(idx, UnexpectedChar(EChar::new(&input[idx..], len as _).unwrap())))?
+                }
+            }
+        }
+    }
+
+    pub fn get_atom(&mut self, atom: u8) -> usize {
         if atom < 18 {
             self.lower[atom as usize]
         } else {
             self.spill.get(&atom).copied().unwrap_or(0)
         }
     }
-    pub fn set(&mut self, atom: u8, count: usize) {
+    pub fn set_atom(&mut self, atom: u8, count: usize) {
         if atom < 18 {
             self.lower[atom as usize] = count;
         } else if count == 0 {
@@ -31,7 +116,7 @@ impl EmpiricalFormula {
             self.spill.insert(atom, count);
         }
     }
-    pub fn add(&mut self, atom: u8, count: usize) {
+    pub fn add_atom(&mut self, atom: u8, count: usize) {
         if atom < 18 {
             self.lower[atom as usize] += count;
         } else if count > 0 {
@@ -42,6 +127,7 @@ impl EmpiricalFormula {
         }
     }
 }
+
 impl Debug for EmpiricalFormula {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         struct AtomsHelper<'a>(&'a [usize], &'a BTreeMap<u8, usize>);
@@ -61,32 +147,40 @@ impl Debug for EmpiricalFormula {
 }
 impl Display for EmpiricalFormula {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+        struct ElemHelper(&'static str, usize);
+        impl Display for ElemHelper {
+            fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+                match self.1 {
+                    0 => Ok(()),
+                    1 => f.write_str(self.0),
+                    n => {
+                        f.write_str(self.0)?;
+                        Display::fmt(&Subscript(n), f)
+                    }
+                }
+            }
+        }
+        write!(f, "{}{}{}", ElemHelper("R", self.lower[0]), ElemHelper("C", self.lower[6]), ElemHelper("H", self.lower[1]))?;
+        let mut segs = self
+            .lower
+            .iter()
+            .enumerate()
+            .filter_map(|(n, &c)| {
+                (c > 0 && ![0, 1, 6].contains(&n))
+                    .then(|| ElemHelper(ATOM_DATA[n].sym, c))
+            })
+            .chain(
+                self.spill
+                    .iter()
+                    .map(|(&n, &c)| ElemHelper(ATOM_DATA[n as usize].sym, c)),
+            )
+            .collect::<Vec<_>>();
+        segs.sort();
+        for s in &segs {
+            Display::fmt(s, f)?;
+        }
         if f.alternate() {
-            if self.lower[0] > 0 {
-                write!(f, "R{}", Subscript(self.lower[0]))?;
-            }
-            if self.lower[6] > 0 {
-                write!(f, "C{}", Subscript(self.lower[6]))?;
-            }
-            if self.lower[1] > 0 {
-                write!(f, "H{}", Subscript(self.lower[1]))?;
-            }
-            let mut segs = self
-                .lower
-                .iter()
-                .enumerate()
-                .filter_map(|(n, &c)| {
-                    (c > 0 && ![0, 1, 6].contains(&n))
-                        .then(|| format!("{}{}", ATOM_DATA[n].sym, Subscript(c)))
-                })
-                .chain(
-                    self.spill
-                        .iter()
-                        .map(|(&n, &c)| format!("{}{}", ATOM_DATA[n as usize].sym, Subscript(c))),
-                )
-                .collect::<Vec<_>>();
-            segs.sort();
-            f.write_str(&segs.join(""))?;
             match self.charge {
                 0 => {}
                 1 => f.write_str("⁺")?,
@@ -94,31 +188,6 @@ impl Display for EmpiricalFormula {
                 _ => write!(f, "{:+}", Superscript(self.charge))?,
             }
         } else {
-            if self.lower[0] > 0 {
-                write!(f, "R{}", self.lower[0])?;
-            }
-            if self.lower[6] > 0 {
-                write!(f, "C{}", self.lower[6])?;
-            }
-            if self.lower[1] > 0 {
-                write!(f, "H{}", self.lower[1])?;
-            }
-            let mut segs = self
-                .lower
-                .iter()
-                .enumerate()
-                .filter_map(|(n, &c)| {
-                    (c > 0 && ![0, 1, 6].contains(&n))
-                        .then(|| format!("{}{c}", ATOM_DATA[n].sym))
-                })
-                .chain(
-                    self.spill
-                        .iter()
-                        .map(|(&n, c)| format!("{}{c}", ATOM_DATA[n as usize].sym)),
-                )
-                .collect::<Vec<_>>();
-            segs.sort();
-            f.write_str(&segs.join(""))?;
             match self.charge {
                 0 => {}
                 1 => f.write_str("+")?,
@@ -129,11 +198,19 @@ impl Display for EmpiricalFormula {
         Ok(())
     }
 }
+
+impl std::str::FromStr for EmpiricalFormula {
+    type Err = EmpiricalError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::parse_str(s)
+    }
+}
+
 impl Extend<Atom> for EmpiricalFormula {
     fn extend<T: IntoIterator<Item = Atom>>(&mut self, iter: T) {
         iter.into_iter().for_each(|a| {
-            self.add(a.protons, 1);
-            self.add(1, a.data.hydrogen());
+            self.add_atom(a.protons, 1);
+            self.add_atom(1, a.data.hydrogen() as _);
             self.charge += a.charge;
         });
     }
@@ -157,6 +234,7 @@ impl<'a> FromIterator<&'a Atom> for EmpiricalFormula {
         out
     }
 }
+
 impl AddAssign<&Self> for EmpiricalFormula {
     fn add_assign(&mut self, other: &Self) {
         for (l, r) in self.lower.iter_mut().zip(&other.lower) {
