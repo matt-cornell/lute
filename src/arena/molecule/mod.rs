@@ -1,7 +1,10 @@
+use std::collections::BTreeSet;
+
 use super::arena::*;
 use super::*;
 pub mod graph_traits;
 mod node_impls;
+use hybridmap::HybridMap;
 pub use node_impls::*;
 
 /// A `Molecule` acts like a graph, and can have graph algorithms used on it. It's immutable, with all
@@ -60,20 +63,69 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
     }
 
     /// Get an atom in this molecule. Returns a value because of possible `MolRepr::Modify`s.
-    pub fn get_atom(&self, mut idx: NodeIndex<Ix>) -> R::MappedRef<'_, Atom> {
+    pub fn get_atom(&self, idx: NodeIndex<Ix>) -> R::MappedRef<'_, Atom> {
+        let mut idx = idx.0.index();
         R::map_ref(self.arena.get_arena(), |arena| {
             let mut ix = self.index;
             loop {
-                match &arena.parts[ix.index()] {
-                    (MolRepr::Redirect(i), _) => ix = *i,
-                    (MolRepr::Modify(m), _) => {
-                        if let Some(a) = m.patch.get(&idx.0) {
+                match &arena.parts[ix.index()].0 {
+                    MolRepr::Redirect(i) => ix = *i,
+                    MolRepr::Modify(m) => {
+                        if let Some(a) = m.patch.get(&Ix::new(idx)) {
                             return a;
                         } else {
                             ix = m.base
                         }
                     }
-                    _ => todo!(),
+                    MolRepr::Atomic(b) => {
+                        let mut i = 0;
+                        for w in b.as_slice() {
+                            let o = w.count_ones() as usize;
+                            if idx > o {
+                                idx -= o;
+                                i += usize::BITS as usize;
+                            } else {
+                                return &arena.graph()[petgraph::graph::NodeIndex::new(i + idx)];
+                            }
+                        }
+                    }
+                    MolRepr::Broken(b) => {
+                        let empty = BTreeSet::new();
+                        let mut skips = HybridMap::<Ix, BTreeSet<Ix>, 4>::new();
+                        for i in &b.bonds {
+                            if arena.molecule(i.an).get_atom(NodeIndex(i.ai)).protons == 0 {
+                                if let Some(s) = skips.get_mut(&i.an) {
+                                    s.insert(i.ai);
+                                } else {
+                                    skips.insert(i.an, [i.ai].into());
+                                }
+                            }
+                            if arena.molecule(i.bn).get_atom(NodeIndex(i.bi)).protons == 0 {
+                                if let Some(s) = skips.get_mut(&i.bn) {
+                                    s.insert(i.bi);
+                                } else {
+                                    skips.insert(i.bn, [i.bi].into());
+                                }
+                            }
+                        }
+                        for p in &b.frags {
+                            let mut s = arena.parts[p.index()].1.index();
+                            let r = skips.get(p).unwrap_or(&empty);
+                            for i in r {
+                                if i.index() < s {
+                                    s -= 1;
+                                } else {
+                                    break;
+                                }
+                            }
+                            if idx > s {
+                                idx -= s;
+                            } else {
+                                ix = *p;
+                                break;
+                            }
+                        }
+                    }
                 }
             }
         })

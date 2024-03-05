@@ -1,5 +1,7 @@
 use super::*;
 use petgraph::visit::*;
+use std::iter::Map;
+use std::ops::Range;
 
 impl<Ix: Copy + PartialEq, R> GraphBase for Molecule<Ix, R> {
     type NodeId = NodeIndex<Ix>;
@@ -26,5 +28,46 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> NodeIndexable for Molecule<Ix, R>
     }
     fn from_index(&self, i: usize) -> NodeIndex<Ix> {
         NodeIndex(Ix::new(i))
+    }
+}
+
+impl<Ix: IndexType, R> Data for Molecule<Ix, R> {
+    type NodeWeight = Atom;
+    type EdgeWeight = Bond;
+}
+
+impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix> + Copy> IntoNodeIdentifiers for Molecule<Ix, R> {
+    type NodeIdentifiers = Map<Range<usize>, fn(usize) -> NodeIndex<Ix>>;
+
+    fn node_identifiers(self) -> Self::NodeIdentifiers {
+        (0..self.node_count()).map(|ix| NodeIndex(Ix::new(ix)))
+    }
+}
+impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix> + Copy> IntoNodeReferences for Molecule<Ix, R> {
+    type NodeRef = NodeReference<Ix>;
+    type NodeReferences = NodeReferences<Ix, R>;
+
+    fn node_references(self) -> Self::NodeReferences {
+        NodeReferences {
+            range: 0..self.node_bound(),
+            mol_idx: self.index,
+            arena: self.arena,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct NodeReferences<Ix, R> {
+    range: Range<usize>,
+    mol_idx: Ix,
+    arena: R,
+}
+impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Iterator for NodeReferences<Ix, R> {
+    type Item = NodeReference<Ix>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.range
+            .next()
+            .map(|i| NodeReference::new(self.mol_idx, NodeIndex(Ix::new(i)), self.arena))
     }
 }

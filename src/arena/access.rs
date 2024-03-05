@@ -12,7 +12,7 @@ use std::sync::Arc;
 /// This trait handles the access to the backing arena. Rather than just passing around references,
 /// this allows for lock guards to be used while not forcing them to live for as long as the
 /// accessor.
-pub trait ArenaAccessor {
+pub trait ArenaAccessor: Copy {
     type Ix: IndexType;
     type Ref<'a>: Deref<Target = Arena<Self::Ix>>
     where
@@ -304,8 +304,15 @@ impl<Ix: IndexType> ArenaAccessibleMut for RefCell<Arena<Ix>> {
 }
 
 #[doc(hidden)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub struct RwLockAcc<'a, Ix: IndexType, R: RawRwLock + 'a>(&'a RwLock<R, Arena<Ix>>);
+// Manual impls of `Clone` and `Copy` because the derives add bounds to `R`
+impl<'a, Ix: IndexType, R: RawRwLock + 'a> Clone for RwLockAcc<'a, Ix, R> {
+    fn clone(&self) -> Self {
+        Self(self.0)
+    }
+}
+impl<'a, Ix: IndexType, R: RawRwLock + 'a> Copy for RwLockAcc<'a, Ix, R> {}
 impl<'a, Ix: IndexType, R: RawRwLock + 'a> ArenaAccessor for RwLockAcc<'a, Ix, R> {
     type Ix = Ix;
     type Ref<'b> = RwLockReadGuard<'b, R, Arena<Ix>> where 'a: 'b;
