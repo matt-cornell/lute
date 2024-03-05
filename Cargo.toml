@@ -13,6 +13,7 @@ coordgen = { version = "0.2.2", optional = true }
 fimg = { version = "0.4.37", optional = true, features = ["text"] }
 fmtastic = "0.2.0"
 fontdue = { version = "0.7.3", optional = true }
+hybridmap = "0.1.1"
 image = { version = "0.24.9", optional = true, default-features = false, features = ["png", "jpeg"] }
 itertools = "0.12.1"
 lazy_static = { version = "1.4.0", optional = true }

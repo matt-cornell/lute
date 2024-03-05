@@ -2,9 +2,7 @@ use super::*;
 use petgraph::visit::NodeRef;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct NodeIndex<Ix> {
-    ix: Ix,
-}
+pub struct NodeIndex<Ix>(pub Ix);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EdgeIndex<Ix> {
@@ -16,7 +14,6 @@ pub struct EdgeIndex<Ix> {
 /// `Atom`s are copyable though, this works and isn't much more expensive.
 #[derive(Debug, Clone, Copy)]
 pub struct NodeReference<Ix> {
-    mol_idx: Ix,
     node_idx: NodeIndex<Ix>,
     atom: Atom,
 }
@@ -26,9 +23,8 @@ impl<Ix> NodeReference<Ix> {
         Ix: IndexType,
     {
         Self {
-            mol_idx,
             node_idx,
-            atom: arena.get_arena().molecule(mol_idx).get_atom(node_idx),
+            atom: *arena.get_arena().molecule(mol_idx).get_atom(node_idx)
         }
     }
     pub const fn atom(&self) -> &Atom {

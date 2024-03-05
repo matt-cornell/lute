@@ -1,4 +1,5 @@
 use super::*;
+use super::arena::*;
 pub mod graph_traits;
 mod node_impls;
 pub use node_impls::*;
@@ -59,8 +60,17 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
     }
 
     /// Get an atom in this molecule. Returns a value because of possible `MolRepr::Modify`s.
-    pub fn get_atom(&self, idx: NodeIndex<Ix>) -> Atom {
-        todo!()
+    pub fn get_atom(&self, mut idx: NodeIndex<Ix>) -> R::MappedRef<'_, Atom> {
+        R::map_ref(self.arena.get_arena(), |arena| {
+            let mut ix = self.index;
+            loop {
+                match &arena.parts[ix.index()] {
+                    (MolRepr::Redirect(i), _) => ix = *i,
+                    (MolRepr::Modify(m), _) => if let Some(a) = m.patch.get(&idx.0) {return a;} else {ix = m.base},
+                    _ => todo!()
+                }
+            }
+        })
     }
 }
 

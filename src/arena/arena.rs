@@ -11,6 +11,7 @@ use petgraph::visit::*;
 use smallvec::{smallvec, SmallVec};
 use std::collections::HashMap;
 use std::hash::Hash;
+use hybridmap::HybridMap;
 
 const ATOM_BIT_STORAGE: usize = 2;
 
@@ -19,27 +20,28 @@ type BSType = crate::utils::bitset::BitSet<usize, ATOM_BIT_STORAGE>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(C)]
-struct InterFragBond<Ix> {
-    an: Ix,
-    ai: Ix,
-    bn: Ix,
-    bi: Ix,
+pub(crate) struct InterFragBond<Ix> {
+    pub an: Ix,
+    pub ai: Ix,
+    pub bn: Ix,
+    pub bi: Ix,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct BrokenMol<Ix> {
-    frags: SmallVec<Ix, 8>,
-    bonds: SmallVec<InterFragBond<Ix>, 8>,
+pub(crate) struct BrokenMol<Ix> {
+    pub frags: SmallVec<Ix, 4>,
+    pub bonds: SmallVec<InterFragBond<Ix>, 4>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct ModdedMol<Ix> {
-    base: Ix,
+#[derive(Debug, Clone)]
+pub(crate) struct ModdedMol<Ix> {
+    pub base: Ix,
+    pub patch: HybridMap<Ix, Atom, 4>,
 }
 
 #[allow(clippy::large_enum_variant, dead_code)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum MolRepr<Ix> {
+#[derive(Debug, Clone)]
+pub(crate) enum MolRepr<Ix> {
     Atomic(BSType),
     Broken(BrokenMol<Ix>),
     Modify(ModdedMol<Ix>),
@@ -51,7 +53,7 @@ enum MolRepr<Ix> {
 #[derive(Debug, Default, Clone)]
 pub struct Arena<Ix: IndexType = DefaultIx> {
     graph: Graph<Ix>,
-    parts: SmallVec<(MolRepr<Ix>, Ix), 16>,
+    pub(crate) parts: SmallVec<(MolRepr<Ix>, Ix), 16>,
 }
 impl<Ix: IndexType> Arena<Ix> {
     pub fn new() -> Self {
