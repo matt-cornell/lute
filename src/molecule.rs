@@ -1,5 +1,6 @@
 use crate::core::*;
 use crate::empirical::*;
+use modular_bitfield::prelude::*;
 use petgraph::data::*;
 use petgraph::visit::*;
 
@@ -29,6 +30,55 @@ fn unshared_electrons(protons: u8, charge: i8, bonded: u8) -> u8 {
     2_u8.saturating_sub(bonded)
 }
 
+#[bitfield]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AtomInfoFields {
+    pub bonded: B7,
+    pub neighbors_pi: bool,
+}
+
+/// `AtomInfo` holds some more data about the atoms this atom is bonded to. It can calculate things
+/// like unshared electrons and hybridization because of this.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AtomInfo {
+    pub atom: Atom,
+    pub fields: AtomInfoFields,
+}
+
+impl AtomInfo {
+    /// The number of unshared (non-bonding) valence electrons.
+    pub fn unshared(&self) -> u8 {
+        unshared_electrons(self.atom.protons, self.atom.charge, self.fields.bonded())
+    }
+    /// The hybridization of this atom. 1 is s, 2 is sp, 3 is sp2, etc.
+    pub fn hybridization(&self) -> u8 {
+        let unshared =
+            unshared_electrons(self.atom.protons, self.atom.charge, self.fields.bonded());
+        let groups = self.atom.data.total_bonds() + (unshared + 1) / 2;
+        match groups {
+            4 => {
+                if self.fields.neighbors_pi() {
+                    3
+                } else {
+                    4
+                }
+            }
+            0..=6 => groups,
+            g => panic!("atom has {g} bonding groups, which shouldn't be possible"),
+        }
+    }
+    /// The number of delocalized pi electrons available for an aromatic system.
+    pub fn pi_donor(&self) -> u8 {
+        let unshared =
+            unshared_electrons(self.atom.protons, self.atom.charge, self.fields.bonded());
+        let mut groups = self.atom.data.total_bonds() + unshared.div_ceil(2);
+        if self.fields.neighbors_pi() && groups == 4 {
+            groups -= 1;
+        }
+        unshared.saturating_sub(groups * 2)
+    }
+}
+
 /// Most of the molecule operations. This should be implemented for whatever is necessary, and
 /// impossible to implement for additional types.
 pub trait Molecule:
@@ -49,14 +99,12 @@ pub trait Molecule:
         self.node_references().map(|a| *a.weight()).collect()
     }
 
-    /// Find the hybridization of an atom. Panics if the atom doesn't exist, or if it has more than
-    /// 6 bonds/lone pairs.
-    fn hybridization(&self, id: Self::NodeId) -> u8
+    /// Get the `AtomData` for a molecule in the graph.
+    fn atom_data(&self, id: Self::NodeId) -> AtomInfo
     where
         Self: DataMap + IntoEdges,
     {
-        let atom = self.node_weight(id).unwrap();
-        let bonds = atom.data.total_bonds();
+        let atom = *self.node_weight(id).unwrap();
         let mut neighbors_pi = false;
         let mut bond_electrons = 0.0;
         for edge in self.edges(id) {
@@ -74,53 +122,12 @@ pub trait Molecule:
                 neighbors_pi = self.edges(neighbor).any(|e| e.weight().bond_count() > 1.0);
             }
         }
-        let bonded = bond_electrons.floor() as u8;
-        let unshared = unshared_electrons(atom.protons, atom.charge, bonded);
-        let groups = bonds + (unshared + 1) / 2;
-        match groups {
-            4 => {
-                if neighbors_pi {
-                    3
-                } else {
-                    4
-                }
-            }
-            0..=6 => groups,
-            g => panic!("atom has {g} bonding groups, which shouldn't be possible"),
+        AtomInfo {
+            atom,
+            fields: AtomInfoFields::new()
+                .with_bonded(bond_electrons.floor() as _)
+                .with_neighbors_pi(neighbors_pi),
         }
-    }
-
-    /// Number of pi electrons donated to an aromatic system.
-    fn pi_donor(&self, id: Self::NodeId) -> u8
-    where
-        Self: DataMap + IntoEdges,
-    {
-        let atom = self.node_weight(id).unwrap();
-        let bonds = atom.data.total_bonds();
-        let mut neighbors_pi = false;
-        let mut bond_electrons = 0.0;
-        for edge in self.edges(id) {
-            bond_electrons += edge.weight().bond_count();
-            let neighbor = if edge.source() == id {
-                if edge.target() == id {
-                    panic!("Molecule should not contain self-loops!")
-                } else {
-                    edge.target()
-                }
-            } else {
-                edge.source()
-            };
-            if !neighbors_pi {
-                neighbors_pi = self.edges(neighbor).any(|e| e.weight().bond_count() > 1.0);
-            }
-        }
-        let bonded = bond_electrons.floor() as u8;
-        let unshared = unshared_electrons(atom.protons, atom.charge, bonded);
-        let mut groups = bonds + unshared.div_ceil(2);
-        if neighbors_pi && groups == 4 {
-            groups -= 1;
-        }
-        unshared.saturating_sub(groups * 2)
     }
 
     /// Resolve tautomers. This also ensures that aromaticicty is tracked, and rings have the

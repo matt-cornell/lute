@@ -1,5 +1,5 @@
-use super::*;
 use super::arena::*;
+use super::*;
 pub mod graph_traits;
 mod node_impls;
 pub use node_impls::*;
@@ -66,8 +66,14 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
             loop {
                 match &arena.parts[ix.index()] {
                     (MolRepr::Redirect(i), _) => ix = *i,
-                    (MolRepr::Modify(m), _) => if let Some(a) = m.patch.get(&idx.0) {return a;} else {ix = m.base},
-                    _ => todo!()
+                    (MolRepr::Modify(m), _) => {
+                        if let Some(a) = m.patch.get(&idx.0) {
+                            return a;
+                        } else {
+                            ix = m.base
+                        }
+                    }
+                    _ => todo!(),
                 }
             }
         })

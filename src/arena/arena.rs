@@ -4,6 +4,7 @@
 
 use super::*;
 use crate::graph::*;
+use hybridmap::HybridMap;
 use petgraph::data::DataMap;
 use petgraph::graph::DefaultIx;
 use petgraph::prelude::*;
@@ -11,7 +12,6 @@ use petgraph::visit::*;
 use smallvec::{smallvec, SmallVec};
 use std::collections::HashMap;
 use std::hash::Hash;
-use hybridmap::HybridMap;
 
 const ATOM_BIT_STORAGE: usize = 2;
 

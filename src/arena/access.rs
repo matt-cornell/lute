@@ -1,5 +1,8 @@
 use super::Arena;
-use lock_api::{RawRwLock, RwLock, RwLockReadGuard, RwLockWriteGuard, MappedRwLockReadGuard, MappedRwLockWriteGuard};
+use lock_api::{
+    MappedRwLockReadGuard, MappedRwLockWriteGuard, RawRwLock, RwLock, RwLockReadGuard,
+    RwLockWriteGuard,
+};
 use petgraph::graph::IndexType;
 use std::cell::{Ref, RefCell, RefMut};
 use std::ops::{Deref, DerefMut};
@@ -15,13 +18,20 @@ pub trait ArenaAccessor {
     where
         Self: 'a;
     type MappedRef<'a, T: 'a>: Deref<Target = T>
-        where Self: 'a;
+    where
+        Self: 'a;
     fn get_arena<'a>(&'a self) -> Self::Ref<'a>
     where
         Self: 'a;
 
-    fn map_ref<'a, T: 'a, F: FnOnce(&Arena<Self::Ix>) -> &T>(r: Self::Ref<'a>, f: F) -> Self::MappedRef<'a, T>;
-    fn map_mapped_ref<'a, T: 'a, U: 'a, F: Fn(&T) -> &U>(r: Self::MappedRef<'a, T>, f: F) -> Self::MappedRef<'a, U>;
+    fn map_ref<'a, T: 'a, F: FnOnce(&Arena<Self::Ix>) -> &T>(
+        r: Self::Ref<'a>,
+        f: F,
+    ) -> Self::MappedRef<'a, T>;
+    fn map_mapped_ref<'a, T: 'a, U: 'a, F: Fn(&T) -> &U>(
+        r: Self::MappedRef<'a, T>,
+        f: F,
+    ) -> Self::MappedRef<'a, U>;
 }
 
 /// This trait provides mutable access to the underlying arena.
@@ -30,14 +40,21 @@ pub trait ArenaAccessorMut: ArenaAccessor {
     where
         Self: 'a;
     type MappedRefMut<'a, T: 'a>: DerefMut<Target = T>
-        where Self: 'a;
+    where
+        Self: 'a;
 
     fn get_arena_mut<'a>(&'a self) -> Self::RefMut<'a>
     where
         Self: 'a;
 
-    fn map_ref_mut<'a, T: 'a, F: FnOnce(&mut Arena<Self::Ix>) -> &mut T>(r: Self::RefMut<'a>, f: F) -> Self::MappedRefMut<'a, T>;
-    fn map_mapped_ref_mut<'a, T: 'a, U: 'a, F: FnOnce(&mut T) -> &mut U>(r: Self::MappedRefMut<'a, T>, f: F) -> Self::MappedRefMut<'a, U>;
+    fn map_ref_mut<'a, T: 'a, F: FnOnce(&mut Arena<Self::Ix>) -> &mut T>(
+        r: Self::RefMut<'a>,
+        f: F,
+    ) -> Self::MappedRefMut<'a, T>;
+    fn map_mapped_ref_mut<'a, T: 'a, U: 'a, F: FnOnce(&mut T) -> &mut U>(
+        r: Self::MappedRefMut<'a, T>,
+        f: F,
+    ) -> Self::MappedRefMut<'a, U>;
 }
 
 /// This trait allows access to a backing arena.
@@ -91,10 +108,16 @@ impl<Ix: IndexType> ArenaAccessor for PtrAcc<Ix> {
         unsafe { &*self.0 }
     }
 
-    fn map_ref<'a, T: 'a, F: FnOnce(&Arena<Self::Ix>) -> &T>(r: Self::Ref<'a>, f: F) -> Self::MappedRef<'a, T> {
+    fn map_ref<'a, T: 'a, F: FnOnce(&Arena<Self::Ix>) -> &T>(
+        r: Self::Ref<'a>,
+        f: F,
+    ) -> Self::MappedRef<'a, T> {
         f(r)
     }
-    fn map_mapped_ref<'a, T: 'a, U: 'a, F: FnOnce(&T) -> &U>(r: Self::MappedRef<'a, T>, f: F) -> Self::MappedRef<'a, U> {
+    fn map_mapped_ref<'a, T: 'a, U: 'a, F: FnOnce(&T) -> &U>(
+        r: Self::MappedRef<'a, T>,
+        f: F,
+    ) -> Self::MappedRef<'a, U> {
         f(r)
     }
 }
@@ -110,10 +133,16 @@ impl<Ix: IndexType> ArenaAccessorMut for PtrAcc<Ix> {
         unsafe { &mut *self.0 }
     }
 
-    fn map_ref_mut<'a, T: 'a, F: FnOnce(&mut Arena<Self::Ix>) -> &mut T>(r: Self::RefMut<'a>, f: F) -> Self::MappedRefMut<'a, T> {
+    fn map_ref_mut<'a, T: 'a, F: FnOnce(&mut Arena<Self::Ix>) -> &mut T>(
+        r: Self::RefMut<'a>,
+        f: F,
+    ) -> Self::MappedRefMut<'a, T> {
         f(r)
     }
-    fn map_mapped_ref_mut<'a, T: 'a, U: 'a, F: FnOnce(&mut T) -> &mut U>(r: Self::MappedRefMut<'a, T>, f: F) -> Self::MappedRefMut<'a, U> {
+    fn map_mapped_ref_mut<'a, T: 'a, U: 'a, F: FnOnce(&mut T) -> &mut U>(
+        r: Self::MappedRefMut<'a, T>,
+        f: F,
+    ) -> Self::MappedRefMut<'a, U> {
         f(r)
     }
 }
@@ -164,10 +193,22 @@ impl<'a, Ix: IndexType> ArenaAccessor for RefAcc<'a, Ix> {
         self.0
     }
 
-    fn map_ref<'b, T: 'b, F: FnOnce(&Arena<Self::Ix>) -> &T>(r: Self::Ref<'b>, f: F) -> Self::MappedRef<'b, T> where 'a: 'b {
+    fn map_ref<'b, T: 'b, F: FnOnce(&Arena<Self::Ix>) -> &T>(
+        r: Self::Ref<'b>,
+        f: F,
+    ) -> Self::MappedRef<'b, T>
+    where
+        'a: 'b,
+    {
         f(r)
     }
-    fn map_mapped_ref<'b, T: 'b, U: 'b, F: FnOnce(&T) -> &U>(r: Self::MappedRef<'b, T>, f: F) -> Self::MappedRef<'b, U> where 'a: 'b {
+    fn map_mapped_ref<'b, T: 'b, U: 'b, F: FnOnce(&T) -> &U>(
+        r: Self::MappedRef<'b, T>,
+        f: F,
+    ) -> Self::MappedRef<'b, U>
+    where
+        'a: 'b,
+    {
         f(r)
     }
 }
@@ -196,10 +237,22 @@ impl<'a, Ix: IndexType> ArenaAccessor for RefCellAcc<'a, Ix> {
         self.0.borrow()
     }
 
-    fn map_ref<'b, T: 'b, F: FnOnce(&Arena<Self::Ix>) -> &T>(r: Self::Ref<'b>, f: F) -> Self::MappedRef<'b, T> where 'a: 'b {
+    fn map_ref<'b, T: 'b, F: FnOnce(&Arena<Self::Ix>) -> &T>(
+        r: Self::Ref<'b>,
+        f: F,
+    ) -> Self::MappedRef<'b, T>
+    where
+        'a: 'b,
+    {
         Ref::map(r, f)
     }
-    fn map_mapped_ref<'b, T: 'b, U: 'b, F: FnOnce(&T) -> &U>(r: Self::MappedRef<'b, T>, f: F) -> Self::MappedRef<'b, U> where 'a: 'b {
+    fn map_mapped_ref<'b, T: 'b, U: 'b, F: FnOnce(&T) -> &U>(
+        r: Self::MappedRef<'b, T>,
+        f: F,
+    ) -> Self::MappedRef<'b, U>
+    where
+        'a: 'b,
+    {
         Ref::map(r, f)
     }
 }
@@ -214,10 +267,22 @@ impl<'a, Ix: IndexType> ArenaAccessorMut for RefCellAcc<'a, Ix> {
         self.0.borrow_mut()
     }
 
-    fn map_ref_mut<'b, T: 'b, F: FnOnce(&mut Arena<Self::Ix>) -> &mut T>(r: Self::RefMut<'b>, f: F) -> Self::MappedRefMut<'b, T> where 'a: 'b {
+    fn map_ref_mut<'b, T: 'b, F: FnOnce(&mut Arena<Self::Ix>) -> &mut T>(
+        r: Self::RefMut<'b>,
+        f: F,
+    ) -> Self::MappedRefMut<'b, T>
+    where
+        'a: 'b,
+    {
         RefMut::map(r, f)
     }
-    fn map_mapped_ref_mut<'b, T: 'b, U: 'b, F: FnOnce(&mut T) -> &mut U>(r: Self::MappedRefMut<'b, T>, f: F) -> Self::MappedRefMut<'b, U> where 'a: 'b {
+    fn map_mapped_ref_mut<'b, T: 'b, U: 'b, F: FnOnce(&mut T) -> &mut U>(
+        r: Self::MappedRefMut<'b, T>,
+        f: F,
+    ) -> Self::MappedRefMut<'b, U>
+    where
+        'a: 'b,
+    {
         RefMut::map(r, f)
     }
 }
@@ -253,10 +318,22 @@ impl<'a, Ix: IndexType, R: RawRwLock + 'a> ArenaAccessor for RwLockAcc<'a, Ix, R
         self.0.read()
     }
 
-    fn map_ref<'b, T: 'b, F: FnOnce(&Arena<Self::Ix>) -> &T>(r: Self::Ref<'b>, f: F) -> Self::MappedRef<'b, T> where 'a: 'b {
+    fn map_ref<'b, T: 'b, F: FnOnce(&Arena<Self::Ix>) -> &T>(
+        r: Self::Ref<'b>,
+        f: F,
+    ) -> Self::MappedRef<'b, T>
+    where
+        'a: 'b,
+    {
         RwLockReadGuard::map(r, f)
     }
-    fn map_mapped_ref<'b, T: 'b, U: 'b, F: FnOnce(&T) -> &U>(r: Self::MappedRef<'b, T>, f: F) -> Self::MappedRef<'b, U> where 'a: 'b {
+    fn map_mapped_ref<'b, T: 'b, U: 'b, F: FnOnce(&T) -> &U>(
+        r: Self::MappedRef<'b, T>,
+        f: F,
+    ) -> Self::MappedRef<'b, U>
+    where
+        'a: 'b,
+    {
         MappedRwLockReadGuard::map(r, f)
     }
 }
@@ -271,10 +348,22 @@ impl<'a, Ix: IndexType, R: RawRwLock + 'a> ArenaAccessorMut for RwLockAcc<'a, Ix
         self.0.write()
     }
 
-    fn map_ref_mut<'b, T: 'b, F: FnOnce(&mut Arena<Self::Ix>) -> &mut T>(r: Self::RefMut<'b>, f: F) -> Self::MappedRefMut<'b, T> where 'a: 'b {
+    fn map_ref_mut<'b, T: 'b, F: FnOnce(&mut Arena<Self::Ix>) -> &mut T>(
+        r: Self::RefMut<'b>,
+        f: F,
+    ) -> Self::MappedRefMut<'b, T>
+    where
+        'a: 'b,
+    {
         RwLockWriteGuard::map(r, f)
     }
-    fn map_mapped_ref_mut<'b, T: 'b, U: 'b, F: FnOnce(&mut T) -> &mut U>(r: Self::MappedRefMut<'b, T>, f: F) -> Self::MappedRefMut<'b, U> where 'a: 'b {
+    fn map_mapped_ref_mut<'b, T: 'b, U: 'b, F: FnOnce(&mut T) -> &mut U>(
+        r: Self::MappedRefMut<'b, T>,
+        f: F,
+    ) -> Self::MappedRefMut<'b, U>
+    where
+        'a: 'b,
+    {
         MappedRwLockWriteGuard::map(r, f)
     }
 }
