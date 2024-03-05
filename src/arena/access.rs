@@ -1,5 +1,5 @@
 use super::Arena;
-use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard, MappedRwLockReadGuard, MappedRwLockWriteGuard};
+use lock_api::{RawRwLock, RwLock, RwLockReadGuard, RwLockWriteGuard, MappedRwLockReadGuard, MappedRwLockWriteGuard};
 use petgraph::graph::IndexType;
 use std::cell::{Ref, RefCell, RefMut};
 use std::ops::{Deref, DerefMut};
@@ -240,11 +240,11 @@ impl<Ix: IndexType> ArenaAccessibleMut for RefCell<Arena<Ix>> {
 
 #[doc(hidden)]
 #[derive(Debug, Clone, Copy)]
-pub struct RwLockAcc<'a, Ix: IndexType>(&'a RwLock<Arena<Ix>>);
-impl<'a, Ix: IndexType> ArenaAccessor for RwLockAcc<'a, Ix> {
+pub struct RwLockAcc<'a, Ix: IndexType, R: RawRwLock + 'a>(&'a RwLock<R, Arena<Ix>>);
+impl<'a, Ix: IndexType, R: RawRwLock + 'a> ArenaAccessor for RwLockAcc<'a, Ix, R> {
     type Ix = Ix;
-    type Ref<'b> = RwLockReadGuard<'b, Arena<Ix>> where 'a: 'b;
-    type MappedRef<'b, T: 'b> = MappedRwLockReadGuard<'b, T> where 'a: 'b;
+    type Ref<'b> = RwLockReadGuard<'b, R, Arena<Ix>> where 'a: 'b;
+    type MappedRef<'b, T: 'b> = MappedRwLockReadGuard<'b, R, T> where 'a: 'b;
 
     fn get_arena<'b>(&'b self) -> Self::Ref<'b>
     where
@@ -260,9 +260,9 @@ impl<'a, Ix: IndexType> ArenaAccessor for RwLockAcc<'a, Ix> {
         MappedRwLockReadGuard::map(r, f)
     }
 }
-impl<'a, Ix: IndexType> ArenaAccessorMut for RwLockAcc<'a, Ix> {
-    type RefMut<'b> = RwLockWriteGuard<'b, Arena<Ix>> where 'a: 'b;
-    type MappedRefMut<'b, T: 'b> = MappedRwLockWriteGuard<'b, T> where 'a: 'b;
+impl<'a, Ix: IndexType, R: RawRwLock + 'a> ArenaAccessorMut for RwLockAcc<'a, Ix, R> {
+    type RefMut<'b> = RwLockWriteGuard<'b, R, Arena<Ix>> where 'a: 'b;
+    type MappedRefMut<'b, T: 'b> = MappedRwLockWriteGuard<'b, R, T> where 'a: 'b;
 
     fn get_arena_mut<'b>(&'b self) -> Self::RefMut<'b>
     where
@@ -279,18 +279,18 @@ impl<'a, Ix: IndexType> ArenaAccessorMut for RwLockAcc<'a, Ix> {
     }
 }
 
-impl<Ix: IndexType> ArenaAccessible for RwLock<Arena<Ix>> {
+impl<Ix: IndexType, R: RawRwLock> ArenaAccessible for RwLock<R, Arena<Ix>> {
     type Ix = Ix;
-    type Access<'a> = RwLockAcc<'a, Ix>;
+    type Access<'a> = RwLockAcc<'a, Ix, R> where R: 'a;
 
-    fn get_accessor(&self) -> RwLockAcc<Ix> {
+    fn get_accessor(&self) -> RwLockAcc<Ix, R> {
         RwLockAcc(self)
     }
 }
-impl<Ix: IndexType> ArenaAccessibleMut for RwLock<Arena<Ix>> {
-    type AccessMut<'a> = RwLockAcc<'a, Ix>;
+impl<Ix: IndexType, R: RawRwLock> ArenaAccessibleMut for RwLock<R, Arena<Ix>> {
+    type AccessMut<'a> = RwLockAcc<'a, Ix, R> where R: 'a;
 
-    fn get_accessor_mut(&self) -> RwLockAcc<Ix> {
+    fn get_accessor_mut(&self) -> RwLockAcc<Ix, R> {
         RwLockAcc(self)
     }
 }
