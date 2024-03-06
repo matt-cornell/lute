@@ -309,7 +309,7 @@ pub struct RwLockAcc<'a, Ix: IndexType, R: RawRwLock + 'a>(&'a RwLock<R, Arena<I
 // Manual impls of `Clone` and `Copy` because the derives add bounds to `R`
 impl<'a, Ix: IndexType, R: RawRwLock + 'a> Clone for RwLockAcc<'a, Ix, R> {
     fn clone(&self) -> Self {
-        Self(self.0)
+        *self
     }
 }
 impl<'a, Ix: IndexType, R: RawRwLock + 'a> Copy for RwLockAcc<'a, Ix, R> {}
