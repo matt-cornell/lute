@@ -21,5 +21,6 @@ pub mod prelude {
     pub use crate::disp::{make_img, make_img_vec};
     pub use crate::empirical::EmpiricalFormula;
     pub use crate::graph::compact::GraphCompactor;
+    pub use crate::molecule::{Molecule as MolTrait, ValueMolecule};
     pub use crate::parse::smiles::SmilesParser;
 }

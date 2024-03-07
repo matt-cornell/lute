@@ -178,7 +178,8 @@ impl Display for EmpiricalFormula {
             .lower
             .iter()
             .enumerate()
-            .filter(|(n, &c)| (c > 0 && ![0, 1, 6].contains(n))).map(|(n, &c)| ElemHelper(ATOM_DATA[n].sym, c))
+            .filter(|(n, &c)| (c > 0 && ![0, 1, 6].contains(n)))
+            .map(|(n, &c)| ElemHelper(ATOM_DATA[n].sym, c))
             .chain(
                 self.spill
                     .iter()

@@ -62,10 +62,12 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
         self.arena.get_arena().contains_group(self.index, group)
     }
 
-    /// Get an atom in this molecule. Returns a value because of possible `MolRepr::Modify`s.
-    pub fn get_atom(&self, idx: NodeIndex<Ix>) -> R::MappedRef<'_, Atom> {
+    /// Get an atom in this molecule.
+    pub fn get_atom(&self, idx: NodeIndex<Ix>) -> Option<R::MappedRef<'_, Atom>> {
         let mut idx = idx.0.index();
-        R::map_ref(self.arena.get_arena(), |arena| {
+        let a = self.arena.get_arena();
+        (idx < a.parts.get(self.index.index())?.1.index()).then_some(())?;
+        Some(R::map_ref(a, |arena| {
             let mut ix = self.index;
             loop {
                 match &arena.parts[ix.index()].0 {
@@ -93,14 +95,14 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
                         let empty = BTreeSet::new();
                         let mut skips = HybridMap::<Ix, BTreeSet<Ix>, 4>::new();
                         for i in &b.bonds {
-                            if arena.molecule(i.an).get_atom(NodeIndex(i.ai)).protons == 0 {
+                            if arena.molecule(i.an).get_atom(NodeIndex(i.ai)).unwrap().protons == 0 {
                                 if let Some(s) = skips.get_mut(&i.an) {
                                     s.insert(i.ai);
                                 } else {
                                     skips.insert(i.an, [i.ai].into());
                                 }
                             }
-                            if arena.molecule(i.bn).get_atom(NodeIndex(i.bi)).protons == 0 {
+                            if arena.molecule(i.bn).get_atom(NodeIndex(i.bi)).unwrap().protons == 0 {
                                 if let Some(s) = skips.get_mut(&i.bn) {
                                     s.insert(i.bi);
                                 } else {
@@ -128,7 +130,12 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
                     }
                 }
             }
-        })
+        }))
+    }
+
+    /// Get a bond between two atoms in this molecule.
+    pub fn get_bond(&self, idx: EdgeIndex<Ix>) -> Option<R::MappedRef<'_, Bond>> {
+        todo!()
     }
 }
 
@@ -137,5 +144,14 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>, S: ArenaAccessor<Ix = Ix>> Partia
 {
     fn eq(&self, other: &Molecule<Ix, S>) -> bool {
         self.index == other.index && std::ptr::eq(&*self.arena(), &*other.arena())
+    }
+}
+
+impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> crate::molecule::ValueMolecule for Molecule<Ix, R> {
+    fn get_atom(&self, idx: NodeIndex<Ix>) -> Option<Atom> {
+        self.get_atom(idx).map(|x| *x)
+    }
+    fn get_bond(&self, idx: EdgeIndex<Ix>) -> Option<Bond> {
+        self.get_bond(idx).map(|x| *x)
     }
 }

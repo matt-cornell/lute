@@ -79,6 +79,21 @@ impl AtomInfo {
     }
 }
 
+/// It's a lot easier to return an atom by value, since we have to handle borrows and locking, etc.
+/// We rely on this instead of `DataMap` so that `Molecule` can implement the full set of functions.
+pub trait ValueMolecule: Data<NodeWeight = Atom, EdgeWeight = Bond> {
+    fn get_atom(&self, id: Self::NodeId) -> Option<Atom>;
+    fn get_bond(&self, id: Self::EdgeId) -> Option<Bond>;
+}
+impl<T: DataMap<NodeWeight = Atom, EdgeWeight = Bond>> ValueMolecule for T {
+    fn get_atom(&self, id: Self::NodeId) -> Option<Atom> {
+        self.node_weight(id).copied()
+    }
+    fn get_bond(&self, id: Self::EdgeId) -> Option<Bond> {
+        self.edge_weight(id).copied()
+    }
+}
+
 /// Most of the molecule operations. This should be implemented for whatever is necessary, and
 /// impossible to implement for additional types.
 pub trait Molecule:
@@ -102,9 +117,9 @@ pub trait Molecule:
     /// Get the `AtomData` for a molecule in the graph.
     fn atom_data(&self, id: Self::NodeId) -> AtomInfo
     where
-        Self: DataMap + IntoEdges,
+        Self: ValueMolecule + IntoEdges,
     {
-        let atom = *self.node_weight(id).unwrap();
+        let atom = self.get_atom(id).unwrap();
         let mut neighbors_pi = false;
         let mut bond_electrons = 0.0;
         for edge in self.edges(id) {
