@@ -26,7 +26,7 @@ impl<Ix: Copy> EdgeIndex<Ix> {
         (self.0, self.1)
     }
 }
-impl<Ix: PartialOrd> EdgeIndex<Ix> {
+impl<Ix: IndexType> EdgeIndex<Ix> {
     /// Create a new `EdgeIndex`. This enforces that it's sorted.
     pub fn new(source: Ix, target: Ix) -> Self {
         if target.index() < source.index() {

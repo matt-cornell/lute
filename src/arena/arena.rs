@@ -39,6 +39,7 @@ pub(crate) struct ModdedMol<Ix> {
     pub patch: HybridMap<Ix, Atom, 4>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub(crate) enum MolRepr<Ix> {
     Atomic(BSType),
