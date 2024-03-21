@@ -64,6 +64,18 @@ impl<Ix: IndexType> Arena<Ix> {
         &self.graph
     }
 
+    #[inline(always)]
+    fn push_frag(&mut self, frag: (MolRepr<Ix>, Ix)) -> Ix {
+        let max = Ix::max().index();
+        let idx = self.parts.len();
+        assert!(
+            idx < max,
+            "too many fragments in molecule: limit of {idx} reached!"
+        );
+        self.parts.push(frag);
+        idx
+    }
+
     fn contains_group_impl(&self, mol: Ix, group: Ix, seen: &mut BSType) -> bool {
         if mol == group {
             return true;
@@ -112,6 +124,12 @@ impl<Ix: IndexType> Arena<Ix> {
             + IntoNodeReferences,
         G::NodeId: Hash + Eq,
     {
+        let max = Ix::max().index();
+        assert!(
+            mol.node_count() < max,
+            "molecule has too many atoms: {}, max is {max}",
+            mol.node_count()
+        );
         let compacted = (0..self.parts.len())
             .filter_map(|i| {
                 if let (MolRepr::Atomic(a), _) = &self.parts[i] {
@@ -176,8 +194,7 @@ impl<Ix: IndexType> Arena<Ix> {
                 );
             });
             let out = self.parts.len();
-            self.parts
-                .push((MolRepr::Atomic(bits), Ix::new(mol.node_count())));
+            self.push_frag((MolRepr::Atomic(bits), Ix::new(mol.node_count())));
             Ix::new(out)
         } else {
             let mut nb = BSType::with_capacity(mol.node_bound());
@@ -374,10 +391,16 @@ impl<Ix: IndexType> Arena<Ix> {
                     }
 
                     let mut frag_count = 0;
+                    let start = self.parts.len();
                     self.parts
                         .extend(chunks.into_iter().filter_map(|(g, c, _, i)| {
                             i.is_none().then(|| {
+                                let idx = start + frag_count;
                                 frag_count += 1;
+                                assert!(
+                                    idx < max,
+                                    "too many fragments in molecule: limit of {idx} reached!"
+                                );
                                 (MolRepr::Atomic(g.graph.filter), Ix::new(c))
                             })
                         }));
@@ -387,12 +410,12 @@ impl<Ix: IndexType> Arena<Ix> {
                         self.graph.remove_node(n.into());
                     }
                 } else {
-                    self.parts.push((MolRepr::Atomic(g0), Ix::new(count)));
+                    self.push_frag((MolRepr::Atomic(g0), Ix::new(count)));
                 }
             };
 
             let out = Ix::new(self.parts.len());
-            self.parts.push((
+            self.push_frag((
                 MolRepr::Broken(BrokenMol { frags, bonds }),
                 Ix::new(mol.node_count()),
             ));
@@ -403,15 +426,13 @@ impl<Ix: IndexType> Arena<Ix> {
         if mods.is_empty() {
             out
         } else {
-            let r = self.parts.len();
-            self.parts.push((
+            self.push_frag((
                 MolRepr::Modify(ModdedMol {
                     base: out,
                     patch: mods,
                 }),
                 Ix::new(mol.node_count()),
-            ));
-            Ix::new(r)
+            ))
         }
     }
 }
