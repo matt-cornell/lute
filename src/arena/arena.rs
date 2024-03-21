@@ -39,7 +39,6 @@ pub(crate) struct ModdedMol<Ix> {
     pub patch: HybridMap<Ix, Atom, 4>,
 }
 
-#[allow(clippy::large_enum_variant, dead_code)]
 #[derive(Debug, Clone)]
 pub(crate) enum MolRepr<Ix> {
     Atomic(BSType),
@@ -111,7 +110,6 @@ impl<Ix: IndexType> Arena<Ix> {
 
     /// Insert a molecule into the arena, deduplicating common parts. May misbehave if multiple
     /// disjoint molecules are in the graph.
-    #[allow(clippy::needless_range_loop)]
     pub fn insert_mol<G>(&mut self, mol: G) -> Ix
     where
         G: Data<NodeWeight = Atom, EdgeWeight = Bond>
