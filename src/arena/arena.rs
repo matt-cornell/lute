@@ -18,7 +18,7 @@ const ATOM_BIT_STORAGE: usize = 2;
 type Graph<Ix> = StableGraph<Atom, Bond, Undirected, Ix>;
 type BSType = crate::utils::bitset::BitSet<usize, ATOM_BIT_STORAGE>;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(C)]
 pub(crate) struct InterFragBond<Ix> {
     pub an: Ix,
@@ -66,14 +66,14 @@ impl<Ix: IndexType> Arena<Ix> {
 
     #[inline(always)]
     fn push_frag(&mut self, frag: (MolRepr<Ix>, Ix)) -> Ix {
-        let max = Ix::max().index();
+        let max = <Ix as IndexType>::max().index();
         let idx = self.parts.len();
         assert!(
             idx < max,
             "too many fragments in molecule: limit of {idx} reached!"
         );
         self.parts.push(frag);
-        idx
+        Ix::new(idx)
     }
 
     fn contains_group_impl(&self, mol: Ix, group: Ix, seen: &mut BSType) -> bool {
@@ -124,7 +124,7 @@ impl<Ix: IndexType> Arena<Ix> {
             + IntoNodeReferences,
         G::NodeId: Hash + Eq,
     {
-        let max = Ix::max().index();
+        let max = <Ix as IndexType>::max().index();
         assert!(
             mol.node_count() < max,
             "molecule has too many atoms: {}, max is {max}",
