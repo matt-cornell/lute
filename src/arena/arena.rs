@@ -131,11 +131,12 @@ impl<Ix: IndexType> Arena<Ix> {
             .collect::<Vec<_>>();
         // keep track of matched atoms so there's no overlap
         let mut matched: SmallVec<_, 16> = smallvec![(0, 0); mol.node_bound()];
+        let mut mods = HybridMap::new();
         // keep track of found isomorphisms, don't try to handle them in the search
         let mut found = SmallVec::<_, 8>::new();
         for (k, (n, cmp)) in compacted.iter().enumerate() {
             for ism in
-                subgraph_isomorphisms_iter(&cmp, &mol, &mut Atom::eq_or_r, &mut PartialEq::eq)
+                subgraph_isomorphisms_iter(&cmp, &mol, &mut Atom::matches, &mut PartialEq::eq)
             {
                 if ism.len() == mol.node_count() {
                     // simplest case, this molecule already exists
@@ -147,13 +148,18 @@ impl<Ix: IndexType> Arena<Ix> {
                 ism.iter().enumerate().for_each(|(n, &i)| {
                     if self.graph[cmp.node_map[n]].protons != 0 {
                         matched[i] = (k + 1, n);
+                    } else {
+                        let a = *mol.node_weight(mol.from_index(i)).unwrap();
+                        if self.graph[cmp.node_map[n]] != a {
+                            mods.insert(Ix::new(i), a);
+                        }
                     }
                 });
                 found.push((*n, ism));
             }
         }
 
-        if found.is_empty() {
+        let out = if found.is_empty() {
             // simple case: no subgraph isomorhpisms found
             let mut map = vec![NodeIndex::end(); mol.node_bound()];
             let mut bits = BSType::new();
@@ -392,6 +398,20 @@ impl<Ix: IndexType> Arena<Ix> {
             ));
 
             out
+        };
+
+        if mods.is_empty() {
+            out
+        } else {
+            let r = self.parts.len();
+            self.parts.push((
+                MolRepr::Modify(ModdedMol {
+                    base: out,
+                    patch: mods,
+                }),
+                Ix::new(mol.node_count()),
+            ));
+            Ix::new(r)
         }
     }
 }

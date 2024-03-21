@@ -95,14 +95,26 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
                         let empty = BTreeSet::new();
                         let mut skips = HybridMap::<Ix, BTreeSet<Ix>, 4>::new();
                         for i in &b.bonds {
-                            if arena.molecule(i.an).get_atom(NodeIndex(i.ai)).unwrap().protons == 0 {
+                            if arena
+                                .molecule(i.an)
+                                .get_atom(NodeIndex(i.ai))
+                                .unwrap()
+                                .protons
+                                == 0
+                            {
                                 if let Some(s) = skips.get_mut(&i.an) {
                                     s.insert(i.ai);
                                 } else {
                                     skips.insert(i.an, [i.ai].into());
                                 }
                             }
-                            if arena.molecule(i.bn).get_atom(NodeIndex(i.bi)).unwrap().protons == 0 {
+                            if arena
+                                .molecule(i.bn)
+                                .get_atom(NodeIndex(i.bi))
+                                .unwrap()
+                                .protons
+                                == 0
+                            {
                                 if let Some(s) = skips.get_mut(&i.bn) {
                                     s.insert(i.bi);
                                 } else {

@@ -24,7 +24,11 @@ impl<Ix> NodeReference<Ix> {
     {
         Self {
             node_idx,
-            atom: *arena.get_arena().molecule(mol_idx).get_atom(node_idx).unwrap(),
+            atom: *arena
+                .get_arena()
+                .molecule(mol_idx)
+                .get_atom(node_idx)
+                .unwrap(),
         }
     }
     pub const fn atom(&self) -> &Atom {
