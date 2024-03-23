@@ -13,7 +13,7 @@ pub mod utils;
 
 pub mod prelude {
     pub use crate::arena::{Arena, Container, Molecule};
-    pub use crate::core::{Atom, Bond};
+    pub use crate::core::{Atom, Bond, Chirality};
     pub use crate::disp::fmt_as_dot;
     #[cfg(feature = "mol-svg")]
     pub use crate::disp::fmt_as_svg;
@@ -23,4 +23,8 @@ pub mod prelude {
     pub use crate::graph::compact::GraphCompactor;
     pub use crate::molecule::{Molecule as MolTrait, ValueMolecule};
     pub use crate::parse::smiles::SmilesParser;
+    pub use crate::smiles;
 }
+
+#[cfg(test)]
+mod tests;

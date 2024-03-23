@@ -4,10 +4,9 @@ use modular_bitfield::prelude::*;
 use petgraph::data::*;
 use petgraph::visit::*;
 use smallvec::{smallvec, SmallVec};
-use std::cell::Cell;
+use std::cell::UnsafeCell;
 use std::cmp::Ordering;
 use std::fmt::{self, Debug, Formatter};
-use std::mem::MaybeUninit;
 
 const ELECTRON_COUNTS: &[u8] = &[0, 2, 10, 18, 30, 36, 54, 86, 118];
 
@@ -142,9 +141,7 @@ impl<G: Visitable + IntoEdges + DataMap<NodeWeight = Atom, EdgeWeight = Bond>> C
                 } else {
                     e.source()
                 };
-                self.seen
-                    .is_visited(&n2)
-                    .then_some((n2, e.weight().bond_count().floor() as u8))
+                (!self.seen.is_visited(&n2)).then_some((n2, e.weight().bond_count().floor() as u8))
             }));
             let a = self.graph.node_weight(n).unwrap();
             self.weights
@@ -172,8 +169,8 @@ impl<G: Visitable + IntoEdges + DataMap<NodeWeight = Atom, EdgeWeight = Bond>> C
         at: usize,
         out: &mut Ordering,
     ) -> bool {
-        let ret = (self.indices.len() + 1 == at && self.compute_step())
-            | (other.indices.len() + 1 == at && other.compute_step());
+        let ret = (self.indices.len() > at || (self.indices.len() == at && self.compute_step()))
+            | (other.indices.len() > at || (other.indices.len() == at && other.compute_step()));
         let lhs: &[_] = self.indices.get(at).map_or(&[], |i| {
             let i = *i as usize;
             if at == 0 {
@@ -191,7 +188,7 @@ impl<G: Visitable + IntoEdges + DataMap<NodeWeight = Atom, EdgeWeight = Bond>> C
             }
         });
         *out = lhs.cmp(&rhs);
-        ret
+        ret && *out == Ordering::Equal
     }
     pub fn cmp<H: Visitable + IntoEdges + DataMap<NodeWeight = Atom, EdgeWeight = Bond>>(
         &mut self,
@@ -207,42 +204,34 @@ impl<G: Visitable + IntoEdges + DataMap<NodeWeight = Atom, EdgeWeight = Bond>> C
 }
 
 /// CIP priority can be partially calculated, this allows only necessary calculations to be done
-pub struct CipPriority<G: Visitable>(Cell<MaybeUninit<CipPriorityInner<G>>>);
+pub struct CipPriority<G: Visitable>(UnsafeCell<CipPriorityInner<G>>);
 impl<G: Visitable> CipPriority<G> {
     pub fn new(graph: G, node: G::NodeId) -> Self {
-        Self(Cell::new(MaybeUninit::new(CipPriorityInner::new(
-            graph, node,
-        ))))
+        Self(UnsafeCell::new(CipPriorityInner::new(graph, node)))
     }
     pub fn with_seen(graph: G, node: G::NodeId, seen: G::Map) -> Self {
-        Self(Cell::new(MaybeUninit::new(CipPriorityInner::with_seen(
+        Self(UnsafeCell::new(CipPriorityInner::with_seen(
             graph, node, seen,
-        ))))
+        )))
     }
     pub fn on_branch(graph: G, node: G::NodeId, center: G::NodeId) -> Self {
-        Self(Cell::new(MaybeUninit::new(CipPriorityInner::on_branch(
+        Self(UnsafeCell::new(CipPriorityInner::on_branch(
             graph, node, center,
-        ))))
-    }
-}
-impl<G: Visitable> Drop for CipPriority<G> {
-    fn drop(&mut self) {
-        unsafe {
-            self.0.replace(MaybeUninit::uninit()).assume_init_drop();
-        }
+        )))
     }
 }
 impl<G: Visitable + Debug> Debug for CipPriority<G>
 where
     G::NodeId: Debug,
-    G::Map: Debug,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         unsafe {
-            let inner = self.0.replace(MaybeUninit::uninit()).assume_init();
-            let res = inner.fmt(f);
-            self.0.set(MaybeUninit::new(inner));
-            res
+            let inner = &*self.0.get();
+            f.debug_struct("CipPriority")
+                .field("weights", &inner.weights)
+                .field("indices", &inner.indices)
+                .field("edge", &inner.edge)
+                .finish_non_exhaustive()
         }
     }
 }
@@ -266,12 +255,9 @@ impl<
 {
     fn partial_cmp(&self, other: &CipPriority<G2>) -> Option<Ordering> {
         unsafe {
-            let mut lhs = self.0.replace(MaybeUninit::uninit()).assume_init();
-            let mut rhs = other.0.replace(MaybeUninit::uninit()).assume_init();
-            let ret = lhs.cmp(&mut rhs);
-            self.0.set(MaybeUninit::new(lhs));
-            other.0.set(MaybeUninit::new(rhs));
-            Some(ret)
+            let lhs = &mut *self.0.get();
+            let rhs = &mut *other.0.get();
+            Some(lhs.cmp(rhs))
         }
     }
 }
@@ -285,28 +271,36 @@ impl<G: Visitable + IntoEdges + DataMap<NodeWeight = Atom, EdgeWeight = Bond>> O
 
 /// Most of the molecule operations. This should be implemented for whatever is necessary, and
 /// impossible to implement for additional types.
-pub trait Molecule:
-    GraphProp<EdgeType = petgraph::Undirected> + Data<NodeWeight = Atom, EdgeWeight = Bond>
+pub trait Molecule<'a>
+where
+    &'a Self: GraphProp<EdgeType = petgraph::Undirected>
+        + Data<NodeWeight = Atom, EdgeWeight = Bond>
+        + 'a,
 {
     /// Find the mass of a molecule.
-    fn mass(&self) -> f32
+    fn mass(&'a self) -> f32
     where
-        Self: IntoNodeReferences,
+        &'a Self: IntoNodeReferences,
     {
-        self.node_references().map(|a| a.weight().mass()).sum()
+        self.node_references()
+            .map(|a| {
+                a.weight().mass()
+                    + a.weight().data.hydrogen() as f32 * crate::atom_info::ATOM_DATA[1].mass
+            })
+            .sum()
     }
 
-    fn empirical(&self) -> EmpiricalFormula
+    fn empirical(&'a self) -> EmpiricalFormula
     where
-        Self: IntoNodeReferences,
+        &'a Self: IntoNodeReferences,
     {
         self.node_references().map(|a| *a.weight()).collect()
     }
 
     /// Get the `AtomData` for a molecule in the graph.
-    fn atom_data(&self, id: Self::NodeId) -> AtomInfo
+    fn atom_data(&'a self, id: AtomId<'a, Self>) -> AtomInfo
     where
-        Self: ValueMolecule + IntoEdges,
+        &'a Self: ValueMolecule + IntoEdges,
     {
         let atom = self.get_atom(id).unwrap();
         let mut neighbors_pi = false;
@@ -335,7 +329,7 @@ pub trait Molecule:
     }
 
     /// Get CIP priority for an atom.
-    fn cip_priority(&self, atom: Self::NodeId, center: Self::NodeId) -> CipPriority<&Self>
+    fn cip_priority(&'a self, atom: AtomId<'a, Self>, center: AtomId<'a, Self>) -> CipPriority<&Self>
     where
         Self: Visitable + Sized,
     {
@@ -344,15 +338,19 @@ pub trait Molecule:
 
     /// Resolve tautomers. This also ensures that aromaticicty is tracked, and rings have the
     /// "correct" conjugation.
-    fn resolve_tautomer(&mut self)
+    fn resolve_tautomer(&'a mut self)
     where
         Self: IntoEdges + DataMapMut,
     {
         todo!()
     }
 }
-impl<
-        T: GraphProp<EdgeType = petgraph::Undirected> + Data<NodeWeight = Atom, EdgeWeight = Bond>,
-    > Molecule for T
+
+type AtomId<'a, T> = <&'a T as GraphBase>::NodeId;
+
+impl<'a, T: 'a> Molecule<'a> for T
+where
+    &'a T: GraphProp<EdgeType = petgraph::Undirected> + Data<NodeWeight = Atom, EdgeWeight = Bond>,
 {
+    
 }

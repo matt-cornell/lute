@@ -12,6 +12,15 @@ use std::collections::HashSet;
 use thiserror::Error;
 use SmilesErrorKind::*;
 
+#[macro_export]
+macro_rules! smiles {
+    ($smiles:expr) => {
+        $crate::parse::smiles::SmilesParser::new($smiles)
+            .parse()
+            .unwrap()
+    };
+}
+
 /// Inner enum for `SmilesError`
 #[derive(Debug, Clone, Copy, Error)]
 pub enum SmilesErrorKind {
@@ -614,6 +623,7 @@ impl<'a> SmilesParser<'a> {
             }
             let (a, b) = self.graph.edge_endpoints(id).unwrap();
             let (mut left, mut right, mut unbound) = (None, None, None);
+            let mut es = SmallVec::<_, 4>::new();
             for e in self.graph.edges(a) {
                 let other = if e.source() == a {
                     e.target()
@@ -626,21 +636,23 @@ impl<'a> SmilesParser<'a> {
                     Bond::Single => &mut unbound,
                     _ => continue,
                 };
-                *e.weight() = Bond::Single;
+                es.push(e.id());
                 *r = Some(self.graph.cip_priority(other, a));
             }
             let aord = match (left, right, unbound) {
                 (Some(lhs), Some(rhs), _)
                 | (Some(lhs), None, Some(rhs))
-                | (None, Some(rhs), Some(lhs)) => {
-                    let ord = Ord::cmp(&lhs, &rhs);
-                    if ord == Ordering::Equal {
-                        continue;
-                    }
-                    ord
-                }
-                _ => continue,
+                | (None, Some(rhs), Some(lhs)) => Ord::cmp(&lhs, &rhs),
+                (Some(_), None, None) => Ordering::Greater,
+                (None, Some(_), None) => Ordering::Less,
+                _ => Ordering::Equal,
             };
+            for e in es.drain(..) {
+                self.graph[e] = Bond::Single;
+            }
+            if aord == Ordering::Equal {
+                continue;
+            }
             (left, right, unbound) = (None, None, None);
             for e in self.graph.edges(b) {
                 let other = if e.source() == b {
@@ -654,21 +666,23 @@ impl<'a> SmilesParser<'a> {
                     Bond::Single => &mut unbound,
                     _ => continue,
                 };
-                *e.weight() = Bond::Single;
-                *r = Some(self.graph.cip_priority(other, b));
+                es.push(e.id());
+                *r = Some((&self.graph).cip_priority(other, b));
             }
             let bord = match (left, right, unbound) {
                 (Some(lhs), Some(rhs), _)
                 | (Some(lhs), None, Some(rhs))
-                | (None, Some(rhs), Some(lhs)) => {
-                    let ord = Ord::cmp(&lhs, &rhs);
-                    if ord == Ordering::Equal {
-                        continue;
-                    }
-                    ord
-                }
-                _ => continue,
+                | (None, Some(rhs), Some(lhs)) => Ord::cmp(&lhs, &rhs),
+                (Some(_), None, None) => Ordering::Greater,
+                (None, Some(_), None) => Ordering::Less,
+                _ => Ordering::Equal,
             };
+            for e in es.drain(..) {
+                self.graph[e] = Bond::Single;
+            }
+            if bord == Ordering::Equal {
+                continue;
+            }
             self.graph[id] = if aord == bord {
                 Bond::DoubleZ
             } else {
@@ -682,18 +696,12 @@ impl<'a> SmilesParser<'a> {
             if !ch.is_chiral() {
                 continue;
             }
-            let prec_last = self.graph[id].data.scratch() & 8 != 0;
-            let mut it = self.graph.neighbors(id);
-            let mut ns: SmallVec<_, 3> = if !prec_last {
-                it.next();
-                it.map(|n| self.graph.cip_priority(n, id)).collect()
-            } else {
-                let last = it.next();
-                it.scan(last, |state, elem| std::mem::replace(state, Some(elem)))
-                    .map(|n| self.graph.cip_priority(n, id))
-                    .collect()
-            };
-            if ch == Chirality::S {
+            let mut ns: SmallVec<_, 3> = self
+                .graph
+                .neighbors(id)
+                .map(|n| (&self.graph).cip_priority(n, id))
+                .collect();
+            if ch == Chirality::R {
                 ns.reverse();
             }
             if ns.len() == 4 {
