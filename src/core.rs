@@ -257,9 +257,6 @@ impl Display for Atom {
                 write!(f, "{}", Superscript(self.isotope))?;
             }
             write!(f, "{}", ATOM_DATA[self.protons as usize].sym)?;
-            if self.protons == 0 {
-                write!(f, "{}", Subscript(self.isotope))?;
-            }
             match self.charge {
                 0 => {}
                 1 => f.write_str("⁺")?,

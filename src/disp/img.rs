@@ -292,20 +292,20 @@ where
         let lef = (cx as u32) - (x as u32) / 2;
         let rig = (cx as u32) + (x as u32) / 2;
 
-        if atom.isotope != 0 || atom.protons == 0 {
-            let f = f / 2.0;
-            let txt = atom.isotope.to_string();
-            let mut ix = 0;
-            let mut iy = 0;
-            for c in txt.chars() {
-                let metrics = FONT_DATA.metrics(c, f);
-                ix += metrics.width;
-                if metrics.height > iy {
-                    iy = metrics.height;
-                }
-            }
-            img.text(lef - ix as u32 - 2, top, f, &FONT_DATA, &txt, tc);
-        }
+        // if atom.isotope != 0 || atom.protons == 0 {
+        //     let f = f / 2.0;
+        //     let txt = atom.isotope.to_string();
+        //     let mut ix = 0;
+        //     let mut iy = 0;
+        //     for c in txt.chars() {
+        //         let metrics = FONT_DATA.metrics(c, f);
+        //         ix += metrics.width;
+        //         if metrics.height > iy {
+        //             iy = metrics.height;
+        //         }
+        //     }
+        //     img.text(lef - ix as u32 - 2, top, f, &FONT_DATA, &txt, tc);
+        // }
 
         if atom.charge != 0 {
             let f = f / 2.0;

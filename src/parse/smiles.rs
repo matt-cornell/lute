@@ -46,6 +46,8 @@ pub enum SmilesErrorKind {
     DuplicateBond,
     #[error("multiple bonds on an R-group aren't allowed")]
     MultiBondedR,
+    #[error("isotopes can't be specified on an R-group")]
+    RIsotope,
 }
 
 /// Something went wrong trying to parse a SMILES string
@@ -337,9 +339,18 @@ impl<'a> SmilesParser<'a> {
                     Some(&b's') => self
                         .graph
                         .add_node(Atom::new_isotope_scratch(16, isotope, 2)),
-                    Some(&b'r') => self
-                        .graph
-                        .add_node(Atom::new_isotope_scratch(0, isotope, 2)),
+                    Some(&b'r') => {
+                        if used > 0 {
+                            Err(SmilesError::new(self.index, RIsotope))?
+                        }
+                        self.graph.add_node(Atom::new_scratch(0, 2))
+                    }
+                    Some(&b'R') => {
+                        if used > 0 {
+                            Err(SmilesError::new(self.index, RIsotope))?
+                        }
+                        self.graph.add_node(Atom::new(0))
+                    }
                     Some(c) if c.is_ascii_uppercase() => {
                         let start = self.index;
                         let len = self.input[(self.index + 1)..]
@@ -584,17 +595,6 @@ impl<'a> SmilesParser<'a> {
                 }
                 self.graph[neighbor].add_rs(1)?;
                 self.graph.remove_node(n);
-            }
-        } else {
-            let mut found = HashSet::new();
-            for n in self.graph.node_weights_mut() {
-                if n.protons != 0 {
-                    continue;
-                }
-                if found.contains(&n.isotope) {
-                    n.isotope = (0..).find(|i| !found.contains(i)).unwrap();
-                }
-                found.insert(n.isotope);
             }
         }
         Ok(())
