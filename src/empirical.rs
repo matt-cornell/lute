@@ -8,6 +8,13 @@ use std::fmt::{self, Debug, Display, Formatter};
 use std::ops::{Add, AddAssign};
 use thiserror::Error;
 
+#[macro_export]
+macro_rules! empirical {
+    ($form:literal) => {
+        EmpiricalFormula::parse_str($form).expect(concat!("Failed to parse formula ", $form))
+    };
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Error)]
 pub enum EmpiricalErrorKind {
     #[error("unknown atom {0}")]
@@ -162,7 +169,11 @@ impl Display for EmpiricalFormula {
                     1 => f.write_str(self.0),
                     n => {
                         f.write_str(self.0)?;
-                        Display::fmt(&Subscript(n), f)
+                        if f.alternate() {
+                            Display::fmt(&Subscript(n), f)
+                        } else {
+                            Display::fmt(&n, f)
+                        }
                     }
                 }
             }

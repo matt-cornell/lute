@@ -21,6 +21,8 @@ lock_api = "0.4.11"
 modular-bitfield = "0.11.2"
 num-traits = "0.2.18"
 petgraph = "0.6.4"
+rand = { version = "0.8.5", optional = true }
+gcd = { version = "2.3.0", optional = true }
 smallvec = "2.0.0-alpha.3"
 thiserror = "1.0.57"
 
@@ -28,7 +30,8 @@ thiserror = "1.0.57"
 clap = { version = "4.5.1", features = ["derive"] }
 
 [features]
-default = ["mol-fmt"]
+default = ["mol-fmt", "rand"]
 mol-fmt = ["mol-svg", "mol-bmp"]
 mol-svg = ["coordgen"]
 mol-bmp = ["coordgen", "fimg", "image", "lazy_static", "fontdue"]
+rand = ["dep:rand", "gcd"]

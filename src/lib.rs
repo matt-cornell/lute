@@ -11,6 +11,9 @@ pub mod molecule;
 pub mod parse;
 pub mod utils;
 
+#[cfg(feature = "rand")]
+mod rand;
+
 pub mod prelude {
     pub use crate::arena::{Arena, Container, Molecule};
     pub use crate::core::{Atom, Bond, Chirality};
@@ -23,7 +26,7 @@ pub mod prelude {
     pub use crate::graph::compact::GraphCompactor;
     pub use crate::molecule::{Molecule as MolTrait, ValueMolecule};
     pub use crate::parse::smiles::SmilesParser;
-    pub use crate::smiles;
+    pub use crate::{empirical, smiles};
 }
 
 #[cfg(test)]

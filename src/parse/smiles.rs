@@ -8,16 +8,15 @@ use petgraph::visit::*;
 use smallvec::SmallVec;
 use std::cmp::Ordering;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use thiserror::Error;
 use SmilesErrorKind::*;
 
 #[macro_export]
 macro_rules! smiles {
-    ($smiles:expr) => {
+    ($smiles:literal) => {
         $crate::parse::smiles::SmilesParser::new($smiles)
             .parse()
-            .unwrap()
+            .expect(concat!("Failed to parse SMILES ", $smiles))
     };
 }
 
