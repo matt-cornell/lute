@@ -2,8 +2,11 @@ use crate::atom_info::ATOM_DATA;
 use crate::core::{TooManyBonds, *};
 use crate::utils::echar::*;
 use atoi::FromRadix10;
+use itertools::Itertools;
 use petgraph::prelude::*;
 use petgraph::visit::*;
+use smallvec::SmallVec;
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use thiserror::Error;
@@ -166,6 +169,7 @@ impl<'a> SmilesParser<'a> {
                             bond
                         },
                     );
+                    self.graph[atom].with_scratch(|s| *s |= 8);
                 }
                 Some(&b')') if nested => {
                     if ex {
@@ -355,9 +359,9 @@ impl<'a> SmilesParser<'a> {
                     self.index += 1;
                     if self.input.get(self.index) == Some(&b'@') {
                         self.index += 1;
-                        self.graph[atom].data.set_chirality(Chirality::Cw);
+                        self.graph[atom].data.set_chirality(Chirality::R);
                     } else {
-                        self.graph[atom].data.set_chirality(Chirality::Ccw);
+                        self.graph[atom].data.set_chirality(Chirality::S);
                     }
                 }
                 if self.input.get(self.index) == Some(&b'H') {
@@ -599,6 +603,141 @@ impl<'a> SmilesParser<'a> {
         Ok(())
     }
 
+    /// Update stereochemistry
+    fn update_stereo(&mut self) {
+        use crate::molecule::*;
+
+        // E/Z assignment
+        for id in (0..self.graph.edge_count()).map(petgraph::graph::EdgeIndex::new) {
+            if self.graph[id] != Bond::Double {
+                continue;
+            }
+            let (a, b) = self.graph.edge_endpoints(id).unwrap();
+            let (mut left, mut right, mut unbound) = (None, None, None);
+            for e in self.graph.edges(a) {
+                let other = if e.source() == a {
+                    e.target()
+                } else {
+                    e.source()
+                };
+                let r = match *e.weight() {
+                    Bond::Left => &mut left,
+                    Bond::Right => &mut right,
+                    Bond::Single => &mut unbound,
+                    _ => continue,
+                };
+                *e.weight() = Bond::Single;
+                *r = Some(self.graph.cip_priority(other, a));
+            }
+            let aord = match (left, right, unbound) {
+                (Some(lhs), Some(rhs), _)
+                | (Some(lhs), None, Some(rhs))
+                | (None, Some(rhs), Some(lhs)) => {
+                    let ord = Ord::cmp(&lhs, &rhs);
+                    if ord == Ordering::Equal {
+                        continue;
+                    }
+                    ord
+                }
+                _ => continue,
+            };
+            (left, right, unbound) = (None, None, None);
+            for e in self.graph.edges(b) {
+                let other = if e.source() == b {
+                    e.target()
+                } else {
+                    e.source()
+                };
+                let r = match *e.weight() {
+                    Bond::Left => &mut left,
+                    Bond::Right => &mut right,
+                    Bond::Single => &mut unbound,
+                    _ => continue,
+                };
+                *e.weight() = Bond::Single;
+                *r = Some(self.graph.cip_priority(other, b));
+            }
+            let bord = match (left, right, unbound) {
+                (Some(lhs), Some(rhs), _)
+                | (Some(lhs), None, Some(rhs))
+                | (None, Some(rhs), Some(lhs)) => {
+                    let ord = Ord::cmp(&lhs, &rhs);
+                    if ord == Ordering::Equal {
+                        continue;
+                    }
+                    ord
+                }
+                _ => continue,
+            };
+            self.graph[id] = if aord == bord {
+                Bond::DoubleZ
+            } else {
+                Bond::DoubleE
+            };
+        }
+
+        // R/S assignment
+        for id in (0..self.graph.node_count()).map(petgraph::graph::NodeIndex::new) {
+            let ch = self.graph[id].data.chirality();
+            if !ch.is_chiral() {
+                continue;
+            }
+            let prec_last = self.graph[id].data.scratch() & 8 != 0;
+            let mut it = self.graph.neighbors(id);
+            let mut ns: SmallVec<_, 3> = if !prec_last {
+                it.next();
+                it.map(|n| self.graph.cip_priority(n, id)).collect()
+            } else {
+                let last = it.next();
+                it.scan(last, |state, elem| std::mem::replace(state, Some(elem)))
+                    .map(|n| self.graph.cip_priority(n, id))
+                    .collect()
+            };
+            if ch == Chirality::S {
+                ns.reverse();
+            }
+            if ns.len() == 4 {
+                let idx = ns.iter().position_min().unwrap();
+                ns.remove(idx);
+            }
+            let ch = if let [a, b, c] = &ns[..] {
+                'blk: {
+                    let ab = a.cmp(b);
+                    if ab == Ordering::Equal {
+                        break 'blk Chirality::None;
+                    }
+                    let bc = b.cmp(c);
+                    match (ab, bc) {
+                        // a b c
+                        (Ordering::Less, Ordering::Less) => Chirality::S,
+                        // c b a
+                        (Ordering::Greater, Ordering::Greater) => Chirality::R,
+                        // b is max
+                        (Ordering::Less, Ordering::Greater) => match c.cmp(a) {
+                            Ordering::Equal => Chirality::None,
+                            // c a b
+                            Ordering::Greater => Chirality::S,
+                            // a c b
+                            Ordering::Less => Chirality::R,
+                        },
+                        (Ordering::Greater, Ordering::Less) => match c.cmp(a) {
+                            Ordering::Equal => Chirality::None,
+                            // b a c
+                            Ordering::Greater => Chirality::R,
+                            // b c a
+                            Ordering::Less => Chirality::S,
+                        },
+                        (Ordering::Equal, _) | (_, Ordering::Equal) => Chirality::None,
+                    }
+                }
+            } else {
+                Chirality::None
+            };
+            std::mem::drop(ns);
+            self.graph[id].data.set_chirality(ch);
+        }
+    }
+
     /// Perform some checks on the molecule. Panics on failure (which should be impossible).
     fn validate(&self) {
         for node in self.graph.node_references() {
@@ -609,6 +748,8 @@ impl<'a> SmilesParser<'a> {
         }
         for &edge in self.graph.edge_weights() {
             assert_ne!(edge, Bond::Non);
+            assert_ne!(edge, Bond::Left);
+            assert_ne!(edge, Bond::Right);
         }
     }
 
@@ -618,6 +759,7 @@ impl<'a> SmilesParser<'a> {
         self.update_hydrogens()?;
         self.update_rs()?;
         self.update_bonds()?;
+        self.update_stereo();
         if self.validate {
             self.validate();
         }

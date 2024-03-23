@@ -43,8 +43,8 @@ pub struct TooManyBonds(pub TooMany, pub usize);
 pub enum Chirality {
     #[default]
     None,
-    Ccw,
-    Cw,
+    R,
+    S,
     /// Shouldn't ever be used
     Error,
 }
@@ -60,14 +60,13 @@ impl Chirality {
 /// Bit-packed field for tracking bonds, plus two scratch bits
 #[allow(clippy::identity_op)]
 #[bitfield]
-#[repr(u16)]
 #[derive(Debug, Clone, Copy)]
 pub struct AtomData {
     pub hydrogen: B4,
     pub unknown: B4,
     pub other: B4,
     pub chirality: Chirality,
-    pub scratch: B2,
+    pub scratch: B10,
 }
 impl AtomData {
     /// Count the total number of bonded atoms
@@ -150,7 +149,7 @@ impl Atom {
             data: AtomData::new(),
         }
     }
-    pub fn new_scratch(protons: u8, scratch: u8) -> Self {
+    pub fn new_scratch(protons: u8, scratch: u16) -> Self {
         Self {
             protons,
             isotope: 0,
@@ -166,7 +165,7 @@ impl Atom {
             data: AtomData::new(),
         }
     }
-    pub fn new_isotope_scratch(protons: u8, isotope: u16, scratch: u8) -> Self {
+    pub fn new_isotope_scratch(protons: u8, isotope: u16, scratch: u16) -> Self {
         Self {
             protons,
             isotope,
@@ -203,11 +202,11 @@ impl Atom {
     }
 
     #[inline(always)]
-    pub fn map_scratch<F: FnOnce(u8) -> u8>(&mut self, f: F) {
+    pub fn map_scratch<F: FnOnce(u16) -> u16>(&mut self, f: F) {
         self.data.set_scratch(f(self.data.scratch()));
     }
     #[inline(always)]
-    pub fn with_scratch<R, F: FnOnce(&mut u8) -> R>(&mut self, f: F) -> R {
+    pub fn with_scratch<R, F: FnOnce(&mut u16) -> R>(&mut self, f: F) -> R {
         let mut scratch = self.data.scratch();
         let r = f(&mut scratch);
         self.data.set_scratch(scratch);
@@ -283,6 +282,8 @@ c_enum! {
         Triple,
         Quad,
         Aromatic,
+        DoubleE,
+        DoubleZ,
         Left,
         Right,
     }
@@ -291,7 +292,7 @@ impl Bond {
     pub fn bond_count(self) -> f32 {
         match self {
             Self::Single | Self::Left | Self::Right => 1f32,
-            Self::Double => 2f32,
+            Self::Double | Self::DoubleE | Self::DoubleZ => 2f32,
             Self::Triple => 3f32,
             Self::Quad => 4f32,
             Self::Aromatic => 1.5f32,
@@ -304,6 +305,8 @@ impl Bond {
             Self::Non => "non",
             Self::Single => "single",
             Self::Double => "double",
+            Self::DoubleE => "trans double",
+            Self::DoubleZ => "cis double",
             Self::Triple => "triple",
             Self::Quad => "quad",
             Self::Aromatic => "aromatic",
