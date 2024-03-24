@@ -666,7 +666,7 @@ impl<'a> SmilesParser<'a> {
                     _ => continue,
                 };
                 es.push(e.id());
-                *r = Some((&self.graph).cip_priority(other, b));
+                *r = Some(self.graph.cip_priority(other, b));
             }
             let bord = match (left, right, unbound) {
                 (Some(lhs), Some(rhs), _)
@@ -698,7 +698,7 @@ impl<'a> SmilesParser<'a> {
             let mut ns: SmallVec<_, 3> = self
                 .graph
                 .neighbors(id)
-                .map(|n| (&self.graph).cip_priority(n, id))
+                .map(|n| self.graph.cip_priority(n, id))
                 .collect();
             if ch == Chirality::R {
                 ns.reverse();

@@ -187,7 +187,7 @@ impl<G: Visitable + IntoEdges + DataMap<NodeWeight = Atom, EdgeWeight = Bond>> C
                 &other.weights[(other.indices[at - 1] as _)..i]
             }
         });
-        *out = lhs.cmp(&rhs);
+        *out = lhs.cmp(rhs);
         ret && *out == Ordering::Equal
     }
     pub fn cmp<H: Visitable + IntoEdges + DataMap<NodeWeight = Atom, EdgeWeight = Bond>>(
@@ -241,7 +241,7 @@ impl<
     > PartialEq<CipPriority<G2>> for CipPriority<G1>
 {
     fn eq(&self, other: &CipPriority<G2>) -> bool {
-        <Self as PartialOrd<_>>::partial_cmp(&self, other) == Some(Ordering::Equal)
+        <Self as PartialOrd<_>>::partial_cmp(self, other) == Some(Ordering::Equal)
     }
 }
 impl<G: Visitable + IntoEdges + DataMap<NodeWeight = Atom, EdgeWeight = Bond>> Eq
@@ -329,7 +329,11 @@ where
     }
 
     /// Get CIP priority for an atom.
-    fn cip_priority(&'a self, atom: AtomId<'a, Self>, center: AtomId<'a, Self>) -> CipPriority<&Self>
+    fn cip_priority(
+        &'a self,
+        atom: AtomId<'a, Self>,
+        center: AtomId<'a, Self>,
+    ) -> CipPriority<&Self>
     where
         Self: Visitable + Sized,
     {
@@ -348,9 +352,7 @@ where
 
 type AtomId<'a, T> = <&'a T as GraphBase>::NodeId;
 
-impl<'a, T: 'a> Molecule<'a> for T
-where
-    &'a T: GraphProp<EdgeType = petgraph::Undirected> + Data<NodeWeight = Atom, EdgeWeight = Bond>,
+impl<'a, T: 'a> Molecule<'a> for T where
+    &'a T: GraphProp<EdgeType = petgraph::Undirected> + Data<NodeWeight = Atom, EdgeWeight = Bond>
 {
-    
 }

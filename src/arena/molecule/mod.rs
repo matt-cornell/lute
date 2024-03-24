@@ -266,13 +266,11 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
                             } else {
                                 break;
                             }
+                        } else if idx1 > o {
+                            idx1 -= o;
+                            i1 += usize::BITS as usize;
                         } else {
-                            if idx1 > o {
-                                idx1 -= o;
-                                i1 += usize::BITS as usize;
-                            } else {
-                                break;
-                            }
+                            break;
                         }
                     }
                     let g = arena.graph();
@@ -334,17 +332,15 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
                                     })
                                     .copied();
                             }
+                        } else if idx0 > s {
+                            idx0 -= s;
+                            idx1 -= s;
+                        } else if idx1 > s {
+                            idx1 -= s;
+                            first = Some(*p);
                         } else {
-                            if idx0 > s {
-                                idx0 -= s;
-                                idx1 -= s;
-                            } else if idx1 > s {
-                                idx1 -= s;
-                                first = Some(*p);
-                            } else {
-                                ix = *p;
-                                break;
-                            }
+                            ix = *p;
+                            break;
                         }
                     }
                 }
