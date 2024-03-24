@@ -20,7 +20,7 @@ num-traits = "0.2.18"
 petgraph = "0.6.4"
 rand = { version = "0.8.5", optional = true }
 gcd = { version = "2.3.0", optional = true }
-smallvec = "2.0.0-alpha.3"
+smallvec = "2.0.0-alpha.5"
 thiserror = "1.0.57"
 
 [dev-dependencies]
@@ -30,3 +30,4 @@ clap = { version = "4.5.1", features = ["derive"] }
 default = ["mol-svg", "rand"]
 mol-svg = ["coordgen"]
 rand = ["dep:rand", "gcd"]
+nightly = ["rand?/nightly", "lock_api/nightly"]
