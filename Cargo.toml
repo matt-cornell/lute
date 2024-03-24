@@ -10,11 +10,8 @@ atoi = "2.0.0"
 bstr = { version = "1.9.0", default-features = false, features = ["std"] }
 c-enum = "0.2.3"
 coordgen = { version = "0.2.2", optional = true }
-fimg = { version = "0.4.37", optional = true, features = ["text"] }
 fmtastic = "0.2.0"
-fontdue = { version = "0.7.3", optional = true }
 hybridmap = "0.1.1"
-image = { version = "0.24.9", optional = true, default-features = false, features = ["png", "jpeg"] }
 itertools = "0.12.1"
 lazy_static = { version = "1.4.0", optional = true }
 lock_api = "0.4.11"
@@ -26,12 +23,21 @@ gcd = { version = "2.3.0", optional = true }
 smallvec = "2.0.0-alpha.3"
 thiserror = "1.0.57"
 
-[dev-dependencies]
+
+[[example]]
+name = "parse-smiles"
+
+[example.dependencies]
 clap = { version = "4.5.1", features = ["derive"] }
 
+[[example]]
+name = "arena-test"
+
+[example.dependencies]
+clap = { version = "4.5.1", features = ["derive"] }
+
+
 [features]
-default = ["mol-fmt", "rand"]
-mol-fmt = ["mol-svg", "mol-bmp"]
+default = ["mol-svg", "rand"]
 mol-svg = ["coordgen"]
-mol-bmp = ["coordgen", "fimg", "image", "lazy_static", "fontdue"]
 rand = ["dep:rand", "gcd"]

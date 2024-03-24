@@ -20,8 +20,6 @@ pub mod prelude {
     pub use crate::disp::fmt_as_dot;
     #[cfg(feature = "mol-svg")]
     pub use crate::disp::fmt_as_svg;
-    #[cfg(feature = "mol-bmp")]
-    pub use crate::disp::{make_img, make_img_vec};
     pub use crate::empirical::EmpiricalFormula;
     pub use crate::graph::compact::GraphCompactor;
     pub use crate::molecule::{Molecule as MolTrait, ValueMolecule};
