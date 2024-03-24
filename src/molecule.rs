@@ -35,7 +35,7 @@ fn unshared_electrons(protons: u8, charge: i8, bonded: u8) -> u8 {
 }
 
 #[bitfield]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct AtomInfoFields {
     pub bonded: B7,
     pub neighbors_pi: bool,

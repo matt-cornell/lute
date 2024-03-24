@@ -1,4 +1,5 @@
 #![allow(clippy::module_inception)]
+#![cfg_attr(all(feature = "c-ffi", feature = "nightly"), feature(allocator_api))]
 
 #[rustfmt::skip]
 pub mod atom_info;
@@ -12,7 +13,10 @@ pub mod parse;
 pub mod utils;
 
 #[cfg(feature = "rand")]
-mod rand;
+pub mod rand;
+
+#[cfg(feature = "c-ffi")]
+pub mod ffi;
 
 pub mod prelude {
     pub use crate::arena::{Arena, Container, Molecule};

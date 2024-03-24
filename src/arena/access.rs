@@ -6,6 +6,7 @@ use lock_api::{
 use petgraph::graph::IndexType;
 use std::cell::{Ref, RefCell, RefMut};
 use std::ops::{Deref, DerefMut};
+use std::ptr::NonNull;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -94,7 +95,8 @@ impl<T: ArenaAccessibleMut> ArenaAccessibleMut for &T {
 
 #[doc(hidden)]
 #[derive(Debug, Clone, Copy)]
-pub struct PtrAcc<Ix: IndexType>(*mut Arena<Ix>);
+#[repr(transparent)]
+pub struct PtrAcc<Ix: IndexType>(NonNull<Arena<Ix>>);
 impl<Ix: IndexType> ArenaAccessor for PtrAcc<Ix> {
     type Ix = Ix;
     type Ref<'a> = &'a Arena<Ix>;
@@ -105,7 +107,7 @@ impl<Ix: IndexType> ArenaAccessor for PtrAcc<Ix> {
         Self: 'a,
     {
         // Safety: this was created with an `unsafe`, so the caller must know about the invariants
-        unsafe { &*self.0 }
+        unsafe { &mut *self.0.as_ptr() }
     }
 
     fn map_ref<'a, T: 'a, F: FnOnce(&Arena<Self::Ix>) -> &T>(
@@ -130,7 +132,7 @@ impl<Ix: IndexType> ArenaAccessorMut for PtrAcc<Ix> {
         Self: 'a,
     {
         // Safety: this was created with an `unsafe`, so the caller must know about the invariants
-        unsafe { &mut *self.0 }
+        unsafe { &mut *self.0.as_ptr() }
     }
 
     fn map_ref_mut<'a, T: 'a, F: FnOnce(&mut Arena<Self::Ix>) -> &mut T>(
@@ -150,16 +152,17 @@ impl<Ix: IndexType> ArenaAccessorMut for PtrAcc<Ix> {
 /// Wrapper type around a `*mut Arena`. It has an `unsafe` constructor because the
 /// `ArenaAccessible` implementation can't be.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ArenaPtr<Ix: IndexType>(*mut Arena<Ix>);
+#[repr(transparent)]
+pub struct ArenaPtr<Ix: IndexType>(NonNull<Arena<Ix>>);
 impl<Ix: IndexType> ArenaPtr<Ix> {
     /// # Safety
     /// This type basically wraps a pointer, but moves the `unsafe` to its construction. All
     /// pointer invariants must hold, as they won't be checked elsewhere.
-    pub const unsafe fn new(ptr: *mut Arena<Ix>) -> Self {
+    pub const unsafe fn new(ptr: NonNull<Arena<Ix>>) -> Self {
         Self(ptr)
     }
     pub fn get_ptr(self) -> *mut Arena<Ix> {
-        self.0
+        self.0.as_ptr()
     }
 }
 impl<Ix: IndexType> ArenaAccessible for ArenaPtr<Ix> {

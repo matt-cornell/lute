@@ -10,6 +10,7 @@ pub use node_impls::*;
 /// A `Molecule` acts like a graph, and can have graph algorithms used on it. It's immutable, with all
 /// mutations making (efficient) copies.
 #[derive(Debug, Clone, Copy)]
+#[repr(C)]
 pub struct Molecule<Ix, R> {
     arena: R,
     index: Ix,

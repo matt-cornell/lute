@@ -4,7 +4,7 @@ use smallvec::SmallVec;
 use std::fmt::{self, Binary, Debug, Formatter};
 use std::ops::*;
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Default, Clone, PartialEq, Eq)]
 pub struct BitSet<T, const N: usize>(SmallVec<T, N>);
 impl<T: PrimInt + Zero, const N: usize> BitSet<T, N> {
     pub const fn new() -> Self {

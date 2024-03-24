@@ -9,6 +9,7 @@ edition = "2021"
 atoi = "2.0.0"
 bstr = { version = "1.9.0", default-features = false, features = ["std"] }
 c-enum = "0.2.3"
+concat-idents = { version = "1.1.5", optional = true }
 coordgen = { version = "0.2.2", optional = true }
 fmtastic = "0.2.0"
 hybridmap = "0.1.1"
@@ -26,8 +27,14 @@ thiserror = "1.0.57"
 [dev-dependencies]
 clap = { version = "4.5.1", features = ["derive"] }
 
+[lib]
+crate-type = ["lib", "cdylib"]
+
 [features]
 default = ["mol-svg", "rand"]
+nightly = ["rand?/nightly", "lock_api/nightly"]
+
 mol-svg = ["coordgen"]
 rand = ["dep:rand", "gcd"]
-nightly = ["rand?/nightly", "lock_api/nightly"]
+
+c-ffi = ["concat-idents"]

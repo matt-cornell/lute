@@ -60,7 +60,7 @@ impl Chirality {
 /// Bit-packed field for tracking bonds, plus two scratch bits
 #[allow(clippy::identity_op)]
 #[bitfield]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct AtomData {
     pub hydrogen: B4,
     pub unknown: B4,
