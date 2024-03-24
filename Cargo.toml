@@ -23,19 +23,8 @@ gcd = { version = "2.3.0", optional = true }
 smallvec = "2.0.0-alpha.3"
 thiserror = "1.0.57"
 
-
-[[example]]
-name = "parse-smiles"
-
-[example.dependencies]
+[dev-dependencies]
 clap = { version = "4.5.1", features = ["derive"] }
-
-[[example]]
-name = "arena-test"
-
-[example.dependencies]
-clap = { version = "4.5.1", features = ["derive"] }
-
 
 [features]
 default = ["mol-svg", "rand"]
