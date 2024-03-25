@@ -1,4 +1,5 @@
 #![allow(clippy::module_inception)]
+#![warn(clippy::infinite_loop)]
 #![cfg_attr(all(feature = "c-ffi", feature = "nightly"), feature(allocator_api))]
 
 #[rustfmt::skip]

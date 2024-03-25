@@ -59,6 +59,20 @@ impl<T: PrimInt + Zero, const N: usize> BitSet<T, N> {
     pub fn count_ones(&self) -> usize {
         self.0.iter().map(|i| i.count_ones() as usize).sum()
     }
+    pub fn max_set(&self) -> Option<usize> {
+        let mut i = self.0.len() - 1;
+        let zero = T::zero();
+        while i > 0 && self.0[i] == zero {
+            i -= 1;
+        }
+        let v = self.0[i];
+        if v == zero {
+            None
+        } else {
+            let bits = zero.leading_zeros() as usize;
+            Some(i * bits + (bits - v.leading_zeros() as usize))
+        }
+    }
 }
 
 impl<T: Binary, const N: usize> Debug for BitSet<T, N> {

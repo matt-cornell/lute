@@ -100,6 +100,7 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
                             ));
                         }
                     }
+                    return None;
                 }
                 MolRepr::Broken(b) => {
                     let empty = BTreeSet::new();
@@ -132,10 +133,15 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
                             }
                         }
                     }
+                    let mut found = false;
                     for p in &b.frags {
                         let mut s = arena.parts[p.index()].1.index();
                         let r = skips.get(p).unwrap_or(&empty);
+                        let mut ic = 0;
                         for i in r {
+                            if i.index() < ic {
+                                ic += 1;
+                            }
                             if i.index() < s {
                                 s -= 1;
                             } else {
@@ -146,8 +152,13 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
                             idx -= s;
                         } else {
                             ix = *p;
+                            idx += ic;
+                            found = true;
                             break;
                         }
+                    }
+                    if !found {
+                        return None;
                     }
                 }
             }
@@ -182,6 +193,7 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
                             return Some(arena.graph()[petgraph::graph::NodeIndex::new(i + idx)]);
                         }
                     }
+                    return None;
                 }
                 MolRepr::Broken(b) => {
                     let empty = BTreeSet::new();
@@ -214,10 +226,15 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
                             }
                         }
                     }
+                    let mut found = false;
                     for p in &b.frags {
                         let mut s = arena.parts[p.index()].1.index();
                         let r = skips.get(p).unwrap_or(&empty);
+                        let mut ic = 0;
                         for i in r {
+                            if i.index() < ic {
+                                ic += 1;
+                            }
                             if i.index() < s {
                                 s -= 1;
                             } else {
@@ -228,8 +245,13 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
                             idx -= s;
                         } else {
                             ix = *p;
+                            idx += ic;
+                            found = true;
                             break;
                         }
+                    }
+                    if !found {
+                        return None;
                     }
                 }
             }
@@ -252,6 +274,7 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
                 MolRepr::Atomic(b) => {
                     let (mut i0, mut i1) = (0, 0);
                     let mut both = false;
+                    let mut found = false;
                     for w in b.as_slice() {
                         let o = w.count_ones() as usize;
                         if both {
@@ -265,15 +288,18 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
                                 i1 += usize::BITS as usize;
                                 both = false;
                             } else {
+                                found = true;
                                 break;
                             }
                         } else if idx1 > o {
                             idx1 -= o;
                             i1 += usize::BITS as usize;
                         } else {
+                            found = true;
                             break;
                         }
                     }
+                    found.then_some(())?;
                     let g = arena.graph();
                     return Some(
                         g[g.find_edge(Ix::new(i0 + idx0).into(), Ix::new(i1 + idx1).into())?],
@@ -310,10 +336,18 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
                         ibs.insert(*i, weight.unwrap_or(Bond::Single));
                     }
                     let mut first = None;
+                    let mut found = false;
                     for p in &b.frags {
                         let mut s = arena.parts[p.index()].1.index();
                         let r = skips.get(p).unwrap_or(&empty);
+                        let (mut i0c, mut i1c) = (0, 0);
                         for i in r {
+                            if i.index() < i0c {
+                                i0c += 1;
+                            }
+                            if i.index() < i1c {
+                                i1c += 1;
+                            }
                             if i.index() < s {
                                 s -= 1;
                             } else {
@@ -324,6 +358,7 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
                             if idx1 > s {
                                 idx1 -= s;
                             } else {
+                                idx1 += i1c;
                                 return ibs
                                     .get(&InterFragBond {
                                         an: first,
@@ -338,11 +373,18 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
                             idx1 -= s;
                         } else if idx1 > s {
                             idx1 -= s;
+                            idx0 += i0c;
                             first = Some(*p);
                         } else {
                             ix = *p;
+                            idx0 += i0c;
+                            idx1 += i1c;
+                            found = true;
                             break;
                         }
+                    }
+                    if !found {
+                        return None;
                     }
                 }
             }

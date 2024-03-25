@@ -1,5 +1,5 @@
 use super::*;
-use petgraph::visit::NodeRef;
+use petgraph::visit::{EdgeRef, NodeRef};
 
 /// Node indices are compact indices over the atoms in a molecule.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -58,6 +58,12 @@ impl<Ix> NodeReference<Ix> {
                 .unwrap(),
         }
     }
+    pub fn with_weight(node_idx: NodeIndex<Ix>, weight: Atom) -> Self {
+        Self {
+            node_idx,
+            atom: weight,
+        }
+    }
     pub const fn atom(&self) -> &Atom {
         &self.atom
     }
@@ -71,5 +77,53 @@ impl<Ix: Copy> NodeRef for NodeReference<Ix> {
     }
     fn weight(&self) -> &Atom {
         &self.atom
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct EdgeReference<Ix> {
+    pub edge_idx: EdgeIndex<Ix>,
+    pub bond: Bond,
+}
+impl<Ix> EdgeReference<Ix> {
+    pub fn new<R: ArenaAccessor<Ix = Ix>>(mol_idx: Ix, edge_idx: EdgeIndex<Ix>, arena: R) -> Self
+    where
+        Ix: IndexType,
+    {
+        Self {
+            edge_idx,
+            bond: arena
+                .get_arena()
+                .molecule(mol_idx)
+                .get_bond(edge_idx)
+                .unwrap(),
+        }
+    }
+    pub fn with_weight(edge_idx: EdgeIndex<Ix>, weight: Bond) -> Self {
+        Self {
+            edge_idx,
+            bond: weight,
+        }
+    }
+    pub const fn bond(&self) -> &Bond {
+        &self.bond
+    }
+}
+impl<Ix: Copy> EdgeRef for EdgeReference<Ix> {
+    type NodeId = NodeIndex<Ix>;
+    type EdgeId = EdgeIndex<Ix>;
+    type Weight = Bond;
+
+    fn id(&self) -> EdgeIndex<Ix> {
+        self.edge_idx
+    }
+    fn weight(&self) -> &Bond {
+        &self.bond
+    }
+    fn source(&self) -> NodeIndex<Ix> {
+        NodeIndex(self.edge_idx.source())
+    }
+    fn target(&self) -> NodeIndex<Ix> {
+        NodeIndex(self.edge_idx.target())
     }
 }
