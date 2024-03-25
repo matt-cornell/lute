@@ -62,7 +62,7 @@ fn main() {
     }
 
     if cli.arena {
-        eprintln!("arena: {arena:#?}");
+        eprintln!("arena: {:#?}", arena.expose_parts());
     }
 
     let graph = GraphCompactor::<&StableUnGraph<Atom, Bond, u16>>::new(arena.graph());

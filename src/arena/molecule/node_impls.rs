@@ -4,6 +4,11 @@ use petgraph::visit::{EdgeRef, NodeRef};
 /// Node indices are compact indices over the atoms in a molecule.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct NodeIndex<Ix>(pub Ix);
+impl<Ix> From<Ix> for NodeIndex<Ix> {
+    fn from(value: Ix) -> Self {
+        Self(value)
+    }
+}
 
 /// Edge indices are tuple of the starting and ending nodes.
 /// Because the graph is undirected, these are always stored with the lower index first.
@@ -34,6 +39,11 @@ impl<Ix: IndexType> EdgeIndex<Ix> {
         } else {
             Self(source, target)
         }
+    }
+}
+impl<Ix: IndexType> From<(Ix, Ix)> for EdgeIndex<Ix> {
+    fn from((a, b): (Ix, Ix)) -> Self {
+        Self::new(a, b)
     }
 }
 

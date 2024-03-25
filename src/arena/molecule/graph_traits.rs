@@ -55,6 +55,13 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix> + Copy> IntoNodeReferences for Mol
         }
     }
 }
+// impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix> + Copy> IntoEdges for Molecule<Ix, R> {
+//     type Edges = iter::Edges<Ix, R>;
+
+//     fn edges(self, a: Self::NodeId) -> Self::Edges {
+//         iter::Edges::new(self.index, a.0, self.arena)
+//     }
+// }
 impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix> + Copy> IntoNeighbors for Molecule<Ix, R> {
     type Neighbors = iter::Neighbors<Ix, R>;
 
@@ -214,6 +221,7 @@ pub mod iter {
                                 }
                             }
                             let weight = weight.unwrap_or(Bond::Single);
+                            eprintln!("bond: {i:#?}");
                             if let Some(s) = ibs.get_mut(&(i.an, i.ai)) {
                                 s.push((i.bn, i.bi, weight));
                             } else {
@@ -228,6 +236,7 @@ pub mod iter {
                         let mut new_idx = None;
                         let mut f = SmallVec::<usize, 4>::with_capacity(b.frags.len());
                         let mut counter = 0;
+                        let mut up_idx = true;
                         for p in &b.frags {
                             let mut s = arena.parts[p.index()].1.index();
                             let r = skips.get(p).unwrap_or(&empty);
@@ -244,16 +253,19 @@ pub mod iter {
                             }
                             f.push(counter);
                             counter += s;
-                            if idx > s {
-                                idx -= s;
-                            } else {
-                                idx += ic;
-                                new_idx = Some(*p);
-                                break;
+                            if up_idx {
+                                if idx > s {
+                                    idx -= s;
+                                } else {
+                                    idx += ic;
+                                    new_idx = Some(*p);
+                                    up_idx = false;
+                                }
                             }
                         }
                         self.mol_idx = new_idx.unwrap_or(<Ix as IndexType>::max());
                         self.atom_idx = Ix::new(idx);
+                        eprintln!("ibs: {ibs:#?}");
                         let next = ibs.get(&(self.mol_idx, self.atom_idx)).map_or_else(
                             SmallVec::new,
                             |v| {

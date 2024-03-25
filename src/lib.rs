@@ -29,7 +29,7 @@ pub mod prelude {
     pub use crate::graph::compact::GraphCompactor;
     pub use crate::molecule::{Molecule as MolTrait, ValueMolecule};
     pub use crate::parse::smiles::SmilesParser;
-    pub use crate::{empirical, smiles};
+    pub use crate::{arena, empirical, smiles};
 }
 
 #[cfg(test)]

@@ -11,7 +11,26 @@ use petgraph::prelude::*;
 use petgraph::visit::*;
 use smallvec::{smallvec, SmallVec};
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::hash::Hash;
+
+#[macro_export]
+macro_rules! arena {
+    (of $ty:ty: $($mol:expr),* $(,)?) => {
+        {
+            let mut arena = Arena::<$ty>::new();
+            $(arena.insert_mol(&$mol);)*
+            arena
+        }
+    };
+    ($($mol:expr),* $(,)?) => {
+        {
+            let mut arena = Arena::new();
+            $(arena.insert_mol(&$mol);)*
+            arena
+        }
+    };
+}
 
 const ATOM_BIT_STORAGE: usize = 2;
 
@@ -38,10 +57,21 @@ pub(crate) struct ModdedMol<Ix> {
     pub base: Ix,
     pub patch: HybridMap<Ix, Atom, 4>,
 }
+impl<Ix: IndexType> PartialEq for ModdedMol<Ix> {
+    fn eq(&self, other: &Self) -> bool {
+        self.base == other.base && {
+            let mut lhs = self.patch.iter().collect::<SmallVec<_, 4>>();
+            let mut rhs = other.patch.iter().collect::<SmallVec<_, 4>>();
+            lhs.sort_by_key(|x| x.0);
+            rhs.sort_by_key(|x| x.0);
+            lhs == rhs
+        }
+    }
+}
 
 #[allow(dead_code)]
-#[derive(Debug, Clone)]
-pub(crate) enum MolRepr<Ix> {
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum MolRepr<Ix: IndexType> {
     Atomic(BSType),
     Broken(BrokenMol<Ix>),
     Modify(ModdedMol<Ix>),
@@ -62,6 +92,11 @@ impl<Ix: IndexType> Arena<Ix> {
 
     pub fn graph(&self) -> &Graph<Ix> {
         &self.graph
+    }
+
+    /// Get a reference to the `parts` field. For debugging purposes only.
+    pub fn expose_parts(&self) -> impl Debug + Copy + '_ {
+        &self.parts
     }
 
     #[inline(always)]
@@ -120,7 +155,8 @@ impl<Ix: IndexType> Arena<Ix> {
             + GetAdjacencyMatrix
             + NodeCompactIndexable
             + IntoEdgesDirected
-            + IntoNodeReferences,
+            + IntoNodeReferences
+            + Debug,
         G::NodeId: Hash + Eq,
     {
         let max = <Ix as IndexType>::max().index();
@@ -172,7 +208,7 @@ impl<Ix: IndexType> Arena<Ix> {
                         }
                     }
                 });
-                found.push((*n, ism));
+                found.push((k, ism));
             }
         }
 
@@ -285,25 +321,29 @@ impl<Ix: IndexType> Arena<Ix> {
                 });
 
                 for bond in &mut bonds {
-                    let ix = map[bond.bi.index()].index();
-                    if ix == <Ix as IndexType>::max().index() {
-                        // handle the case of a node that's bonded directly to another atom
-                        let (bn, bi) = matched[bond.bi.index()];
-                        if bn >= bond.an.index() {
-                            bond.bn = Ix::new(bn);
-                            bond.bi = Ix::new(bi);
-                        } else {
-                            bond.bn = std::mem::replace(&mut bond.an, Ix::new(bn));
-                            bond.bi = std::mem::replace(&mut bond.ai, Ix::new(bi));
-                        }
+                    // let ix = map[bond.bi.index()].index();
+                    // eprintln!("ix: {ix}");
+                    // if ix == <Ix as IndexType>::max().index() {
+                    // handle the case of a node that's bonded directly to another atom
+                    let (bn, bi) = matched[bond.bi.index()];
+                    if bn >= bond.an.index() {
+                        bond.bn = Ix::new(bn);
+                        bond.bi = Ix::new(bi);
                     } else {
-                        bond.bi = Ix::new(ix);
+                        bond.bn = std::mem::replace(&mut bond.an, Ix::new(bn));
+                        bond.bi = std::mem::replace(&mut bond.ai, Ix::new(bi));
                     }
+                    // } else {
+                    //     bond.bi = Ix::new(ix);
+                    // }
                 }
 
                 let filtered = NodeFilter::new(mol, |n| matched[mol.to_index(n)].0 == 0);
 
-                let mut iter = DisjointGraphIter::new(&filtered).iter(&filtered).peekable();
+                let mut iter = ConnectedGraphIter::with_cvt(&filtered, |n| map[n].index())
+                    .iter(&filtered)
+                    .peekable();
+
                 let g0 = iter.by_ref().next().unwrap();
                 if iter.peek().is_some() {
                     // bits in a `usize`

@@ -11,7 +11,8 @@ impl<T: PrimInt + Zero, const N: usize> BitSet<T, N> {
         Self(SmallVec::new())
     }
     pub fn with_capacity(cap: usize) -> Self {
-        let len = (cap + std::mem::size_of::<T>() - 1) / std::mem::size_of::<T>();
+        let bits = T::zero().leading_zeros() as usize;
+        let len = (cap + bits - 1) / bits;
         Self(SmallVec::from_elem(T::zero(), len))
     }
     pub fn from_buf(buf: SmallVec<T, N>) -> Self {
@@ -23,15 +24,15 @@ impl<T: PrimInt + Zero, const N: usize> BitSet<T, N> {
     }
 
     pub fn get(&self, idx: usize) -> bool {
+        let bits = T::zero().leading_zeros() as usize;
         self.0
-            .get(idx / std::mem::size_of::<T>())
-            .map_or(false, |&i| {
-                i & (T::one() << (idx % std::mem::size_of::<T>())) != T::zero()
-            })
+            .get(idx / bits)
+            .map_or(false, |&i| i & (T::one() << (idx % bits)) != T::zero())
     }
     pub fn set(&mut self, idx: usize, bit: bool) {
-        let si = idx / std::mem::size_of::<T>();
-        let sb = idx % std::mem::size_of::<T>();
+        let bits = T::zero().leading_zeros() as usize;
+        let si = idx / bits;
+        let sb = idx % bits;
         if si >= self.0.len() {
             self.0.resize(si + 1, T::zero());
         }
