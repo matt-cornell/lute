@@ -1,6 +1,6 @@
 //! Taken from `petgraph`! It's been modified to only work for undirected graphs (which saves some space) and not require `EdgeCount`
 
-use petgraph::data::DataMap;
+use crate::graph::misc::DataValueMap;
 use petgraph::{visit::*, Undirected};
 use petgraph::{Incoming, Outgoing};
 
@@ -125,8 +125,10 @@ mod semantic {
 
     impl<G0, G1, F> NodeMatcher<G0, G1> for F
     where
-        G0: GraphBase + DataMap,
-        G1: GraphBase + DataMap,
+        G0: GraphBase + DataValueMap,
+        G1: GraphBase + DataValueMap,
+        G0::NodeWeight: Copy,
+        G1::NodeWeight: Copy,
         F: FnMut(&G0::NodeWeight, &G1::NodeWeight) -> bool,
     {
         #[inline]
@@ -136,7 +138,7 @@ mod semantic {
         #[inline]
         fn eq(&mut self, g0: &G0, g1: &G1, n0: G0::NodeId, n1: G1::NodeId) -> bool {
             if let (Some(x), Some(y)) = (g0.node_weight(n0), g1.node_weight(n1)) {
-                self(x, y)
+                self(&x, &y)
             } else {
                 false
             }
@@ -173,8 +175,10 @@ mod semantic {
 
     impl<G0, G1, F> EdgeMatcher<G0, G1> for F
     where
-        G0: GraphBase + DataMap + IntoEdgesDirected,
-        G1: GraphBase + DataMap + IntoEdgesDirected,
+        G0: GraphBase + DataValueMap + IntoEdgesDirected,
+        G1: GraphBase + DataValueMap + IntoEdgesDirected,
+        G0::NodeWeight: Copy,
+        G1::NodeWeight: Copy,
         F: FnMut(&G0::EdgeWeight, &G1::EdgeWeight) -> bool,
     {
         #[inline]
@@ -198,7 +202,7 @@ mod semantic {
                 .find(|edge| edge.target() == e1.1)
                 .and_then(|edge| g1.edge_weight(edge.id()));
             if let (Some(x), Some(y)) = (w0, w1) {
-                self(x, y)
+                self(&x, &y)
             } else {
                 false
             }
@@ -719,16 +723,18 @@ pub fn subgraph_isomorphisms_iter<'a, G0, G1, NM, EM>(
 where
     G0: 'a
         + NodeCompactIndexable
-        + DataMap
+        + DataValueMap
         + GetAdjacencyMatrix
         + GraphProp<EdgeType = Undirected>
         + IntoEdgesDirected,
     G1: 'a
         + NodeCompactIndexable
-        + DataMap
+        + DataValueMap
         + GetAdjacencyMatrix
         + GraphProp<EdgeType = Undirected>
         + IntoEdgesDirected,
+    G0::NodeWeight: Copy,
+    G1::NodeWeight: Copy,
     NM: 'a + FnMut(&G0::NodeWeight, &G1::NodeWeight) -> bool,
     EM: 'a + FnMut(&G0::EdgeWeight, &G1::EdgeWeight) -> bool,
 {
@@ -757,15 +763,17 @@ pub fn is_isomorphic_matching<G0, G1, NM, EM>(
 ) -> bool
 where
     G0: NodeCompactIndexable
-        + DataMap
+        + DataValueMap
         + GetAdjacencyMatrix
         + GraphProp<EdgeType = Undirected>
         + IntoEdgesDirected,
     G1: NodeCompactIndexable
-        + DataMap
+        + DataValueMap
         + GetAdjacencyMatrix
         + GraphProp<EdgeType = Undirected>
         + IntoEdgesDirected,
+    G0::NodeWeight: Copy,
+    G1::NodeWeight: Copy,
     NM: FnMut(&G0::NodeWeight, &G1::NodeWeight) -> bool,
     EM: FnMut(&G0::EdgeWeight, &G1::EdgeWeight) -> bool,
 {
@@ -786,16 +794,18 @@ pub fn find_isomorphism_matching<'a, G0, G1, NM, EM>(
 where
     G0: 'a
         + NodeCompactIndexable
-        + DataMap
+        + DataValueMap
         + GetAdjacencyMatrix
         + GraphProp<EdgeType = Undirected>
         + IntoEdgesDirected,
     G1: 'a
         + NodeCompactIndexable
-        + DataMap
+        + DataValueMap
         + GetAdjacencyMatrix
         + GraphProp<EdgeType = Undirected>
         + IntoEdgesDirected,
+    G0::NodeWeight: Copy,
+    G1::NodeWeight: Copy,
     NM: 'a + FnMut(&G0::NodeWeight, &G1::NodeWeight) -> bool,
     EM: 'a + FnMut(&G0::EdgeWeight, &G1::EdgeWeight) -> bool,
 {

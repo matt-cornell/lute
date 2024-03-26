@@ -1,6 +1,7 @@
 #![allow(clippy::module_inception)]
 #![warn(clippy::infinite_loop)]
 #![cfg_attr(all(feature = "c-ffi", feature = "nightly"), feature(allocator_api))]
+#![feature(negative_bounds)]
 
 #[rustfmt::skip]
 pub mod atom_info;
@@ -26,8 +27,8 @@ pub mod prelude {
     #[cfg(feature = "mol-svg")]
     pub use crate::disp::fmt_as_svg;
     pub use crate::empirical::EmpiricalFormula;
-    pub use crate::graph::compact::GraphCompactor;
-    pub use crate::molecule::{Molecule as MolTrait, ValueMolecule};
+    pub use crate::graph::misc::DataValueMap;
+    pub use crate::molecule::Molecule as MolTrait;
     pub use crate::parse::smiles::SmilesParser;
     pub use crate::{arena, empirical, smiles};
 }

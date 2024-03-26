@@ -3,6 +3,7 @@
 pub mod algo;
 pub mod bitfilter;
 pub mod compact;
+pub mod misc;
 pub mod nodefilter;
 
 pub use algo::*;

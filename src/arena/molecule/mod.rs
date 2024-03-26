@@ -400,11 +400,13 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>, S: ArenaAccessor<Ix = Ix>> Partia
     }
 }
 
-impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> crate::molecule::ValueMolecule for Molecule<Ix, R> {
-    fn get_atom(&self, idx: NodeIndex<Ix>) -> Option<Atom> {
+impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> crate::graph::misc::DataValueMap
+    for Molecule<Ix, R>
+{
+    fn node_weight(&self, idx: NodeIndex<Ix>) -> Option<Atom> {
         self.get_atom(idx)
     }
-    fn get_bond(&self, idx: EdgeIndex<Ix>) -> Option<Bond> {
+    fn edge_weight(&self, idx: EdgeIndex<Ix>) -> Option<Bond> {
         self.get_bond(idx)
     }
 }

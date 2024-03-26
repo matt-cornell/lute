@@ -65,7 +65,9 @@ fn main() {
         eprintln!("arena: {:#?}", arena.expose_parts());
     }
 
-    let graph = GraphCompactor::<&StableUnGraph<Atom, Bond, u16>>::new(arena.graph());
+    let graph = chem_sim::graph::compact::GraphCompactor::<&StableUnGraph<Atom, Bond, u16>>::new(
+        arena.graph(),
+    );
 
     match cli.fmt {
         OutputType::Dot => write_output(cli.out.as_deref(), fmt_as_dot(&graph)),

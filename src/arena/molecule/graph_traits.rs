@@ -1,5 +1,5 @@
 use super::*;
-use petgraph::visit::*;
+use petgraph::{visit::*, Direction};
 use std::iter::Map;
 use std::ops::Range;
 
@@ -55,13 +55,28 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix> + Copy> IntoNodeReferences for Mol
         }
     }
 }
-// impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix> + Copy> IntoEdges for Molecule<Ix, R> {
-//     type Edges = iter::Edges<Ix, R>;
+impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix> + Copy> IntoEdgeReferences for Molecule<Ix, R> {
+    type EdgeRef = EdgeReference<Ix>;
+    type EdgeReferences = iter::EdgeReferences<Ix, R>;
 
-//     fn edges(self, a: Self::NodeId) -> Self::Edges {
-//         iter::Edges::new(self.index, a.0, self.arena)
-//     }
-// }
+    fn edge_references(self) -> Self::EdgeReferences {
+        iter::EdgeReferences::new(self.index, self.arena)
+    }
+}
+impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix> + Copy> IntoEdges for Molecule<Ix, R> {
+    type Edges = iter::Edges<Ix, R>;
+
+    fn edges(self, a: Self::NodeId) -> Self::Edges {
+        iter::Edges::new(self.index, a.0, self.arena)
+    }
+}
+impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix> + Copy> IntoEdgesDirected for Molecule<Ix, R> {
+    type EdgesDirected = iter::EdgesDirected<Ix, R>;
+
+    fn edges_directed(self, a: Self::NodeId, dir: Direction) -> Self::EdgesDirected {
+        iter::EdgesDirected(iter::Edges::new(self.index, a.0, self.arena), dir)
+    }
+}
 impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix> + Copy> IntoNeighbors for Molecule<Ix, R> {
     type Neighbors = iter::Neighbors<Ix, R>;
 
@@ -78,6 +93,16 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix> + Copy> IntoNeighborsDirected for 
         _: petgraph::prelude::Direction,
     ) -> Self::NeighborsDirected {
         iter::Neighbors(iter::Edges::new(self.index, n.0, self.arena))
+    }
+}
+impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix> + Copy> GetAdjacencyMatrix for Molecule<Ix, R> {
+    type AdjMatrix = Self;
+
+    fn adjacency_matrix(&self) -> Self::AdjMatrix {
+        *self
+    }
+    fn is_adjacent(&self, matrix: &Self, a: Self::NodeId, b: Self::NodeId) -> bool {
+        matrix.get_bond(EdgeIndex::new(a.0, b.0)).is_some()
     }
 }
 
@@ -101,6 +126,27 @@ pub mod iter {
             self.range
                 .next()
                 .map(|i| NodeReference::new(self.mol_idx, NodeIndex(Ix::new(i)), self.arena))
+        }
+    }
+
+    #[derive(Clone)]
+    pub struct EdgeReferences<Ix, R> {
+        stack: SmallVec<Ix, 3>,
+        arena: R,
+    }
+    impl<Ix, R> EdgeReferences<Ix, R> {
+        pub fn new(mol_idx: Ix, arena: R) -> Self {
+            Self {
+                stack: smallvec![mol_idx],
+                arena,
+            }
+        }
+    }
+    impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Iterator for EdgeReferences<Ix, R> {
+        type Item = EdgeReference<Ix>;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            todo!()
         }
     }
 
@@ -299,6 +345,18 @@ pub mod iter {
                     n.source()
                 }
             })
+        }
+    }
+
+    pub struct EdgesDirected<Ix: IndexType, R>(pub Edges<Ix, R>, pub Direction);
+
+    impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Iterator for EdgesDirected<Ix, R> {
+        type Item = EdgeReference<Ix>;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            let idx = self.0.orig_idx;
+            self.0
+                .find(|i| (self.1 == Direction::Incoming) ^ (i.source().0 == idx))
         }
     }
 }

@@ -6,6 +6,8 @@ use petgraph::visit::*;
 use std::collections::HashMap;
 use std::hash::Hash;
 
+use super::misc::DataValueMap;
+
 /// Override `NodeIndexable` so that they're always compact
 #[derive(Debug, Clone)]
 pub struct GraphCompactor<G: GraphBase> {
@@ -169,6 +171,15 @@ impl<G: DataMap> DataMap for GraphCompactor<G> {
         self.graph.node_weight(id)
     }
     fn edge_weight(&self, id: Self::EdgeId) -> Option<&Self::EdgeWeight> {
+        self.graph.edge_weight(id)
+    }
+}
+
+impl<G: DataValueMap> DataValueMap for GraphCompactor<G> {
+    fn node_weight(&self, id: Self::NodeId) -> Option<Self::NodeWeight> {
+        self.graph.node_weight(id)
+    }
+    fn edge_weight(&self, id: Self::EdgeId) -> Option<Self::EdgeWeight> {
         self.graph.edge_weight(id)
     }
 }

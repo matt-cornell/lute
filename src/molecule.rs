@@ -1,5 +1,6 @@
 use crate::core::*;
 use crate::empirical::*;
+use crate::graph::misc::DataValueMap;
 use modular_bitfield::prelude::*;
 use petgraph::data::*;
 use petgraph::visit::*;
@@ -83,21 +84,6 @@ impl AtomInfo {
     }
 }
 
-/// It's a lot easier to return an atom by value, since we have to handle borrows and locking, etc.
-/// We rely on this instead of `DataMap` so that `Molecule` can implement the full set of functions.
-pub trait ValueMolecule: Data<NodeWeight = Atom, EdgeWeight = Bond> {
-    fn get_atom(&self, id: Self::NodeId) -> Option<Atom>;
-    fn get_bond(&self, id: Self::EdgeId) -> Option<Bond>;
-}
-impl<T: DataMap<NodeWeight = Atom, EdgeWeight = Bond>> ValueMolecule for T {
-    fn get_atom(&self, id: Self::NodeId) -> Option<Atom> {
-        self.node_weight(id).copied()
-    }
-    fn get_bond(&self, id: Self::EdgeId) -> Option<Bond> {
-        self.edge_weight(id).copied()
-    }
-}
-
 /// Because we may need to calculate more, the CIP structure needs interior mutability
 #[derive(Debug, Clone)]
 struct CipPriorityInner<G: Visitable> {
@@ -127,7 +113,9 @@ impl<G: Visitable> CipPriorityInner<G> {
         Self::with_seen(graph, node, map)
     }
 }
-impl<G: Visitable + IntoEdges + DataMap<NodeWeight = Atom, EdgeWeight = Bond>> CipPriorityInner<G> {
+impl<G: Visitable + IntoEdges + DataValueMap<NodeWeight = Atom, EdgeWeight = Bond>>
+    CipPriorityInner<G>
+{
     fn compute_step(&mut self) -> bool {
         let edge = std::mem::take(&mut self.edge);
         if edge.is_empty() {
@@ -163,7 +151,7 @@ impl<G: Visitable + IntoEdges + DataMap<NodeWeight = Atom, EdgeWeight = Bond>> C
         self.indices.push(self.weights.len() as _);
         !self.edge.is_empty()
     }
-    fn cmp_impl<H: Visitable + IntoEdges + DataMap<NodeWeight = Atom, EdgeWeight = Bond>>(
+    fn cmp_impl<H: Visitable + IntoEdges + DataValueMap<NodeWeight = Atom, EdgeWeight = Bond>>(
         &mut self,
         other: &mut CipPriorityInner<H>,
         at: usize,
@@ -190,7 +178,7 @@ impl<G: Visitable + IntoEdges + DataMap<NodeWeight = Atom, EdgeWeight = Bond>> C
         *out = lhs.cmp(rhs);
         ret && *out == Ordering::Equal
     }
-    pub fn cmp<H: Visitable + IntoEdges + DataMap<NodeWeight = Atom, EdgeWeight = Bond>>(
+    pub fn cmp<H: Visitable + IntoEdges + DataValueMap<NodeWeight = Atom, EdgeWeight = Bond>>(
         &mut self,
         other: &mut CipPriorityInner<H>,
     ) -> Ordering {
@@ -236,21 +224,21 @@ where
     }
 }
 impl<
-        G1: Visitable + IntoEdges + DataMap<NodeWeight = Atom, EdgeWeight = Bond>,
-        G2: Visitable + IntoEdges + DataMap<NodeWeight = Atom, EdgeWeight = Bond>,
+        G1: Visitable + IntoEdges + DataValueMap<NodeWeight = Atom, EdgeWeight = Bond>,
+        G2: Visitable + IntoEdges + DataValueMap<NodeWeight = Atom, EdgeWeight = Bond>,
     > PartialEq<CipPriority<G2>> for CipPriority<G1>
 {
     fn eq(&self, other: &CipPriority<G2>) -> bool {
         <Self as PartialOrd<_>>::partial_cmp(self, other) == Some(Ordering::Equal)
     }
 }
-impl<G: Visitable + IntoEdges + DataMap<NodeWeight = Atom, EdgeWeight = Bond>> Eq
+impl<G: Visitable + IntoEdges + DataValueMap<NodeWeight = Atom, EdgeWeight = Bond>> Eq
     for CipPriority<G>
 {
 }
 impl<
-        G1: Visitable + IntoEdges + DataMap<NodeWeight = Atom, EdgeWeight = Bond>,
-        G2: Visitable + IntoEdges + DataMap<NodeWeight = Atom, EdgeWeight = Bond>,
+        G1: Visitable + IntoEdges + DataValueMap<NodeWeight = Atom, EdgeWeight = Bond>,
+        G2: Visitable + IntoEdges + DataValueMap<NodeWeight = Atom, EdgeWeight = Bond>,
     > PartialOrd<CipPriority<G2>> for CipPriority<G1>
 {
     fn partial_cmp(&self, other: &CipPriority<G2>) -> Option<Ordering> {
@@ -261,7 +249,7 @@ impl<
         }
     }
 }
-impl<G: Visitable + IntoEdges + DataMap<NodeWeight = Atom, EdgeWeight = Bond>> Ord
+impl<G: Visitable + IntoEdges + DataValueMap<NodeWeight = Atom, EdgeWeight = Bond>> Ord
     for CipPriority<G>
 {
     fn cmp(&self, other: &Self) -> Ordering {
@@ -300,9 +288,9 @@ where
     /// Get the `AtomData` for a molecule in the graph.
     fn atom_data(&'a self, id: AtomId<'a, Self>) -> AtomInfo
     where
-        &'a Self: ValueMolecule + IntoEdges,
+        &'a Self: DataValueMap + IntoEdges,
     {
-        let atom = self.get_atom(id).unwrap();
+        let atom = self.node_weight(id).unwrap();
         let mut neighbors_pi = false;
         let mut bond_electrons = 0.0;
         for edge in self.edges(id) {
