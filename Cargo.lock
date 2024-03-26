@@ -94,30 +94,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
-name = "chem-sim"
-version = "0.1.0"
-dependencies = [
- "atoi",
- "bstr",
- "c-enum",
- "clap",
- "concat-idents",
- "coordgen",
- "fmtastic",
- "gcd",
- "hybridmap",
- "itertools",
- "lazy_static",
- "lock_api",
- "modular-bitfield",
- "num-traits",
- "petgraph",
- "rand",
- "smallvec",
- "thiserror",
-]
-
-[[package]]
 name = "clap"
 version = "4.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -293,6 +269,30 @@ checksum = "3c168f8615b12bc01f9c17e2eb0cc07dcae1940121185446edc3744920e8ef45"
 dependencies = [
  "autocfg",
  "scopeguard",
+]
+
+[[package]]
+name = "lute"
+version = "0.1.0"
+dependencies = [
+ "atoi",
+ "bstr",
+ "c-enum",
+ "clap",
+ "concat-idents",
+ "coordgen",
+ "fmtastic",
+ "gcd",
+ "hybridmap",
+ "itertools",
+ "lazy_static",
+ "lock_api",
+ "modular-bitfield",
+ "num-traits",
+ "petgraph",
+ "rand",
+ "smallvec",
+ "thiserror",
 ]
 
 [[package]]

@@ -4,12 +4,12 @@ use crate::arena::access::ArenaPtr;
 gen_defs!(noinit Molecule as molecule);
 
 #[no_mangle]
-pub unsafe extern "C" fn CHEMSIM_new_molecule(arena: NonNull<Arena>, index: u32) -> Molecule {
+pub unsafe extern "C" fn LUTE_new_molecule(arena: NonNull<Arena>, index: u32) -> Molecule {
     Molecule::from_mut_arena(&ArenaPtr::new(arena), index)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn CHEMSIM_molecule_svg(
+pub unsafe extern "C" fn LUTE_molecule_svg(
     mol: Molecule,
     alloc: unsafe extern "C" fn(len: usize, context: *mut ()) -> *mut c_char,
     context: *mut (),

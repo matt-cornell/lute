@@ -8,7 +8,7 @@ type Molecule<Ix = u32> = lib::Molecule<Ix, crate::arena::access::PtrAcc<Ix>>;
 
 macro_rules! gen_defs {
     (alloc $ty:ty as $name:ident) => {
-        concat_idents::concat_idents!(fn_name = CHEMSIM_alloc_, $name {
+        concat_idents::concat_idents!(fn_name = LUTE_alloc_, $name {
             #[doc = concat!("Allocate a ", stringify!($ty), " without initialization.")]
             #[no_mangle]
             pub extern "C" fn fn_name() -> *mut MaybeUninit<$ty> {
@@ -24,7 +24,7 @@ macro_rules! gen_defs {
         });
     };
     (free $ty:ty as $name:ident) => {
-        concat_idents::concat_idents!(fn_name = CHEMSIM_free_, $name {
+        concat_idents::concat_idents!(fn_name = LUTE_free_, $name {
             #[doc = concat!("Free a ", stringify!($ty), ". Assumes it has already had `deinit` called.")]
             #[no_mangle]
             pub unsafe extern "C" fn fn_name(ptr: NonNull<MaybeUninit<$ty>>) {
@@ -33,7 +33,7 @@ macro_rules! gen_defs {
         });
     };
     (init $ty:ty as $name:ident) => {
-        concat_idents::concat_idents!(fn_name = CHEMSIM_init_, $name {
+        concat_idents::concat_idents!(fn_name = LUTE_init_, $name {
             #[doc = concat!("Initialize an already initialized ", stringify!($ty), ". May leak memory if called on an already initialized one.")]
             #[no_mangle]
             pub unsafe extern "C" fn fn_name(mut ptr: NonNull<MaybeUninit<$ty>>) {
@@ -42,7 +42,7 @@ macro_rules! gen_defs {
         });
     };
     (deinit $ty:ty as $name:ident) => {
-        concat_idents::concat_idents!(fn_name = CHEMSIM_deinit_, $name {
+        concat_idents::concat_idents!(fn_name = LUTE_deinit_, $name {
             #[doc = concat!("Clean up, but don't free a ", stringify!($ty), ".")]
             pub unsafe extern "C" fn fn_name(mut ptr: NonNull<MaybeUninit<$ty>>) {
                 std::mem::replace(ptr.as_mut(), MaybeUninit::uninit()).assume_init_drop();

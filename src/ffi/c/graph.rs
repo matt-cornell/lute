@@ -3,7 +3,7 @@ use super::*;
 gen_defs!(all Graph as graph);
 
 #[no_mangle]
-pub unsafe extern "C" fn CHEMSIM_graph_svg(
+pub unsafe extern "C" fn LUTE_graph_svg(
     mol: NonNull<Graph>,
     alloc: unsafe extern "C" fn(len: usize, context: *mut ()) -> *mut c_char,
     context: *mut (),

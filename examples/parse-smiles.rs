@@ -1,10 +1,6 @@
-use chem_sim::prelude::*;
+use lute::prelude::*;
 use clap::{Parser, ValueEnum};
-#[cfg(feature = "mol-bmp")]
-use image::*;
 use std::fmt::{self, Display, Formatter};
-#[cfg(feature = "mol-bmp")]
-use std::io::{self, Cursor};
 use std::io::{stdout, Write};
 use std::path::{Path, PathBuf};
 
@@ -49,7 +45,7 @@ fn write_output<O: Display>(path: Option<&Path>, out: O) {
 
 fn main() {
     let cli = Cli::parse();
-    let mut parser = chem_sim::parse::SmilesParser::new_unsuppressed(&cli.input);
+    let mut parser = SmilesParser::new_unsuppressed(&cli.input);
     parser.suppress = cli.suppress;
     match parser.parse() {
         Ok(graph) => match cli.fmt {
