@@ -14,8 +14,7 @@ pub unsafe extern "C" fn CHEMSIM_molecule_svg(
     alloc: unsafe extern "C" fn(len: usize, context: *mut ()) -> *mut c_char,
     context: *mut (),
 ) -> *mut c_char {
-    // let s = lib::fmt_as_svg(mol).to_string();
-    let s = "molecule SVGs not yet implemeted!".to_string();
+    let s = lib::fmt_as_svg(&crate::graph::GraphCompactor::<Molecule>::new(mol)).to_string();
     let len = s.len();
     let ptr = alloc(len, context);
     if !ptr.is_null() {

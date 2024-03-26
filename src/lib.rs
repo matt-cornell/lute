@@ -1,7 +1,6 @@
 #![allow(clippy::module_inception)]
 #![warn(clippy::infinite_loop)]
 #![cfg_attr(all(feature = "c-ffi", feature = "nightly"), feature(allocator_api))]
-#![feature(negative_bounds)]
 
 #[rustfmt::skip]
 pub mod atom_info;
