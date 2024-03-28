@@ -1,10 +1,10 @@
+use super::misc::DataValueMap;
 use crate::utils::bitset::BitSet;
 use num_traits::PrimInt;
 use petgraph::data::*;
 use petgraph::visit::*;
 use petgraph::Direction;
 use std::fmt::{self, Binary, Debug, Formatter};
-use super::misc::DataValueMap;
 
 #[derive(Clone)]
 pub struct BitFiltered<G, T, const N: usize> {
@@ -54,7 +54,9 @@ impl<G: DataMap + NodeIndexable, T: PrimInt, const N: usize> DataMap for BitFilt
     }
 }
 
-impl<G: DataValueMap + NodeIndexable, T: PrimInt, const N: usize> DataValueMap for BitFiltered<G, T, N> {
+impl<G: DataValueMap + NodeIndexable, T: PrimInt, const N: usize> DataValueMap
+    for BitFiltered<G, T, N>
+{
     fn node_weight(&self, id: Self::NodeId) -> Option<Self::NodeWeight> {
         self.filter
             .get(self.graph.to_index(id))

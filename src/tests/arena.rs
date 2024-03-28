@@ -11,6 +11,15 @@ fn simple() {
 }
 
 #[test]
+fn double_insert() {
+    let mut arena = Arena::<u32>::new();
+    let methane = smiles!("C");
+    let m1 = arena.insert_mol(&methane);
+    let m2 = arena.insert_mol(&methane);
+    assert_eq!(m1, m2);
+}
+
+#[test]
 fn alcohols() {
     let mut arena = arena!(
         of u32:

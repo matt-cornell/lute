@@ -1,8 +1,8 @@
+use super::misc::DataValueMap;
 use petgraph::data::*;
 use petgraph::visit::*;
 use petgraph::Direction;
 use std::fmt::{self, Debug, Formatter};
-use super::misc::DataValueMap;
 
 /// Like `petgraph`'s, but with `GetAdjacencyMatrix`.
 #[derive(Clone)]

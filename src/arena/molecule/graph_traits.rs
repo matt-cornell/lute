@@ -130,6 +130,7 @@ pub mod iter {
         }
     }
 
+    #[allow(dead_code)]
     #[derive(Clone)]
     pub struct EdgeReferences<Ix, R> {
         stack: SmallVec<Ix, 3>,
