@@ -2,6 +2,7 @@ use petgraph::data::*;
 use petgraph::visit::*;
 use petgraph::Direction;
 use std::fmt::{self, Debug, Formatter};
+use super::misc::DataValueMap;
 
 /// Like `petgraph`'s, but with `GetAdjacencyMatrix`.
 #[derive(Clone)]
@@ -48,7 +49,14 @@ impl<G: DataMap, F: Fn(G::NodeId) -> bool> DataMap for NodeFilter<G, F> {
         self.graph.edge_weight(id)
     }
 }
-
+impl<G: DataValueMap, F: Fn(G::NodeId) -> bool> DataValueMap for NodeFilter<G, F> {
+    fn node_weight(&self, id: Self::NodeId) -> Option<Self::NodeWeight> {
+        (self.filter)(id).then(|| self.graph.node_weight(id))?
+    }
+    fn edge_weight(&self, id: Self::EdgeId) -> Option<Self::EdgeWeight> {
+        self.graph.edge_weight(id)
+    }
+}
 impl<G: NodeIndexable, F> NodeIndexable for NodeFilter<G, F> {
     fn from_index(&self, i: usize) -> Self::NodeId {
         self.graph.from_index(i)

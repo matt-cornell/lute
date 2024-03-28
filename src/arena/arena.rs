@@ -4,13 +4,12 @@
 
 use super::*;
 use crate::graph::*;
-use arena::access::RefAcc;
-use hybridmap::HybridMap;
+use intmap::IntMap;
+use itertools::Itertools;
 use petgraph::graph::DefaultIx;
 use petgraph::prelude::*;
 use petgraph::visit::*;
 use smallvec::SmallVec;
-use std::collections::VecDeque;
 use std::fmt::Debug;
 use std::hash::Hash;
 
@@ -52,25 +51,14 @@ pub(crate) struct BrokenMol<Ix> {
     pub bonds: SmallVec<InterFragBond<Ix>, 4>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ModdedMol<Ix> {
     pub base: Ix,
-    pub patch: HybridMap<Ix, Atom, 4>,
-}
-impl<Ix: IndexType> PartialEq for ModdedMol<Ix> {
-    fn eq(&self, other: &Self) -> bool {
-        self.base == other.base && {
-            let mut lhs = self.patch.iter().collect::<SmallVec<_, 4>>();
-            let mut rhs = other.patch.iter().collect::<SmallVec<_, 4>>();
-            lhs.sort_by_key(|x| x.0);
-            rhs.sort_by_key(|x| x.0);
-            lhs == rhs
-        }
-    }
+    pub patch: SmallVec<(Ix, Atom), 4>,
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum MolRepr<Ix: IndexType> {
     Atomic(BSType),
     Broken(BrokenMol<Ix>),
@@ -144,8 +132,113 @@ impl<Ix: IndexType> Arena<Ix> {
         Molecule::from_arena(self, mol)
     }
 
-    /// Insert a molecule into the arena, deduplicating common parts. May misbehave if multiple
-    /// disjoint molecules are in the graph.
+    /// Simpler, faster version of `insert_mol` for when we know there are no subgraphs
+    /// Returns index and mapping where forall `i`:
+    /// `self.molecule(ix).get_atom(i) == mol.get_node(mapping[i])`
+    fn insert_mol_atomic<G>(&mut self, mol: G) -> (Ix, Vec<usize>)
+    where
+        G: Data<NodeWeight = Atom, EdgeWeight = Bond>
+            + misc::DataValueMap
+            + GraphProp<EdgeType = Undirected>
+            + GraphRef
+            + GetAdjacencyMatrix
+            + NodeCompactIndexable
+            + IntoEdgesDirected
+            + IntoNodeReferences,
+        G::NodeId: Hash + Eq,
+    {
+        let frags = self
+            .parts
+            .iter()
+            .positions(|p| p.1.index() == mol.node_count() && matches!(p.0, MolRepr::Atomic(_)));
+        let mut mods = SmallVec::<(Ix, Atom), 4>::with_capacity(mol.node_count());
+        let mut node_map = vec![usize::MAX; mol.node_count()];
+        let mut amatch = Atom::matches;
+        let mut bmatch = PartialEq::eq;
+        let mut frag = None;
+
+        'main: for i in frags {
+            let cmp = self.molecule(Ix::new(i));
+            let mut it = crate::graph::algo::subgraph_isomorphisms_iter(
+                &cmp,
+                &mol,
+                &mut amatch,
+                &mut bmatch,
+            ).peekable();
+            while let Some(ism) = it.next() {
+                debug_assert_eq!(ism.len(), mol.node_count());
+                mods.clear();
+
+                for (cmp_i, &mol_i) in ism.iter().enumerate() {
+                    let graph_atom = cmp.get_atom(Ix::new(cmp_i).into()).unwrap();
+                    let mol_atom = mol.node_weight(mol.from_index(mol_i)).unwrap();
+                    if graph_atom != mol_atom {
+                        let mi = Ix::new(mol_i);
+                        if let Err(idx) = mods.binary_search_by_key(&mi, |m| m.0) {
+                            mods.insert(idx, (mi, mol_atom));
+                        }
+                    }
+                    node_map[mol_i] = cmp_i;
+                }
+
+                // perfect match!
+                if mods.is_empty() {
+                    return (Ix::new(i), node_map);
+                }
+
+                // not quite perfect, let's see if there's already another modded mol
+                for (idx, frag) in self.parts.iter().enumerate() {
+                    if let MolRepr::Modify(m) = &frag.0 {
+                        if m.base.index() == i && m.patch == mods {
+                            return (Ix::new(idx), node_map);
+                        }
+                    }
+                }
+
+                // no similar moddeds exist, this is the last ism
+                if it.peek().is_none() {
+                    frag = Some((
+                        (
+                            MolRepr::Modify(ModdedMol {
+                                base: Ix::new(i),
+                                patch: mods,
+                            }),
+                            Ix::new(mol.node_count()),
+                        ),
+                        node_map,
+                    ));
+                    break 'main;
+                }
+            }
+        }
+        if let Some((frag, map)) = frag {
+            return (self.push_frag(frag), map);
+        }
+        let end = petgraph::graph::NodeIndex::<Ix>::end();
+        let mut bits = BSType::new();
+        let mut node_map = vec![end; mol.node_bound()];
+        let mut atom_map = Vec::with_capacity(mol.node_bound());
+        for aref in mol.node_references() {
+            let b = self.graph.add_node(*aref.weight());
+            let i = mol.to_index(aref.id());
+            node_map[i] = b;
+            atom_map.push(i);
+            bits.set(b.index(), true);
+        }
+        for eref in mol.edge_references() {
+            let s = node_map[mol.to_index(eref.source())];
+            let t = node_map[mol.to_index(eref.target())];
+            debug_assert_ne!(s, end);
+            debug_assert_ne!(t, end);
+            self.graph.add_edge(s, t, *eref.weight());
+        }
+        (
+            self.push_frag((MolRepr::Atomic(bits), Ix::new(mol.node_count()))),
+            atom_map,
+        )
+    }
+
+    /// Insert a molecule into the arena, deduplicating common parts.
     pub fn insert_mol<G>(&mut self, mol: G) -> Ix
     where
         G: Data<NodeWeight = Atom, EdgeWeight = Bond>
@@ -176,7 +269,7 @@ impl<Ix: IndexType> Arena<Ix> {
                         _ => None,
                     }
                 })
-                .partition::<VecDeque<_>, _>(|v| v.1.is_empty());
+                .partition::<Vec<_>, _>(|v| v.1.is_empty());
             let mut edge = frags.iter().map(|i| i.0).collect::<Vec<_>>();
             let mut scratch = Vec::new();
             frags.reserve(src.len());
@@ -191,7 +284,7 @@ impl<Ix: IndexType> Arena<Ix> {
                         }
                     }
                     scratch.push(*i);
-                    frags.push_back((*i, *subs));
+                    frags.push((*i, *subs));
                     *i = usize::MAX;
                 }
                 std::mem::swap(&mut edge, &mut scratch);
@@ -203,28 +296,165 @@ impl<Ix: IndexType> Arena<Ix> {
                 src.iter().all(|i| i.0 == 0),
                 "cycle detected in arena fragments?"
             );
-            for frag in &mut frags {
-                frag.0 -= 1;
-            }
             frags
         };
-        // let mut found = Vec::new();
-        // let mut matched = Vec::new();
-        while let Some((i, _)) = frags.pop_front() {
-            let cmp = GraphCompactor::<Molecule<Ix, RefAcc<Ix>>>::new(self.molecule(Ix::new(i)));
-            let mut found = false;
-            for ism in crate::graph::algo::subgraph_isomorphisms_iter(
-                &&cmp,
+        let mut cmps = IntMap::<_>::new();
+        let mut found = Vec::new();
+        let mut matched = vec![(usize::MAX, 0); mol.node_bound()];
+        let mut mods = SmallVec::<(Ix, Atom), 4>::with_capacity(mol.node_count());
+        let mut idx = 0;
+        let mut amatch = Atom::matches;
+        let mut bmatch = PartialEq::eq;
+
+        let mut search_stack = SmallVec::<_, 2>::new();
+        let mut preds_found = SmallVec::<_, 3>::new();
+        let mut push_list = SmallVec::<_, 8>::new();
+        let mut frag = None;
+        'main: while idx < frags.len() {
+            let (i, subs) = frags[idx];
+            let cmp = self.molecule(Ix::new(i));
+            let mut found_any = false;
+            preds_found.clear();
+            let mut it = crate::graph::algo::subgraph_isomorphisms_iter(
+                &cmp,
                 &mol,
-                &mut Atom::matches,
-                &mut PartialEq::eq,
-            ) {
-                found = true;
+                &mut amatch,
+                &mut bmatch,
+            )
+            .peekable();
+            'isms: while let Some(ism) = it.next() {
+                if ism.len() == mol.node_count() {
+                    mods.clear();
+
+                    for (cmp_i, &mol_i) in ism.iter().enumerate() {
+                        let graph_atom = cmp.get_atom(Ix::new(cmp_i).into()).unwrap();
+                        let mol_atom = mol.node_weight(mol.from_index(mol_i)).unwrap();
+                        if graph_atom != mol_atom {
+                            let mi = Ix::new(mol_i);
+                            if let Err(idx) = mods.binary_search_by_key(&mi, |m| m.0) {
+                                mods.insert(idx, (mi, mol_atom));
+                            }
+                        }
+                    }
+
+                    // perfect match!
+                    if mods.is_empty() {
+                        return Ix::new(i);
+                    }
+
+                    // not quite perfect, let's see if there's already another modded mol
+                    for (idx, frag) in self.parts.iter().enumerate() {
+                        if let MolRepr::Modify(m) = &frag.0 {
+                            if m.base.index() == i && m.patch == mods {
+                                return Ix::new(idx);
+                            }
+                        }
+                    }
+
+                    // no similar moddeds exist, this is the last ism
+                    if it.peek().is_none() {
+                        frag = Some((
+                            MolRepr::Modify(ModdedMol {
+                                base: Ix::new(i),
+                                patch: mods,
+                            }),
+                            Ix::new(mol.node_count()),
+                        ));
+                        break 'main;
+                    }
+                }
+                found_any = true;
+                push_list.clear();
+                for (cmp_i, &mol_i) in ism.iter().enumerate() {
+                    let graph_atom = cmp.get_atom(Ix::new(cmp_i).into()).unwrap();
+                    let mol_atom = mol.node_weight(mol.from_index(mol_i)).unwrap();
+
+                    // graph atom is an R-group, matched on mol. no need to track it as being owned
+                    if graph_atom.protons == 0 && !mol_atom.protons == 0 {
+                        continue;
+                    }
+
+                    if matched[mol_i].0 != usize::MAX {
+                        // search through subgraphs
+                        if preds_found.is_empty() && !subs.is_empty() {
+                            search_stack.clear();
+                            search_stack.extend_from_slice(subs);
+                            while let Some(pred) = search_stack.pop() {
+                                if !preds_found.contains(&pred) {
+                                    preds_found.push(pred);
+                                }
+                                match self.parts[pred.index()].0 {
+                                    MolRepr::Broken(ref b) => search_stack.extend_from_slice(&b.frags),
+                                    MolRepr::Atomic(_) => {},
+                                    MolRepr::Redirect(to)
+                                    | MolRepr::Modify(ModdedMol { base: to, .. }) => search_stack.push(to),
+                                }
+                            }
+                            // sort it just for that lookup speed boost
+                            preds_found.sort();
+                        }
+                        // predecessor not found, this atom is already accounted for
+                        if preds_found.binary_search(&Ix::new(mol_i)).is_err() {
+                            continue 'isms;
+                        }
+                    }
+                    push_list.push((mol_i, i, cmp_i));
+                }
+                for &(mol_i, i, cmp_i) in &push_list {
+                    matched[mol_i] = (i, cmp_i);
+                }
+                found.push((i, ism));
             }
-            if !found {
-                frags.retain(|(_, subs)| subs.contains(&Ix::new(i)));
+            if found_any {
+                cmps.insert(i as _, cmp);
+                idx += 1;
+            } else {
+                let mut index = 0;
+                frags.retain(|(_, subs)| {
+                    let res = index < idx || !subs.contains(&Ix::new(i));
+                    index += 1;
+                    res
+                });
             }
         }
+        if let Some(frag) = frag {
+            return self.push_frag(frag);
+        }
+        if found.is_empty() {
+            let end = petgraph::graph::NodeIndex::end();
+            let mut bits = BSType::new();
+            let mut node_map = vec![end; mol.node_bound()];
+            for aref in mol.node_references() {
+                let b = self.graph.add_node(*aref.weight());
+                node_map[mol.to_index(aref.id())] = b;
+                bits.set(b.index(), true);
+            }
+            for eref in mol.edge_references() {
+                let s = node_map[mol.to_index(eref.source())];
+                let t = node_map[mol.to_index(eref.target())];
+                debug_assert_ne!(s, end);
+                debug_assert_ne!(t, end);
+                self.graph.add_edge(s, t, *eref.weight());
+            }
+            return self.push_frag((MolRepr::Atomic(bits), Ix::new(mol.node_count())));
+        }
+        let filtered = NodeFilter::new(mol, |i| matched[mol.to_index(i)].0 == usize::MAX);
+        let ext_start = found.len();
+        found.extend(ConnectedGraphIter::new(&filtered).iter(mol).map(|bits| {
+            let graph =
+                GraphCompactor::<BitFiltered<&NodeFilter<G, _>, usize, ATOM_BIT_STORAGE>>::new(
+                    BitFiltered::new(&filtered, bits),
+                );
+            let (ix, map) = self.insert_mol_atomic(&graph);
+            let out = (0..map.len()).map(|i| mol.to_index(graph.node_map[map[i]])).collect();
+            (ix.index(), out)
+        }));
+        for (i, ism) in &found[ext_start..] {
+            for (cmp_i, &mol_i) in ism.iter().enumerate() {
+                matched[mol_i] = (*i, cmp_i);
+            }
+        }
+        found.sort();
         todo!()
     }
 }

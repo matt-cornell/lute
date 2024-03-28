@@ -30,6 +30,7 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> NodeIndexable for Molecule<Ix, R>
         NodeIndex(Ix::new(i))
     }
 }
+impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> NodeCompactIndexable for Molecule<Ix, R> {}
 
 impl<Ix: IndexType, R> Data for Molecule<Ix, R> {
     type NodeWeight = Atom;

@@ -77,8 +77,8 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
                 MolRepr::Redirect(i) => ix = *i,
                 MolRepr::Modify(m) => {
                     if oride.is_none() {
-                        if let Some(a) = m.patch.get(&Ix::new(idx)) {
-                            oride = Some(*a);
+                        if let Ok(a) = m.patch.binary_search_by_key(&Ix::new(idx), |m| m.0) {
+                            oride = Some(m.patch[a].1);
                         }
                     }
                     ix = m.base
@@ -176,8 +176,8 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
             match &arena.parts[ix.index()].0 {
                 MolRepr::Redirect(i) => ix = *i,
                 MolRepr::Modify(m) => {
-                    if let Some(a) = m.patch.get(&Ix::new(idx)) {
-                        return Some(*a);
+                    if let Ok(a) = m.patch.binary_search_by_key(&Ix::new(idx), |m| m.0) {
+                        return Some(m.patch[a].1);
                     } else {
                         ix = m.base
                     }

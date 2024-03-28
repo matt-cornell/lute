@@ -4,6 +4,7 @@ use petgraph::data::*;
 use petgraph::visit::*;
 use petgraph::Direction;
 use std::fmt::{self, Binary, Debug, Formatter};
+use super::misc::DataValueMap;
 
 #[derive(Clone)]
 pub struct BitFiltered<G, T, const N: usize> {
@@ -49,6 +50,17 @@ impl<G: DataMap + NodeIndexable, T: PrimInt, const N: usize> DataMap for BitFilt
             .then(|| self.graph.node_weight(id))?
     }
     fn edge_weight(&self, id: Self::EdgeId) -> Option<&Self::EdgeWeight> {
+        self.graph.edge_weight(id)
+    }
+}
+
+impl<G: DataValueMap + NodeIndexable, T: PrimInt, const N: usize> DataValueMap for BitFiltered<G, T, N> {
+    fn node_weight(&self, id: Self::NodeId) -> Option<Self::NodeWeight> {
+        self.filter
+            .get(self.graph.to_index(id))
+            .then(|| self.graph.node_weight(id))?
+    }
+    fn edge_weight(&self, id: Self::EdgeId) -> Option<Self::EdgeWeight> {
         self.graph.edge_weight(id)
     }
 }
