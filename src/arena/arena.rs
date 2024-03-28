@@ -4,7 +4,6 @@
 
 use super::*;
 use crate::graph::*;
-use intmap::IntMap;
 use itertools::Itertools;
 use petgraph::graph::DefaultIx;
 use petgraph::prelude::*;
@@ -298,7 +297,6 @@ impl<Ix: IndexType> Arena<Ix> {
             );
             frags
         };
-        let mut cmps = IntMap::<_>::new();
         let mut found = Vec::new();
         let mut matched = vec![(usize::MAX, 0); mol.node_bound()];
         let mut mods = SmallVec::<(Ix, Atom), 4>::with_capacity(mol.node_count());
@@ -406,7 +404,6 @@ impl<Ix: IndexType> Arena<Ix> {
                 found.push((i, ism));
             }
             if found_any {
-                cmps.insert(i as _, cmp);
                 idx += 1;
             } else {
                 let mut index = 0;
