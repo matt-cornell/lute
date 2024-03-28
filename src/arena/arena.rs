@@ -134,6 +134,8 @@ impl<Ix: IndexType> Arena<Ix> {
     /// Simpler, faster version of `insert_mol` for when we know there are no subgraphs
     /// Returns index and mapping where forall `i`:
     /// `self.molecule(ix).get_atom(i) == mol.get_node(mapping[i])`
+    ///
+    /// Checks for isomorpisms iff `find_isms`
     fn insert_mol_atomic<G>(&mut self, mol: G, find_isms: bool) -> (Ix, Vec<usize>)
     where
         G: Data<NodeWeight = Atom, EdgeWeight = Bond>

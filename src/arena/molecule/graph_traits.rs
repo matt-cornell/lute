@@ -86,26 +86,54 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix> + Copy> IntoNeighbors for Molecule
     }
 }
 impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix> + Copy> IntoNeighborsDirected for Molecule<Ix, R> {
-    type NeighborsDirected = iter::Neighbors<Ix, R>;
+    type NeighborsDirected = iter::NeighborsDirected<Ix, R>;
 
     fn neighbors_directed(
         self,
         n: Self::NodeId,
-        _: petgraph::prelude::Direction,
+        dir: petgraph::prelude::Direction,
     ) -> Self::NeighborsDirected {
-        iter::Neighbors(iter::Edges::new(self.index, n.0, self.arena))
+        // it's iterators, all the way down
+        iter::NeighborsDirected(iter::EdgesDirected(
+            iter::Edges::new(self.index, n.0, self.arena),
+            dir,
+        ))
     }
 }
+// slow lookups, needs to be replaced
 impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix> + Copy> GetAdjacencyMatrix for Molecule<Ix, R> {
-    type AdjMatrix = Self;
+    type AdjMatrix = ();
+
+    fn adjacency_matrix(&self) -> Self::AdjMatrix {}
+    fn is_adjacent(&self, _matrix: &Self::AdjMatrix, a: Self::NodeId, b: Self::NodeId) -> bool {
+        self.get_bond((a.0, b.0).into()).is_some()
+    }
+}
+/*
+// O(1) lookups, but relies on IntoEdgeReferences
+impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix> + Copy> GetAdjacencyMatrix for Molecule<Ix, R> {
+    type AdjMatrix = BitSet<usize, 1>;
 
     fn adjacency_matrix(&self) -> Self::AdjMatrix {
-        *self
+        let nc = self.node_count();
+        let mut out = Self::AdjMatrix::with_capacity(nc * (nc + 1) / 2);
+        for e in self.edge_references() {
+            let s = e.source().0.index();
+            let t = e.target().0.index();
+            let i = if t == 0 {0} else {t * (t - 1) / 2} + s;
+            out.set(i, true);
+        }
+        out
     }
-    fn is_adjacent(&self, matrix: &Self, a: Self::NodeId, b: Self::NodeId) -> bool {
-        matrix.get_bond(EdgeIndex::new(a.0, b.0)).is_some()
+    fn is_adjacent(&self, matrix: &Self::AdjMatrix, a: Self::NodeId, b: Self::NodeId) -> bool {
+        let a = a.0.index();
+        let b = b.0.index();
+        let (s, t) = if a < b {(a, b)} else {(b, a)};
+        let i = if t == 0 {0} else {t * (t - 1) / 2} + s;
+        matrix.get(i)
     }
 }
+*/
 
 pub mod iter {
     use super::*;
@@ -359,6 +387,22 @@ pub mod iter {
             let idx = self.0.orig_idx;
             self.0
                 .find(|i| (self.1 == Direction::Incoming) ^ (i.source().0 == idx))
+        }
+    }
+
+    pub struct NeighborsDirected<Ix: IndexType, R>(pub EdgesDirected<Ix, R>);
+
+    impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Iterator for NeighborsDirected<Ix, R> {
+        type Item = NodeIndex<Ix>;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            self.0.next().map(|n| {
+                if self.0 .1 == Direction::Incoming {
+                    n.target()
+                } else {
+                    n.source()
+                }
+            })
         }
     }
 }
