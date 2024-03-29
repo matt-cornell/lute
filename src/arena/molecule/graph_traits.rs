@@ -234,7 +234,10 @@ pub mod iter {
                     }
                     MolRepr::Atomic(ref b) => {
                         if !matches!(self.state, State::Atomic(_)) {
-                            let w = arena.graph().neighbors(self.atom_idx.into()).detach();
+                            let w = arena
+                                .graph()
+                                .neighbors(Ix::new(b.nth(self.atom_idx.index())?).into())
+                                .detach();
                             self.state = State::Atomic(w);
                         }
                         let State::Atomic(w) = &mut self.state else {
@@ -242,14 +245,14 @@ pub mod iter {
                         };
 
                         while let Some((e, n)) = w.next(arena.graph()) {
-                            if !b.get(n.index()) {
+                            let Some(idx) = b.index(n.index()) else {
                                 continue;
-                            }
+                            };
 
                             // get the correct offset index
-                            let offset = self.skip.range(..Ix::new(n.index())).count().index()
+                            let offset = idx
+                                + self.skip.range(..Ix::new(idx)).count().index()
                                 + self.offset.index();
-
                             return Some(EdgeReference::with_weight(
                                 EdgeIndex::new(self.orig_idx, Ix::new(offset)),
                                 arena.graph()[e],
@@ -341,7 +344,6 @@ pub mod iter {
                         }
                         self.mol_idx = new_idx.unwrap_or(<Ix as IndexType>::max());
                         self.atom_idx = Ix::new(idx);
-                        eprintln!("ibs: {ibs:#?}");
                         let next = ibs.get(&(self.mol_idx, self.atom_idx)).map_or_else(
                             SmallVec::new,
                             |v| {
@@ -398,9 +400,9 @@ pub mod iter {
         fn next(&mut self) -> Option<Self::Item> {
             self.0.next().map(|n| {
                 if self.0 .1 == Direction::Incoming {
-                    n.target()
-                } else {
                     n.source()
+                } else {
+                    n.target()
                 }
             })
         }

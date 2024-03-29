@@ -88,23 +88,11 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
                     ix = m.base
                 }
                 MolRepr::Atomic(b) => {
-                    let mut i = 0;
-                    for w in b.as_slice() {
-                        let o = w.count_ones() as usize;
-                        if idx > o {
-                            idx -= o;
-                            i += usize::BITS as usize;
-                        } else {
-                            let ix = i + idx;
-                            return Some((
-                                Ix::new(ix),
-                                oride.unwrap_or_else(|| {
-                                    arena.graph()[petgraph::graph::NodeIndex::new(ix)]
-                                }),
-                            ));
-                        }
-                    }
-                    return None;
+                    let i = b.nth(idx)?;
+                    return Some((
+                        Ix::new(i),
+                        oride.unwrap_or_else(|| arena.graph()[petgraph::graph::NodeIndex::new(i)]),
+                    ));
                 }
                 MolRepr::Broken(b) => {
                     let empty = BTreeSet::new();
@@ -191,17 +179,8 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
                     }
                 }
                 MolRepr::Atomic(b) => {
-                    let mut i = 0;
-                    for w in b.as_slice() {
-                        let o = w.count_ones() as usize;
-                        if idx > o {
-                            idx -= o;
-                            i += usize::BITS as usize;
-                        } else {
-                            return Some(arena.graph()[petgraph::graph::NodeIndex::new(i + idx)]);
-                        }
-                    }
-                    return None;
+                    let i = b.nth(idx)?;
+                    return Some(arena.graph()[petgraph::graph::NodeIndex::new(i)]);
                 }
                 MolRepr::Broken(b) => {
                     let empty = BTreeSet::new();
@@ -284,38 +263,12 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
                 MolRepr::Redirect(i) => ix = *i,
                 MolRepr::Modify(m) => ix = m.base,
                 MolRepr::Atomic(b) => {
-                    let (mut i0, mut i1) = (0, 0);
-                    let mut both = false;
-                    let mut found = false;
-                    for w in b.as_slice() {
-                        let o = w.count_ones() as usize;
-                        if both {
-                            if idx0 > o {
-                                idx0 -= o;
-                                idx1 -= o;
-                                i0 += usize::BITS as usize;
-                                i1 += usize::BITS as usize;
-                            } else if idx1 > o {
-                                idx1 -= o;
-                                i1 += usize::BITS as usize;
-                                both = false;
-                            } else {
-                                found = true;
-                                break;
-                            }
-                        } else if idx1 > o {
-                            idx1 -= o;
-                            i1 += usize::BITS as usize;
-                        } else {
-                            found = true;
-                            break;
-                        }
-                    }
-                    found.then_some(())?;
+                    // inefficient, but works
+                    let i0 = b.nth(idx0)?;
+                    let i1 = b.nth(idx1)?;
+                    // let [i0, i1] = b.nth_many_short([idx0, idx1])?;
                     let g = arena.graph();
-                    return Some(
-                        g[g.find_edge(Ix::new(i0 + idx0).into(), Ix::new(i1 + idx1).into())?],
-                    );
+                    return Some(g[g.find_edge(Ix::new(i0).into(), Ix::new(i1).into())?]);
                 }
                 MolRepr::Broken(b) => {
                     let empty = BTreeSet::new();
