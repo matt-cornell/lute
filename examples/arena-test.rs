@@ -61,17 +61,13 @@ fn main() {
 
     for (n, input) in cli.inputs.iter().enumerate() {
         let res = SmilesParser::new(&input).parse();
-        if cli.log {
-            eprintln!("parsed input {n}");
-        }
+        tracing::info!("parsed input {n}");
         match res {
             Ok(graph) => {
                 arena.insert_mol(&graph);
-                if cli.log {
-                    eprintln!("inserted input {n}");
-                }
+                tracing::info!("inserted input {n}");
             }
-            Err(err) => eprintln!("{err}"),
+            Err(err) => tracing::error!("{err}"),
         }
     }
 
