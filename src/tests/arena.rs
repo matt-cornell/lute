@@ -54,26 +54,6 @@ fn atomic_lookup() {
     assert_eq!(eth.get_bond((0, 1)), Some(Bond::Single));
     assert_eq!(eth.get_bond((1, 2)), Some(Bond::Single));
 
-    for i in 0..3 {
-        eprintln!("atom {i}:");
-        eprintln!(
-            "  incoming: {:?}",
-            eth.neighbors_directed(i.into(), Direction::Incoming)
-                .map(|i| i.0)
-                .collect::<Vec<_>>()
-        );
-        eprintln!(
-            "  outgoing: {:?}",
-            eth.neighbors_directed(i.into(), Direction::Outgoing)
-                .map(|i| i.0)
-                .collect::<Vec<_>>()
-        );
-        eprintln!(
-            "  total: {:?}",
-            eth.neighbors(i.into()).map(|i| i.0).collect::<Vec<_>>()
-        );
-    }
-
     assert!(is_isomorphic_matching(
         &ethanol,
         &ethanol,
@@ -117,12 +97,6 @@ fn alcohols() {
     assert_eq!(orig.len(), arena.parts.len(), "arena length changed");
     assert!(orig == arena.parts, "arena changed");
     assert!(isp.contains(alcohol));
-    eprintln!(
-        "atoms: {:?}",
-        isp.node_references()
-            .map(|n| n.atom.protons)
-            .collect::<Vec<_>>()
-    );
 
     // this demonstrates how the ordering changes
     assert_eq!(isp.get_atom(0).map(|a| a.protons), Some(8));
@@ -130,18 +104,6 @@ fn alcohols() {
     assert_eq!(isp.get_atom(2).map(|a| a.protons), Some(6));
     assert_eq!(isp.get_atom(3).map(|a| a.protons), Some(6));
 
-    for (l, r) in itertools::iproduct!(0..4, 0..4) {
-        if l < r {
-            eprintln!("{l}--{r}: {:?}", isp.get_bond((l, r)));
-        }
-    }
-
-    for i in 0..4 {
-        eprintln!(
-            "neighbors of {i}: {:?}",
-            isp.neighbors(i.into()).collect::<Vec<_>>()
-        );
-    }
 
     // assert_eq!(isp.get_bond((0, 3)), Some(Bond::Single));
     // assert_eq!(isp.get_bond((1, 3)), Some(Bond::Single));

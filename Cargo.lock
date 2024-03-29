@@ -103,6 +103,7 @@ dependencies = [
  "clap",
  "concat-idents",
  "coordgen",
+ "either",
  "fmtastic",
  "gcd",
  "hybridmap",

@@ -140,6 +140,7 @@ impl<Ix: IndexType> Arena<Ix> {
     /// `self.molecule(ix).get_atom(i) == mol.get_node(mapping[i])`
     ///
     /// Checks for isomorpisms iff `find_isms`
+    #[instrument(skip(self, mol), fields(size = mol.node_count()))]
     fn insert_mol_atomic<G>(&mut self, mol: G, find_isms: bool) -> (Ix, Vec<usize>)
     where
         G: Data<NodeWeight = Atom, EdgeWeight = Bond>
@@ -156,6 +157,14 @@ impl<Ix: IndexType> Arena<Ix> {
             let frags = self.parts.iter().positions(|p| {
                 p.1.index() == mol.node_count() && matches!(p.0, MolRepr::Atomic(_))
             });
+            // avoid an allocation if we can
+            let frags = if span_enabled!(Level::DEBUG, frags, "found available fragments") {
+                let frags = frags.collect::<SmallVec<_, 4>>();
+                debug!(?frags, "found available fragments");
+                either::Right(frags.into_iter())
+            } else {
+                either::Left(frags)
+            };
             let mut mods = SmallVec::<(Ix, Atom), 4>::with_capacity(mol.node_count());
             let mut node_map = vec![usize::MAX; mol.node_count()];
             let mut amatch = Atom::matches;
@@ -163,6 +172,7 @@ impl<Ix: IndexType> Arena<Ix> {
             let mut frag = None;
 
             'main: for i in frags {
+                debug!(idx = i, "matching fragment");
                 let cmp = self.molecule(Ix::new(i));
                 let mut it =
                     isomorphisms_iter(&cmp, &mol, &mut amatch, &mut bmatch, false).peekable();
@@ -184,6 +194,7 @@ impl<Ix: IndexType> Arena<Ix> {
 
                     // perfect match!
                     if mods.is_empty() {
+                        info!(idx = i, ?node_map, "perfect isomorphism");
                         return (Ix::new(i), node_map);
                     }
 
@@ -191,6 +202,7 @@ impl<Ix: IndexType> Arena<Ix> {
                     for (idx, frag) in self.parts.iter().enumerate() {
                         if let MolRepr::Modify(m) = &frag.0 {
                             if m.base.index() == i && m.patch == mods {
+                                info!(idx, base = i, ?node_map, "matched isomorphism");
                                 return (Ix::new(idx), node_map);
                             }
                         }
@@ -198,6 +210,7 @@ impl<Ix: IndexType> Arena<Ix> {
 
                     // no similar moddeds exist, this is the last ism
                     if it.peek().is_none() {
+                        info!(idx = self.parts.len(), base = i, ?node_map, "created isomorphism");
                         frag = Some((
                             (
                                 MolRepr::Modify(ModdedMol {
@@ -234,13 +247,16 @@ impl<Ix: IndexType> Arena<Ix> {
             debug_assert_ne!(t, end);
             self.graph.add_edge(s, t, *eref.weight());
         }
+        let idx = self.push_frag((MolRepr::Atomic(bits), Ix::new(mol.node_count())));
+        info!(idx = idx.index(), "inserting atomic");
         (
-            self.push_frag((MolRepr::Atomic(bits), Ix::new(mol.node_count()))),
+            idx,
             atom_map,
         )
     }
 
     /// Insert a molecule into the arena, deduplicating common parts.
+    #[instrument(skip(self, mol), fields(size = mol.node_count()))]
     pub fn insert_mol<G>(&mut self, mol: G) -> Ix
     where
         G: Data<NodeWeight = Atom, EdgeWeight = Bond>
@@ -298,6 +314,7 @@ impl<Ix: IndexType> Arena<Ix> {
                 src.iter().all(|i| i.0 == 0),
                 "cycle detected in arena fragments?"
             );
+            debug!(?frags, "topo-sorted fragments");
             frags
         };
 
@@ -319,6 +336,7 @@ impl<Ix: IndexType> Arena<Ix> {
             let cmp = self.molecule(Ix::new(i));
             let mut found_any = false;
             preds_found.clear();
+
             let mut it = isomorphisms_iter(&cmp, &mol, &mut amatch, &mut bmatch, true).peekable();
             'isms: while let Some(ism) = it.next() {
                 if ism.len() == mol.node_count() {
@@ -337,6 +355,7 @@ impl<Ix: IndexType> Arena<Ix> {
 
                     // perfect match!
                     if mods.is_empty() {
+                        info!(idx = i, "perfect isomorphism");
                         return Ix::new(i);
                     }
 
@@ -344,6 +363,7 @@ impl<Ix: IndexType> Arena<Ix> {
                     for (idx, frag) in self.parts.iter().enumerate() {
                         if let MolRepr::Modify(m) = &frag.0 {
                             if m.base.index() == i && m.patch == mods {
+                                info!(idx, base = i.index(), "matched isomorphism");
                                 return Ix::new(idx);
                             }
                         }
@@ -351,6 +371,7 @@ impl<Ix: IndexType> Arena<Ix> {
 
                     // no similar moddeds exist, this is the last ism
                     if it.peek().is_none() {
+                        info!(idx = self.parts.len(), base = i, "created isomorphism");
                         frag = Some((
                             MolRepr::Modify(ModdedMol {
                                 base: Ix::new(i),
@@ -361,6 +382,7 @@ impl<Ix: IndexType> Arena<Ix> {
                         break 'main;
                     }
                 }
+                debug!(idx = i, ?ism, "found subgraph isomorphism");
                 found_any = true;
                 push_list.clear();
                 for (cmp_i, &mol_i) in ism.iter().enumerate() {
@@ -391,17 +413,21 @@ impl<Ix: IndexType> Arena<Ix> {
                             let idx = additional_rs
                                 .binary_search_by_key(&mol.to_index(n), |r| mol.to_index(r.0))
                                 .unwrap_or_else(|x| x);
+                            trace!(neighbor = mol.to_index(n), bond = ?b, "adding additional R-group");
                             additional_rs.insert(idx, (n, Atom::new(0), b));
                         }
                         continue;
                     }
 
                     if matched[mol_i].0 != usize::MAX {
+                        trace!(mol_i, frag = matched[mol_i].0, cmp_i = matched[mol_i].1, "atom already matched");
                         // search through subgraphs
                         if preds_found.is_empty() && !subs.is_empty() {
+                            let _span = trace_span!("searching predecessors", frag = mol_i).entered();
                             search_stack.clear();
                             search_stack.extend_from_slice(subs);
                             while let Some(pred) = search_stack.pop() {
+                                trace!(pred = pred.index(), "found predecessor");
                                 if !preds_found.contains(&pred) {
                                     preds_found.push(pred);
                                 }
@@ -421,6 +447,7 @@ impl<Ix: IndexType> Arena<Ix> {
                         }
                         // predecessor not found, this atom is already accounted for
                         if preds_found.binary_search(&Ix::new(mol_i)).is_err() {
+                            trace!("predecessor not found");
                             continue 'isms;
                         }
                     }
@@ -432,6 +459,7 @@ impl<Ix: IndexType> Arena<Ix> {
                     );
                     for (b, n) in neighbors {
                         assert_eq!(b, Bond::Single);
+                        debug!(neighbor = mol.to_index(n), "adding an additional suppressed R-group");
                         if let Some(a) = rbonds.get_mut(&n) {
                             a.data.set_other(a.data.other() - diff);
                             a.data.set_unknown(a.data.unknown() + diff);
@@ -467,6 +495,7 @@ impl<Ix: IndexType> Arena<Ix> {
             return self.push_frag(frag);
         }
         if found.is_empty() {
+            info!("no subgraphs found, delegating to atomic");
             return self.insert_mol_atomic(mol, false).0;
         }
         let modded = ModdedGraph {
@@ -474,6 +503,7 @@ impl<Ix: IndexType> Arena<Ix> {
             mods: rbonds,
             additional: additional_rs,
         };
+        trace!(n_mods = modded.mods.len(), n_adds = modded.additional.len(), "tracked modifications");
         let filtered = NodeFilter::new(&modded, |i| matched[modded.to_index(i)].0 == usize::MAX);
         let ext_start = found.len();
         found.extend(ConnectedGraphIter::new(&filtered).iter(mol).map(|bits| {
@@ -490,6 +520,7 @@ impl<Ix: IndexType> Arena<Ix> {
                 .collect();
             (ix.index(), out)
         }));
+        debug!(count = found.len() - ext_start, "unmatched sections split");
         for (i, ism) in &found[ext_start..] {
             let cmp = self.molecule(Ix::new(*i));
             for (cmp_i, &mol_i) in ism.iter().enumerate() {
@@ -501,6 +532,7 @@ impl<Ix: IndexType> Arena<Ix> {
             }
         }
         found.sort();
+        error!("BrokenMol linking not implemented");
         <Ix as IndexType>::max()
     }
 }
