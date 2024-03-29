@@ -65,7 +65,11 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
 
     /// Get an atom, along with the corresponding node index in the underlying graph.
     /// Slower than `get_atom` because it can't short-circuit at `MolRepr::Modify`s.
-    pub fn get_atom_idx(&self, idx: NodeIndex<Ix>) -> Option<(Ix, Atom)> {
+    #[inline(always)]
+    pub fn get_atom_idx(&self, idx: impl Into<NodeIndex<Ix>>) -> Option<(Ix, Atom)> {
+        self.get_atom_idx_impl(idx.into())
+    }
+    fn get_atom_idx_impl(&self, idx: NodeIndex<Ix>) -> Option<(Ix, Atom)> {
         let mut idx = idx.0.index();
         let arena = self.arena.get_arena();
         (idx < arena.parts.get(self.index.index())?.1.index()).then_some(())?;
@@ -166,7 +170,11 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
     }
 
     /// Get an atom in this molecule.
-    pub fn get_atom(&self, idx: NodeIndex<Ix>) -> Option<Atom> {
+    #[inline(always)]
+    pub fn get_atom(&self, idx: impl Into<NodeIndex<Ix>>) -> Option<Atom> {
+        self.get_atom_impl(idx.into())
+    }
+    fn get_atom_impl(&self, idx: NodeIndex<Ix>) -> Option<Atom> {
         let mut idx = idx.0.index();
         let arena = self.arena.get_arena();
         (idx < arena.parts.get(self.index.index())?.1.index()).then_some(())?;
@@ -259,7 +267,11 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
     }
 
     /// Get a bond between two atoms in this molecule.
-    pub fn get_bond(&self, idx: EdgeIndex<Ix>) -> Option<Bond> {
+    #[inline(always)]
+    pub fn get_bond(&self, idx: impl Into<EdgeIndex<Ix>>) -> Option<Bond> {
+        self.get_bond_impl(idx.into())
+    }
+    fn get_bond_impl(&self, idx: EdgeIndex<Ix>) -> Option<Bond> {
         let mut idx0 = idx.source().index();
         let mut idx1 = idx.target().index();
         let arena = self.arena.get_arena();

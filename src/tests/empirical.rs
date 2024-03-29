@@ -1,5 +1,4 @@
 use crate::prelude::*;
-use rand::prelude::*;
 
 #[test]
 fn simple() {
@@ -17,6 +16,7 @@ fn format() {
 #[cfg(feature = "rand")]
 #[test]
 fn roundtrip() {
+    use rand::prelude::*;
     for _ in 0..100 {
         let e: EmpiricalFormula = rand::thread_rng().sample(crate::rand::Salt::default());
         let fmt = e.to_string();

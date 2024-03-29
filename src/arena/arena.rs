@@ -4,6 +4,7 @@
 
 use super::*;
 use crate::graph::*;
+use hybridmap::HybridMap;
 use itertools::Itertools;
 use petgraph::graph::DefaultIx;
 use petgraph::prelude::*;
@@ -31,7 +32,7 @@ macro_rules! arena {
 }
 
 const ATOM_BIT_STORAGE: usize = 2;
-
+const MODDED_GRAPH_LEN: usize = 4;
 type Graph<Ix> = StableGraph<Atom, Bond, Undirected, Ix>;
 type BSType = crate::utils::bitset::BitSet<usize, ATOM_BIT_STORAGE>;
 
@@ -73,22 +74,25 @@ pub struct Arena<Ix: IndexType = DefaultIx> {
     pub(crate) parts: SmallVec<(MolRepr<Ix>, Ix), 16>,
 }
 impl<Ix: IndexType> Arena<Ix> {
+    #[inline(always)]
     pub fn new() -> Self {
         Self::default()
     }
 
+    #[inline(always)]
     pub fn graph(&self) -> &Graph<Ix> {
         &self.graph
     }
 
     /// Get a reference to the `parts` field. For debugging purposes only.
-    pub fn expose_parts(&self) -> impl Debug + Copy + '_ {
+    #[inline(always)]
+    pub fn expose_parts(&self) -> &(impl Debug + Clone + PartialEq) {
         &self.parts
     }
 
-    #[inline(always)]
+    #[inline]
     fn push_frag(&mut self, frag: (MolRepr<Ix>, Ix)) -> Ix {
-        let max = <Ix as IndexType>::max().index();
+        let max = <Ix as IndexType>::max().index() - 1;
         let idx = self.parts.len();
         assert!(
             idx < max,
@@ -160,11 +164,12 @@ impl<Ix: IndexType> Arena<Ix> {
 
             'main: for i in frags {
                 let cmp = self.molecule(Ix::new(i));
-                let mut it = crate::graph::algo::subgraph_isomorphisms_iter(
+                let mut it = crate::graph::algo::isomorphisms_iter(
                     &cmp,
                     &mol,
                     &mut amatch,
                     &mut bmatch,
+                    false,
                 )
                 .peekable();
                 while let Some(ism) = it.next() {
@@ -172,7 +177,7 @@ impl<Ix: IndexType> Arena<Ix> {
                     mods.clear();
 
                     for (cmp_i, &mol_i) in ism.iter().enumerate() {
-                        let graph_atom = cmp.get_atom(Ix::new(cmp_i).into()).unwrap();
+                        let graph_atom = cmp.get_atom(Ix::new(cmp_i)).unwrap();
                         let mol_atom = mol.node_weight(mol.from_index(mol_i)).unwrap();
                         if graph_atom != mol_atom {
                             let mi = Ix::new(mol_i);
@@ -301,9 +306,12 @@ impl<Ix: IndexType> Arena<Ix> {
             );
             frags
         };
+
         let mut found = Vec::new();
         let mut matched = vec![(usize::MAX, 0); mol.node_bound()];
         let mut mods = SmallVec::<(Ix, Atom), 4>::with_capacity(mol.node_count());
+        let mut additional_rs = SmallVec::<(G::NodeId, Atom, Bond), MODDED_GRAPH_LEN>::new();
+        let mut rbonds = HybridMap::<G::NodeId, Atom, MODDED_GRAPH_LEN>::new();
         let mut idx = 0;
         let mut amatch = Atom::matches;
         let mut bmatch = PartialEq::eq;
@@ -317,19 +325,15 @@ impl<Ix: IndexType> Arena<Ix> {
             let cmp = self.molecule(Ix::new(i));
             let mut found_any = false;
             preds_found.clear();
-            let mut it = crate::graph::algo::subgraph_isomorphisms_iter(
-                &cmp,
-                &mol,
-                &mut amatch,
-                &mut bmatch,
-            )
-            .peekable();
+            let mut it =
+                crate::graph::algo::isomorphisms_iter(&cmp, &mol, &mut amatch, &mut bmatch, true)
+                    .peekable();
             'isms: while let Some(ism) = it.next() {
                 if ism.len() == mol.node_count() {
                     mods.clear();
 
                     for (cmp_i, &mol_i) in ism.iter().enumerate() {
-                        let graph_atom = cmp.get_atom(Ix::new(cmp_i).into()).unwrap();
+                        let graph_atom = cmp.get_atom(Ix::new(cmp_i)).unwrap();
                         let mol_atom = mol.node_weight(mol.from_index(mol_i)).unwrap();
                         if graph_atom != mol_atom {
                             let mi = Ix::new(mol_i);
@@ -368,11 +372,35 @@ impl<Ix: IndexType> Arena<Ix> {
                 found_any = true;
                 push_list.clear();
                 for (cmp_i, &mol_i) in ism.iter().enumerate() {
-                    let graph_atom = cmp.get_atom(Ix::new(cmp_i).into()).unwrap();
-                    let mol_atom = mol.node_weight(mol.from_index(mol_i)).unwrap();
+                    let graph_id = Ix::new(cmp_i).into();
+                    let mol_id = mol.from_index(mol_i);
+                    let graph_atom = cmp.get_atom(graph_id).unwrap();
+                    let mol_atom = mol.node_weight(mol_id).unwrap();
+
+                    // find the unmatched neighbors
+                    let mut neighbors = mol
+                        .edges(mol_id)
+                        .map(|e| {
+                            let i = if e.source() == mol_id {
+                                e.target()
+                            } else {
+                                e.source()
+                            };
+                            (*e.weight(), i)
+                        })
+                        .collect::<SmallVec<_, 4>>();
+                    cmp.neighbors(graph_id)
+                        .for_each(|n| neighbors.retain(|e| ism[mol.to_index(e.1)] != n.0.index()));
 
                     // graph atom is an R-group, matched on mol. no need to track it as being owned
                     if graph_atom.protons == 0 && !mol_atom.protons == 0 {
+                        additional_rs.reserve(neighbors.len());
+                        for (b, n) in neighbors {
+                            let idx = additional_rs
+                                .binary_search_by_key(&mol.to_index(n), |r| mol.to_index(r.0))
+                                .unwrap_or_else(|x| x);
+                            additional_rs.insert(idx, (n, Atom::new(0), b));
+                        }
                         continue;
                     }
 
@@ -404,6 +432,24 @@ impl<Ix: IndexType> Arena<Ix> {
                             continue 'isms;
                         }
                     }
+                    let diff = mol_atom.data.other() - cmp.neighbors(graph_id).count() as u8;
+                    assert!(
+                        neighbors.len() < 2,
+                        "too many neighbors: {}",
+                        neighbors.len()
+                    );
+                    for (b, n) in neighbors {
+                        assert_eq!(b, Bond::Single);
+                        if let Some(a) = rbonds.get_mut(&n) {
+                            a.data.set_other(a.data.other() - diff);
+                            a.data.set_unknown(a.data.unknown() + diff);
+                        } else {
+                            let mut a = mol.node_weight(n).unwrap();
+                            a.data.set_other(a.data.other() - diff);
+                            a.data.set_unknown(a.data.unknown() + diff);
+                            rbonds.insert(n, a);
+                        }
+                    }
                     push_list.push((mol_i, i, cmp_i));
                 }
                 for &(mol_i, i, cmp_i) in &push_list {
@@ -420,6 +466,9 @@ impl<Ix: IndexType> Arena<Ix> {
                     index += 1;
                     res
                 });
+                if idx + 1 == frags.len() {
+                    break;
+                }
             }
         }
         if let Some(frag) = frag {
@@ -428,23 +477,31 @@ impl<Ix: IndexType> Arena<Ix> {
         if found.is_empty() {
             return self.insert_mol_atomic(mol, false).0;
         }
-        let filtered = NodeFilter::new(mol, |i| matched[mol.to_index(i)].0 == usize::MAX);
+        let modded = ModdedGraph {
+            graph: mol,
+            mods: rbonds,
+            additional: additional_rs,
+        };
+        let filtered = NodeFilter::new(&modded, |i| matched[modded.to_index(i)].0 == usize::MAX);
         let ext_start = found.len();
         found.extend(ConnectedGraphIter::new(&filtered).iter(mol).map(|bits| {
-            let graph =
-                GraphCompactor::<BitFiltered<&NodeFilter<G, _>, usize, ATOM_BIT_STORAGE>>::new(
-                    BitFiltered::new(&filtered, bits),
-                );
+            let graph = GraphCompactor::<
+                BitFiltered<
+                    &NodeFilter<&ModdedGraph<G, MODDED_GRAPH_LEN>, _>,
+                    usize,
+                    ATOM_BIT_STORAGE,
+                >,
+            >::new(BitFiltered::new(&filtered, bits));
             let (ix, map) = self.insert_mol_atomic(&graph, true);
             let out = (0..map.len())
-                .map(|i| mol.to_index(graph.node_map[map[i]]))
+                .map(|i| modded.to_index(graph.node_map[map[i]]))
                 .collect();
             (ix.index(), out)
         }));
         for (i, ism) in &found[ext_start..] {
             let cmp = self.molecule(Ix::new(*i));
             for (cmp_i, &mol_i) in ism.iter().enumerate() {
-                let graph_atom = cmp.get_atom(Ix::new(cmp_i).into()).unwrap();
+                let graph_atom = cmp.get_atom(Ix::new(cmp_i)).unwrap();
                 let mol_atom = mol.node_weight(mol.from_index(mol_i)).unwrap();
                 if mol_atom.protons == 0 || graph_atom.protons != 0 {
                     matched[mol_i] = (*i, cmp_i);
@@ -452,6 +509,6 @@ impl<Ix: IndexType> Arena<Ix> {
             }
         }
         found.sort();
-        todo!()
+        <Ix as IndexType>::max()
     }
 }

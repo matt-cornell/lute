@@ -106,7 +106,7 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix> + Copy> GetAdjacencyMatrix for Mol
 
     fn adjacency_matrix(&self) -> Self::AdjMatrix {}
     fn is_adjacent(&self, _matrix: &Self::AdjMatrix, a: Self::NodeId, b: Self::NodeId) -> bool {
-        self.get_bond((a.0, b.0).into()).is_some()
+        self.get_bond((a, b)).is_some()
     }
 }
 /*

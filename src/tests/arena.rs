@@ -1,3 +1,4 @@
+use crate::graph::algo::isomorphism::*;
 use crate::prelude::*;
 use petgraph::visit::*;
 
@@ -20,6 +21,37 @@ fn double_insert() {
 }
 
 #[test]
+fn atomic_lookup() {
+    let mut arena = Arena::<u32>::new();
+    let ethanol = smiles!("CCO");
+    let eth_idx = arena.insert_mol(&ethanol);
+    let eth = arena.molecule(eth_idx);
+    assert_eq!(eth.get_atom(0).map(|a| a.protons), Some(6));
+    assert_eq!(eth.get_atom(1).map(|a| a.protons), Some(6));
+    assert_eq!(eth.get_atom(2).map(|a| a.protons), Some(8));
+    assert_eq!(eth.get_bond((0, 1)), Some(Bond::Single));
+    assert_eq!(eth.get_bond((1, 2)), Some(Bond::Single));
+    assert!(is_isomorphic_matching(
+        &ethanol,
+        &ethanol,
+        PartialEq::eq,
+        PartialEq::eq
+    ));
+    assert!(is_isomorphic_matching(
+        eth,
+        eth,
+        PartialEq::eq,
+        PartialEq::eq
+    ));
+    assert!(is_isomorphic_matching(
+        &ethanol,
+        eth,
+        PartialEq::eq,
+        PartialEq::eq
+    ));
+}
+
+#[test]
 fn alcohols() {
     let mut arena = arena!(
         of u32:
@@ -28,20 +60,18 @@ fn alcohols() {
         smiles!("CC(C)O"), // isopropanol
     );
     let orig = arena.parts.clone();
-    eprintln!("arena: {:#?}", arena.expose_parts());
 
     let alcohol = arena.insert_mol(&smiles!("OR"));
     assert_eq!(alcohol, 0);
-    eprintln!("arena (should be the same): {:#?}", arena.expose_parts());
-    assert!(orig == arena.parts);
+    assert_eq!(orig.len(), arena.parts.len(), "arena length changed");
+    assert!(orig == arena.parts, "arena changed");
 
     let isp_idx = arena.insert_mol(&smiles!("CC(C)O"));
-    eprintln!("arena (should be the same): {:#?}", arena.expose_parts());
     let isp = arena.molecule(isp_idx);
 
     // if these aren't equal, the output is just ugly
-    assert!(orig == arena.parts);
-
+    assert_eq!(orig.len(), arena.parts.len(), "arena length changed");
+    assert!(orig == arena.parts, "arena changed");
     assert!(isp.contains(alcohol));
     eprintln!(
         "atoms: {:?}",
@@ -51,14 +81,14 @@ fn alcohols() {
     );
 
     // this demonstrates how the ordering changes
-    assert_eq!(isp.get_atom(0.into()).map(|a| a.protons), Some(8));
-    assert_eq!(isp.get_atom(1.into()).map(|a| a.protons), Some(6));
-    assert_eq!(isp.get_atom(2.into()).map(|a| a.protons), Some(6));
-    assert_eq!(isp.get_atom(3.into()).map(|a| a.protons), Some(6));
+    assert_eq!(isp.get_atom(0).map(|a| a.protons), Some(8));
+    assert_eq!(isp.get_atom(1).map(|a| a.protons), Some(6));
+    assert_eq!(isp.get_atom(2).map(|a| a.protons), Some(6));
+    assert_eq!(isp.get_atom(3).map(|a| a.protons), Some(6));
 
     for (l, r) in itertools::iproduct!(0..4, 0..4) {
         if l < r {
-            eprintln!("{l}--{r}: {:?}", isp.get_bond((l, r).into()));
+            eprintln!("{l}--{r}: {:?}", isp.get_bond((l, r)));
         }
     }
 
@@ -69,7 +99,7 @@ fn alcohols() {
         );
     }
 
-    // assert_eq!(isp.get_bond((0, 3).into()), Some(Bond::Single));
-    // assert_eq!(isp.get_bond((1, 3).into()), Some(Bond::Single));
-    // assert_eq!(isp.get_bond((2, 3).into()), Some(Bond::Single));
+    // assert_eq!(isp.get_bond((0, 3)), Some(Bond::Single));
+    // assert_eq!(isp.get_bond((1, 3)), Some(Bond::Single));
+    // assert_eq!(isp.get_bond((2, 3)), Some(Bond::Single));
 }

@@ -1,12 +1,12 @@
 use super::misc::DataValueMap;
 use hybridmap::HybridMap;
+use itertools::Itertools;
 use petgraph::data::*;
 use petgraph::prelude::Direction;
 use petgraph::visit::*;
 use petgraph::Undirected;
 use smallvec::SmallVec;
 use std::hash::Hash;
-use itertools::Itertools;
 
 #[derive(Debug, Clone)]
 pub struct ModdedGraph<G: GraphBase + Data, const N: usize> {
@@ -378,14 +378,16 @@ where
     fn neighbors(self, a: Self::NodeId) -> Self::Neighbors {
         match a {
             NodeId::Original(a) => {
-                let mut it = self
-                    .additional
-                    .iter()
-                    .positions(|i| i.0 == a);
-                let (range, end) = if let Some(start) = it.next() {(start, it.next().unwrap_or(self.additional.len()))} else {(usize::MAX, usize::MAX)};
+                let mut it = self.additional.iter().positions(|i| i.0 == a);
+                let (range, end) = if let Some(start) = it.next() {
+                    (start, it.next().unwrap_or(self.additional.len()))
+                } else {
+                    (usize::MAX, usize::MAX)
+                };
                 iter::Neighbors::Inner(iter::NeighborsInner {
                     iter: self.graph.neighbors(a),
-                    range, end,
+                    range,
+                    end,
                 })
             }
             NodeId::Added(i) => {
@@ -409,17 +411,19 @@ where
         match a {
             NodeId::Original(a) => {
                 let (range, end) = if dir == Direction::Outgoing {
-                    let mut it = self
-                    .additional
-                    .iter()
-                    .positions(|i| i.0 == a);
-                    if let Some(start) = it.next() {(start, it.next().unwrap_or(self.additional.len()))} else {(usize::MAX, usize::MAX)}
+                    let mut it = self.additional.iter().positions(|i| i.0 == a);
+                    if let Some(start) = it.next() {
+                        (start, it.next().unwrap_or(self.additional.len()))
+                    } else {
+                        (usize::MAX, usize::MAX)
+                    }
                 } else {
                     (usize::MAX, usize::MAX)
                 };
                 iter::Neighbors::Inner(iter::NeighborsInner {
                     iter: self.graph.neighbors_directed(a, dir),
-                    range, end,
+                    range,
+                    end,
                 })
             }
             NodeId::Added(i) => {

@@ -714,11 +714,12 @@ mod matching {
 /// them.
 ///
 /// The graphs should not be multigraphs.
-pub fn subgraph_isomorphisms_iter<'a, G0, G1, NM, EM>(
+pub fn isomorphisms_iter<'a, G0, G1, NM, EM>(
     g0: &'a G0,
     g1: &'a G1,
     node_match: &'a mut NM,
     edge_match: &'a mut EM,
+    subgraphs: bool,
 ) -> impl Iterator<Item = Vec<usize>> + 'a
 where
     G0: 'a
@@ -743,7 +744,7 @@ where
     }
 
     Some(self::matching::GraphMatcher::new(
-        g0, g1, node_match, edge_match, true,
+        g0, g1, node_match, edge_match, subgraphs,
     ))
     .into_iter()
     .flatten()
@@ -785,33 +786,31 @@ where
     self::matching::try_match(&mut st, &mut node_match, &mut edge_match, false).unwrap_or(false)
 }
 
-pub fn find_isomorphism_matching<'a, G0, G1, NM, EM>(
-    g0: &'a G0,
-    g1: &'a G1,
-    node_match: &'a mut NM,
-    edge_match: &'a mut EM,
+pub fn find_isomorphism_matching<G0, G1, NM, EM>(
+    g0: G0,
+    g1: G1,
+    mut node_match: NM,
+    mut edge_match: EM,
 ) -> Option<Vec<usize>>
 where
-    G0: 'a
-        + NodeCompactIndexable
+    G0: NodeCompactIndexable
         + DataValueMap
         + GetAdjacencyMatrix
         + GraphProp<EdgeType = Undirected>
         + IntoEdgesDirected,
-    G1: 'a
-        + NodeCompactIndexable
+    G1: NodeCompactIndexable
         + DataValueMap
         + GetAdjacencyMatrix
         + GraphProp<EdgeType = Undirected>
         + IntoEdgesDirected,
     G0::NodeWeight: Copy,
     G1::NodeWeight: Copy,
-    NM: 'a + FnMut(&G0::NodeWeight, &G1::NodeWeight) -> bool,
-    EM: 'a + FnMut(&G0::EdgeWeight, &G1::EdgeWeight) -> bool,
+    NM: FnMut(&G0::NodeWeight, &G1::NodeWeight) -> bool,
+    EM: FnMut(&G0::EdgeWeight, &G1::EdgeWeight) -> bool,
 {
     if g0.node_count() != g1.node_count() {
         return None;
     }
 
-    self::matching::GraphMatcher::new(g0, g1, node_match, edge_match, false).next()
+    self::matching::GraphMatcher::new(&g0, &g1, &mut node_match, &mut edge_match, false).next()
 }

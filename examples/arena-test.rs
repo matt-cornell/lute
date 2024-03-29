@@ -34,6 +34,8 @@ struct Cli {
     out: Option<PathBuf>,
     #[arg(short, long)]
     arena: bool,
+    #[arg(short, long)]
+    graph: bool,
     inputs: Vec<String>,
 }
 
@@ -61,6 +63,9 @@ fn main() {
         }
     }
 
+    if cli.graph {
+        eprintln!("arena graph: {:#?}", arena.graph());
+    }
     if cli.arena {
         eprintln!("arena: {:#?}", arena.expose_parts());
     }

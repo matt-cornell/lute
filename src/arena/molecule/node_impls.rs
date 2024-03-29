@@ -46,6 +46,21 @@ impl<Ix: IndexType> From<(Ix, Ix)> for EdgeIndex<Ix> {
         Self::new(a, b)
     }
 }
+impl<Ix: IndexType> From<[Ix; 2]> for EdgeIndex<Ix> {
+    fn from([a, b]: [Ix; 2]) -> Self {
+        Self::new(a, b)
+    }
+}
+impl<Ix: IndexType> From<(NodeIndex<Ix>, NodeIndex<Ix>)> for EdgeIndex<Ix> {
+    fn from((a, b): (NodeIndex<Ix>, NodeIndex<Ix>)) -> Self {
+        Self::new(a.0, b.0)
+    }
+}
+impl<Ix: IndexType> From<[NodeIndex<Ix>; 2]> for EdgeIndex<Ix> {
+    fn from([a, b]: [NodeIndex<Ix>; 2]) -> Self {
+        Self::new(a.0, b.0)
+    }
+}
 
 /// Petgraph stuff needs a reference, but we can't get one because a `Molecule` doesn't actually hold a reference. Since
 /// `Atom`s are copyable though, this works and isn't much more expensive.
