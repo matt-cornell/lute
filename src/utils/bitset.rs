@@ -79,7 +79,11 @@ impl<T: PrimInt + Zero, const N: usize> BitSet<T, N> {
         let one = T::one();
         let bits = zero.leading_zeros() as usize;
         for (i, &blk) in self.0.iter().enumerate() {
-            if let Some(i2) = idx.checked_sub(blk.count_ones() as usize) {
+            let ones = blk.count_ones();
+            if ones == 0 {
+                continue;
+            }
+            if let Some(i2) = idx.checked_sub(ones as usize) {
                 if i2 > 0 {
                     idx = i2;
                     continue;

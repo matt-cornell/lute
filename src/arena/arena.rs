@@ -505,6 +505,7 @@ impl<Ix: IndexType> Arena<Ix> {
         };
         trace!(n_mods = modded.mods.len(), n_adds = modded.additional.len(), "tracked modifications");
         let filtered = NodeFilter::new(&modded, |i| matched[modded.to_index(i)].0 == usize::MAX);
+        trace!(?matched, "matched nodes");
         let ext_start = found.len();
         found.extend(ConnectedGraphIter::new(&filtered).iter(mol).map(|bits| {
             let graph = GraphCompactor::<
