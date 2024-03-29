@@ -1,5 +1,6 @@
 use crate::graph::algo::isomorphism::*;
 use crate::prelude::*;
+use petgraph::prelude::*;
 use petgraph::visit::*;
 
 #[test]
@@ -31,6 +32,27 @@ fn atomic_lookup() {
     assert_eq!(eth.get_atom(2).map(|a| a.protons), Some(8));
     assert_eq!(eth.get_bond((0, 1)), Some(Bond::Single));
     assert_eq!(eth.get_bond((1, 2)), Some(Bond::Single));
+
+    for i in 0..3 {
+        eprintln!("atom {i}:");
+        eprintln!(
+            "  incoming: {:?}",
+            eth.neighbors_directed(i.into(), Direction::Incoming)
+                .map(|i| i.0)
+                .collect::<Vec<_>>()
+        );
+        eprintln!(
+            "  outgoing: {:?}",
+            eth.neighbors_directed(i.into(), Direction::Outgoing)
+                .map(|i| i.0)
+                .collect::<Vec<_>>()
+        );
+        eprintln!(
+            "  total: {:?}",
+            eth.neighbors(i.into()).map(|i| i.0).collect::<Vec<_>>()
+        );
+    }
+
     assert!(is_isomorphic_matching(
         &ethanol,
         &ethanol,

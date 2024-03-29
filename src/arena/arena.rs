@@ -164,14 +164,8 @@ impl<Ix: IndexType> Arena<Ix> {
 
             'main: for i in frags {
                 let cmp = self.molecule(Ix::new(i));
-                let mut it = crate::graph::algo::isomorphisms_iter(
-                    &cmp,
-                    &mol,
-                    &mut amatch,
-                    &mut bmatch,
-                    false,
-                )
-                .peekable();
+                let mut it =
+                    isomorphisms_iter(&cmp, &mol, &mut amatch, &mut bmatch, false).peekable();
                 while let Some(ism) = it.next() {
                     debug_assert_eq!(ism.len(), mol.node_count());
                     mods.clear();
@@ -325,9 +319,7 @@ impl<Ix: IndexType> Arena<Ix> {
             let cmp = self.molecule(Ix::new(i));
             let mut found_any = false;
             preds_found.clear();
-            let mut it =
-                crate::graph::algo::isomorphisms_iter(&cmp, &mol, &mut amatch, &mut bmatch, true)
-                    .peekable();
+            let mut it = isomorphisms_iter(&cmp, &mol, &mut amatch, &mut bmatch, true).peekable();
             'isms: while let Some(ism) = it.next() {
                 if ism.len() == mol.node_count() {
                     mods.clear();
