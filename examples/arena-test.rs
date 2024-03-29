@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum OutputType {
+    None,
     Dot,
     #[cfg(feature = "mol-svg")]
     Svg,
@@ -18,6 +19,7 @@ enum OutputType {
 impl Display for OutputType {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            Self::None => f.write_str("none"),
             Self::Dot => f.write_str("dot"),
             #[cfg(feature = "mol-svg")]
             Self::Svg => f.write_str("svg"),
@@ -28,7 +30,7 @@ impl Display for OutputType {
 #[derive(Parser)]
 #[command(version, about)]
 struct Cli {
-    #[arg(short, long, default_value_t = OutputType::Dot)]
+    #[arg(short, long, default_value_t = OutputType::None)]
     fmt: OutputType,
     #[arg(short, long)]
     out: Option<PathBuf>,
@@ -36,6 +38,8 @@ struct Cli {
     arena: bool,
     #[arg(short, long)]
     graph: bool,
+    #[arg(short, long)]
+    log: bool,
     inputs: Vec<String>,
 }
 
@@ -51,13 +55,21 @@ fn write_output<O: Display>(path: Option<&Path>, out: O) {
 }
 
 fn main() {
+    tracing_subscriber::fmt::init();
     let cli = Cli::parse();
     let mut arena = Arena::<u16>::new();
 
-    for input in &cli.inputs {
-        match SmilesParser::new(&input).parse() {
+    for (n, input) in cli.inputs.iter().enumerate() {
+        let res = SmilesParser::new(&input).parse();
+        if cli.log {
+            eprintln!("parsed input {n}");
+        }
+        match res {
             Ok(graph) => {
                 arena.insert_mol(&graph);
+                if cli.log {
+                    eprintln!("inserted input {n}");
+                }
             }
             Err(err) => eprintln!("{err}"),
         }
@@ -75,6 +87,7 @@ fn main() {
     );
 
     match cli.fmt {
+        OutputType::None => {},
         OutputType::Dot => write_output(cli.out.as_deref(), fmt_as_dot(&graph)),
         #[cfg(feature = "mol-svg")]
         OutputType::Svg => write_output(cli.out.as_deref(), fmt_as_svg(&graph)),

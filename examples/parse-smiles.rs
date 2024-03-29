@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum OutputType {
+    None,
     Dot,
     #[cfg(feature = "mol-svg")]
     Svg,
@@ -17,6 +18,7 @@ enum OutputType {
 impl Display for OutputType {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            Self::None => f.write_str("none"),
             Self::Dot => f.write_str("dot"),
             #[cfg(feature = "mol-svg")]
             Self::Svg => f.write_str("svg"),
@@ -27,12 +29,12 @@ impl Display for OutputType {
 #[derive(Parser)]
 #[command(version, about)]
 struct Cli {
-    #[arg(short, long, default_value_t = OutputType::Dot)]
+    #[arg(short, long, default_value_t = OutputType::None)]
     fmt: OutputType,
     #[arg(short, long)]
     out: Option<PathBuf>,
     #[arg(short, long)]
-    suppress: bool,
+    unsuppress: bool,
     input: String,
 }
 
@@ -48,11 +50,13 @@ fn write_output<O: Display>(path: Option<&Path>, out: O) {
 }
 
 fn main() {
+    tracing_subscriber::fmt::init();
     let cli = Cli::parse();
-    let mut parser = chem_sim::parse::SmilesParser::new_unsuppressed(&cli.input);
-    parser.suppress = cli.suppress;
+    let mut parser = chem_sim::parse::SmilesParser::new(&cli.input);
+    parser.suppress = !cli.unsuppress;
     match parser.parse() {
         Ok(graph) => match cli.fmt {
+            OutputType::None => {},
             OutputType::Dot => write_output(cli.out.as_deref(), fmt_as_dot(&graph)),
             #[cfg(feature = "mol-svg")]
             OutputType::Svg => write_output(cli.out.as_deref(), fmt_as_svg(&graph)),

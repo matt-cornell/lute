@@ -9,6 +9,7 @@ use smallvec::SmallVec;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use thiserror::Error;
+use tracing::*;
 use SmilesErrorKind::*;
 
 #[macro_export]
@@ -127,6 +128,7 @@ impl<'a> SmilesParser<'a> {
 
     /// Parse a "chain". This can really be anything, though, it just returns the first atom in the
     /// group so it can be bonded to something else
+    #[instrument(level = "debug", skip(self), fields(self.input, self.index))]
     fn parse_chain(
         &mut self,
         nested: bool,
@@ -237,6 +239,7 @@ impl<'a> SmilesParser<'a> {
     }
 
     /// Parse an atom or an atom with hydrogens attached (in brackets)
+    #[instrument(level = "trace", skip(self), fields(self.input, self.index))]
     fn get_atom(&mut self) -> Result<Option<NodeIndex>, SmilesError> {
         match self.input.get(self.index) {
             None => Ok(None),
@@ -315,6 +318,7 @@ impl<'a> SmilesParser<'a> {
                 Ok(Some(self.graph.add_node(Atom::new_scratch(0, 2))))
             }
             Some(&b'[') => {
+                let _span = trace_span!("parsing element block", index = self.index).entered();
                 self.index += 1;
                 let (isotope, used) = u16::from_radix_10(&self.input[self.index..]);
                 self.index += used;
@@ -351,6 +355,7 @@ impl<'a> SmilesParser<'a> {
                         self.graph.add_node(Atom::new(0))
                     }
                     Some(c) if c.is_ascii_uppercase() => {
+                        let _span = trace_span!("parsing arbitrary element", start = c).entered();
                         let start = self.index;
                         let len = self.input[(self.index + 1)..]
                             .iter()
@@ -359,6 +364,9 @@ impl<'a> SmilesParser<'a> {
                             .take(4)
                             .count();
                         let elem = &self.input[start..(start + len + 1)];
+                        if event_enabled!(Level::TRACE, elem, "found an element") {
+                            trace!(elem = String::from_utf8_lossy(elem).to_string(), "found an element");
+                        }
                         self.index += len;
                         let protons = ATOM_DATA
                             .iter()
@@ -375,6 +383,7 @@ impl<'a> SmilesParser<'a> {
                 };
                 self.index += 1;
                 if self.input.get(self.index) == Some(&b'@') {
+                    trace!("handling chirality");
                     self.index += 1;
                     if self.input.get(self.index) == Some(&b'@') {
                         self.index += 1;
@@ -394,6 +403,7 @@ impl<'a> SmilesParser<'a> {
                     } else {
                         self.index += used;
                     }
+                    trace!(count = h, "adding explicit hydrogens");
                     if self.suppress {
                         self.graph[atom].add_hydrogens(h)?;
                     } else {
@@ -418,6 +428,7 @@ impl<'a> SmilesParser<'a> {
                         } else {
                             self.index += used;
                         }
+                        trace!(charge, "adding positive charge");
                         self.graph[atom].charge = charge;
                     }
                     Some(&b'-') => {
@@ -433,6 +444,7 @@ impl<'a> SmilesParser<'a> {
                         } else {
                             self.index += used;
                         }
+                        trace!(charge, "adding negative charge");
                         self.graph[atom].charge = -charge;
                     }
                     _ => {}
@@ -449,6 +461,7 @@ impl<'a> SmilesParser<'a> {
     }
 
     /// Handle loops. Since this needs to know which bond to use, it also parses a bond.
+    #[instrument(level = "debug", skip(self), fields(self.input, self.index))]
     fn handle_loops(&mut self, last_atom: NodeIndex) -> Result<(Bond, bool), SmilesError> {
         loop {
             let bond_idx = self.index;
@@ -515,6 +528,7 @@ impl<'a> SmilesParser<'a> {
     }
 
     /// Parse a single bond
+    #[instrument(level = "trace", skip(self), fields(self.input, self.index))]
     fn get_bond(&mut self) -> (Bond, bool) {
         let (bond, incr) = match self.input.get(self.index) {
             Some(&b'.') => (Bond::Non, true),
@@ -534,6 +548,7 @@ impl<'a> SmilesParser<'a> {
     }
 
     /// Saturate all atoms with hydrogens
+    #[instrument(level = "debug", skip(self), fields(self.input, self.index))]
     fn update_hydrogens(&mut self) -> Result<(), SmilesError> {
         for atom in self.graph.node_indices() {
             let ex_bonds = match self.graph[atom].protons {
@@ -541,6 +556,7 @@ impl<'a> SmilesParser<'a> {
                 x @ 14..=17 => Some(18 - (x as i8) + self.graph[atom].charge),
                 _ => None,
             };
+            trace!(atom = %self.graph[atom], ex_bonds, "checking atom");
             if let Some(ex_bonds) = ex_bonds {
                 let bond_count = (self
                     .graph
@@ -551,11 +567,16 @@ impl<'a> SmilesParser<'a> {
                     + (self.graph[atom].data.hydrogen() as i8);
                 if self.suppress {
                     let mut walk = self.graph.neighbors(atom).detach();
+                    let mut count = 0;
                     while let Some((e, n)) = walk.next(&self.graph) {
                         if self.graph[n].protons == 1 && self.graph[e] == Bond::Single {
                             self.graph[n].add_hydrogens(1)?;
                             self.graph.remove_node(n);
+                            count += 1;
                         }
+                    }
+                    if count > 0 {
+                        debug!(count, id = atom.index(), "pruned hydrogens");
                     }
                     if bond_count < ex_bonds && self.graph[atom].data.scratch() & 1 == 0 {
                         self.graph[atom].add_hydrogens((ex_bonds - bond_count) as u8)?;
@@ -572,6 +593,7 @@ impl<'a> SmilesParser<'a> {
     }
 
     /// Update R-groups to avoid any duplicates (unsuppressed) or suppress them
+    #[instrument(level = "debug", skip(self), fields(self.input, self.index))]
     fn update_rs(&mut self) -> Result<(), SmilesError> {
         if self.suppress {
             let mut i = 0;
@@ -592,6 +614,7 @@ impl<'a> SmilesParser<'a> {
                     i += 1;
                     continue;
                 }
+                debug!(id = i, "pruning R-group");
                 self.graph[neighbor].add_rs(1)?;
                 self.graph.remove_node(n);
             }
@@ -599,7 +622,8 @@ impl<'a> SmilesParser<'a> {
         Ok(())
     }
 
-    /// Update bons counts
+    /// Update bond counts
+    #[instrument(level = "debug", skip(self), fields(self.input, self.index))]
     fn update_bonds(&mut self) -> Result<(), SmilesError> {
         for n in self.graph.node_indices() {
             let bc = self.graph.edges(n).count();
@@ -612,140 +636,160 @@ impl<'a> SmilesParser<'a> {
     }
 
     /// Update stereochemistry
+    #[instrument(level = "debug", skip(self), fields(self.input, self.index))]
     fn update_stereo(&mut self) {
         use crate::molecule::*;
 
         // E/Z assignment
-        for id in (0..self.graph.edge_count()).map(petgraph::graph::EdgeIndex::new) {
-            if self.graph[id] != Bond::Double {
-                continue;
-            }
-            let (a, b) = self.graph.edge_endpoints(id).unwrap();
-            let (mut left, mut right, mut unbound) = (None, None, None);
-            let mut es = SmallVec::<_, 4>::new();
-            for e in self.graph.edges(a) {
-                let other = if e.source() == a {
-                    e.target()
+
+        {
+            let _span = debug_span!("E/Z assignment").entered();
+            for id in (0..self.graph.edge_count()).map(petgraph::graph::EdgeIndex::new) {
+                if self.graph[id] != Bond::Double {
+                    continue;
+                }
+                trace!(id = id.index(), "checking double bond");
+                let (a, b) = self.graph.edge_endpoints(id).unwrap();
+                let (mut left, mut right, mut unbound) = (None, None, None);
+                let mut es = SmallVec::<_, 4>::new();
+                for e in self.graph.edges(a) {
+                    let other = if e.source() == a {
+                        e.target()
+                    } else {
+                        e.source()
+                    };
+                    let r = match *e.weight() {
+                        Bond::Left => &mut left,
+                        Bond::Right => &mut right,
+                        Bond::Single => &mut unbound,
+                        _ => continue,
+                    };
+                    es.push(e.id());
+                    *r = Some(self.graph.cip_priority(other, a));
+                }
+                let aord = match (left, right, unbound) {
+                    (Some(lhs), Some(rhs), _)
+                    | (Some(lhs), None, Some(rhs))
+                    | (None, Some(rhs), Some(lhs)) => Ord::cmp(&lhs, &rhs),
+                    (Some(_), None, None) => Ordering::Greater,
+                    (None, Some(_), None) => Ordering::Less,
+                    _ => Ordering::Equal,
+                };
+                trace!(id = id.index(), ord = aord as i8, "checked first end");
+                for e in es.drain(..) {
+                    self.graph[e] = Bond::Single;
+                }
+                if aord == Ordering::Equal {
+                    continue;
+                }
+                (left, right, unbound) = (None, None, None);
+                for e in self.graph.edges(b) {
+                    let other = if e.source() == b {
+                        e.target()
+                    } else {
+                        e.source()
+                    };
+                    let r = match *e.weight() {
+                        Bond::Left => &mut left,
+                        Bond::Right => &mut right,
+                        Bond::Single => &mut unbound,
+                        _ => continue,
+                    };
+                    es.push(e.id());
+                    *r = Some(self.graph.cip_priority(other, b));
+                }
+                let bord = match (left, right, unbound) {
+                    (Some(lhs), Some(rhs), _)
+                    | (Some(lhs), None, Some(rhs))
+                    | (None, Some(rhs), Some(lhs)) => Ord::cmp(&lhs, &rhs),
+                    (Some(_), None, None) => Ordering::Greater,
+                    (None, Some(_), None) => Ordering::Less,
+                    _ => Ordering::Equal,
+                };
+                trace!(id = id.index(), ord = bord as i8, "checked other end");
+                for e in es.drain(..) {
+                    self.graph[e] = Bond::Single;
+                }
+                if bord == Ordering::Equal {
+                    continue;
+                }
+                self.graph[id] = if aord == bord {
+                    Bond::DoubleZ
                 } else {
-                    e.source()
+                    Bond::DoubleE
                 };
-                let r = match *e.weight() {
-                    Bond::Left => &mut left,
-                    Bond::Right => &mut right,
-                    Bond::Single => &mut unbound,
-                    _ => continue,
-                };
-                es.push(e.id());
-                *r = Some(self.graph.cip_priority(other, a));
             }
-            let aord = match (left, right, unbound) {
-                (Some(lhs), Some(rhs), _)
-                | (Some(lhs), None, Some(rhs))
-                | (None, Some(rhs), Some(lhs)) => Ord::cmp(&lhs, &rhs),
-                (Some(_), None, None) => Ordering::Greater,
-                (None, Some(_), None) => Ordering::Less,
-                _ => Ordering::Equal,
-            };
-            for e in es.drain(..) {
-                self.graph[e] = Bond::Single;
-            }
-            if aord == Ordering::Equal {
-                continue;
-            }
-            (left, right, unbound) = (None, None, None);
-            for e in self.graph.edges(b) {
-                let other = if e.source() == b {
-                    e.target()
-                } else {
-                    e.source()
-                };
-                let r = match *e.weight() {
-                    Bond::Left => &mut left,
-                    Bond::Right => &mut right,
-                    Bond::Single => &mut unbound,
-                    _ => continue,
-                };
-                es.push(e.id());
-                *r = Some(self.graph.cip_priority(other, b));
-            }
-            let bord = match (left, right, unbound) {
-                (Some(lhs), Some(rhs), _)
-                | (Some(lhs), None, Some(rhs))
-                | (None, Some(rhs), Some(lhs)) => Ord::cmp(&lhs, &rhs),
-                (Some(_), None, None) => Ordering::Greater,
-                (None, Some(_), None) => Ordering::Less,
-                _ => Ordering::Equal,
-            };
-            for e in es.drain(..) {
-                self.graph[e] = Bond::Single;
-            }
-            if bord == Ordering::Equal {
-                continue;
-            }
-            self.graph[id] = if aord == bord {
-                Bond::DoubleZ
-            } else {
-                Bond::DoubleE
-            };
         }
 
         // R/S assignment
-        for id in (0..self.graph.node_count()).map(petgraph::graph::NodeIndex::new) {
-            let ch = self.graph[id].data.chirality();
-            if !ch.is_chiral() {
-                continue;
-            }
-            let mut ns: SmallVec<_, 3> = self
-                .graph
-                .neighbors(id)
-                .map(|n| self.graph.cip_priority(n, id))
-                .collect();
-            if ch == Chirality::R {
-                ns.reverse();
-            }
-            if ns.len() == 4 {
-                let idx = ns.iter().position_min().unwrap();
-                ns.remove(idx);
-            }
-            let ch = if let [a, b, c] = &ns[..] {
-                'blk: {
-                    let ab = a.cmp(b);
-                    if ab == Ordering::Equal {
-                        break 'blk Chirality::None;
-                    }
-                    let bc = b.cmp(c);
-                    match (ab, bc) {
-                        // a b c
-                        (Ordering::Less, Ordering::Less) => Chirality::S,
-                        // c b a
-                        (Ordering::Greater, Ordering::Greater) => Chirality::R,
-                        // b is max
-                        (Ordering::Less, Ordering::Greater) => match c.cmp(a) {
-                            Ordering::Equal => Chirality::None,
-                            // c a b
-                            Ordering::Greater => Chirality::S,
-                            // a c b
-                            Ordering::Less => Chirality::R,
-                        },
-                        (Ordering::Greater, Ordering::Less) => match c.cmp(a) {
-                            Ordering::Equal => Chirality::None,
-                            // b a c
-                            Ordering::Greater => Chirality::R,
-                            // b c a
-                            Ordering::Less => Chirality::S,
-                        },
-                        (Ordering::Equal, _) | (_, Ordering::Equal) => Chirality::None,
-                    }
+        {
+            let _span = debug_span!("R/S assignment").entered();
+            for id in (0..self.graph.node_count()).map(petgraph::graph::NodeIndex::new) {
+                let ch = self.graph[id].data.chirality();
+                if !ch.is_chiral() {
+                    continue;
                 }
-            } else {
-                Chirality::None
-            };
-            std::mem::drop(ns);
-            self.graph[id].data.set_chirality(ch);
+                trace!(id = id.index(), "checking atom");
+
+                let mut ns: SmallVec<_, 4> = self
+                    .graph
+                    .neighbors(id)
+                    .map(|n| self.graph.cip_priority(n, id))
+                    .collect();
+                if ns.len() > 4 {
+                    warn!(bonds = ?ns, "attempting to determine chirality for atom with more than 4 bonds");
+                }
+                if ch == Chirality::R {
+                    ns.reverse();
+                }
+                if ns.len() == 4 {
+                    let idx = ns.iter().position_min().unwrap();
+                    ns.remove(idx);
+                }
+                let ch = if let [a, b, c] = &ns[..] {
+                    'blk: {
+                        let _span = trace_span!("comparing neighbors").entered();
+                        let ab = a.cmp(b);
+                        trace!(cmp = ab as i8, "a-b cmp");
+                        if ab == Ordering::Equal {
+                            break 'blk Chirality::None;
+                        }
+                        let bc = b.cmp(c);
+                        trace!(cmp = bc as i8, "b-c cmp");
+                        match (ab, bc) {
+                            // a b c
+                            (Ordering::Less, Ordering::Less) => Chirality::S,
+                            // c b a
+                            (Ordering::Greater, Ordering::Greater) => Chirality::R,
+                            // b is max
+                            (Ordering::Less, Ordering::Greater) => match c.cmp(a) {
+                                Ordering::Equal => Chirality::None,
+                                // c a b
+                                Ordering::Greater => Chirality::S,
+                                // a c b
+                                Ordering::Less => Chirality::R,
+                            },
+                            (Ordering::Greater, Ordering::Less) => match c.cmp(a) {
+                                Ordering::Equal => Chirality::None,
+                                // b a c
+                                Ordering::Greater => Chirality::R,
+                                // b c a
+                                Ordering::Less => Chirality::S,
+                            },
+                            (Ordering::Equal, _) | (_, Ordering::Equal) => Chirality::None,
+                        }
+                    }
+                } else {
+                    Chirality::None
+                };
+                std::mem::drop(ns);
+                self.graph[id].data.set_chirality(ch);
+            }
         }
     }
 
     /// Perform some checks on the molecule. Panics on failure (which should be impossible).
+    #[instrument(level = "trace", skip(self), fields(self.input, self.index))]
     fn validate(&self) {
         for node in self.graph.node_references() {
             assert_eq!(

@@ -23,9 +23,11 @@ petgraph = "0.6.4"
 rand = { version = "0.8.5", optional = true }
 smallvec = "2.0.0-alpha.5"
 thiserror = "1.0.57"
+tracing = "0.1.40"
 
 [dev-dependencies]
 clap = { version = "4.5.1", features = ["derive"] }
+tracing-subscriber = "0.3.18"
 
 [lib]
 crate-type = ["lib", "cdylib"]

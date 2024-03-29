@@ -67,7 +67,7 @@ fn atomic_lookup() {
     ));
     assert!(is_isomorphic_matching(
         eth,
-        &eth,
+        &ethanol,
         PartialEq::eq,
         PartialEq::eq,
     ));
