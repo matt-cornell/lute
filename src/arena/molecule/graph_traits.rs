@@ -176,7 +176,8 @@ pub mod iter {
         type Item = EdgeReference<Ix>;
 
         fn next(&mut self) -> Option<Self::Item> {
-            todo!()
+            error!("edge references checked");
+            None
         }
     }
 
@@ -222,8 +223,14 @@ pub mod iter {
     impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Iterator for Edges<Ix, R> {
         type Item = EdgeReference<Ix>;
 
+        #[instrument(level = "debug", name = "edges_next", skip(self), fields(mol_idx = self.mol_idx.index(), atom_idx = self.atom_idx.index()))]
         fn next(&mut self) -> Option<Self::Item> {
             loop {
+                trace!(
+                    mol_idx = self.mol_idx.index(),
+                    atom_idx = self.atom_idx.index(),
+                    "searching for atom"
+                );
                 if self.mol_idx == <Ix as IndexType>::max() {
                     return None;
                 }
@@ -234,10 +241,9 @@ pub mod iter {
                     }
                     MolRepr::Atomic(ref b) => {
                         if !matches!(self.state, State::Atomic(_)) {
-                            let w = arena
-                                .graph()
-                                .neighbors(Ix::new(b.nth(self.atom_idx.index())?).into())
-                                .detach();
+                            let i = b.nth(self.atom_idx.index())?;
+                            trace!(id = i, "initializing walker at atomic level");
+                            let w = arena.graph().neighbors(Ix::new(i).into()).detach();
                             self.state = State::Atomic(w);
                         }
                         let State::Atomic(w) = &mut self.state else {
@@ -269,6 +275,7 @@ pub mod iter {
                                 ));
                             }
                         }
+                        debug!("generating state for broken molecule");
                         let empty = BTreeSet::new();
                         let mut skips = HybridMap::<Ix, BTreeSet<Ix>, 4>::new();
                         let mut ibs = HybridMap::<_, SmallVec<_, 4>, 4>::new();
@@ -300,7 +307,6 @@ pub mod iter {
                                 }
                             }
                             let weight = weight.unwrap_or(Bond::Single);
-                            eprintln!("bond: {i:#?}");
                             if let Some(s) = ibs.get_mut(&(i.an, i.ai)) {
                                 s.push((i.bn, i.bi, weight));
                             } else {

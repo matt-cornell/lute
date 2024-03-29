@@ -3,6 +3,26 @@ use crate::prelude::*;
 use petgraph::prelude::*;
 use petgraph::visit::*;
 
+macro_rules! trace_capture {
+    () => {
+        use tracing_subscriber::filter::{LevelFilter, Targets};
+        use tracing_subscriber::fmt::*;
+        use tracing_subscriber::prelude::*;
+
+        let targets = Targets::new()
+            .with_target("chem_sim::parse", LevelFilter::INFO)
+            .with_target("chem_sim::arena::molecule", LevelFilter::DEBUG)
+            .with_target("chem_sim::arena::arena", LevelFilter::TRACE);
+
+        let formatter = layer().compact().with_writer(TestWriter::new());
+
+        let _guard = tracing_subscriber::registry()
+            .with(targets)
+            .with(formatter)
+            .set_default();
+    };
+}
+
 #[test]
 fn simple() {
     let mut arena = Arena::<u32>::new();
@@ -23,6 +43,7 @@ fn double_insert() {
 
 #[test]
 fn atomic_lookup() {
+    trace_capture!();
     let mut arena = Arena::<u32>::new();
     let ethanol = smiles!("CCO");
     let eth_idx = arena.insert_mol(&ethanol);
@@ -75,6 +96,7 @@ fn atomic_lookup() {
 
 #[test]
 fn alcohols() {
+    trace_capture!();
     let mut arena = arena!(
         of u32:
         smiles!("RO"),     // alcohol

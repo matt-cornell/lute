@@ -65,9 +65,12 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
 
     /// Get an atom, along with the corresponding node index in the underlying graph.
     /// Slower than `get_atom` because it can't short-circuit at `MolRepr::Modify`s.
-    #[inline(always)]
+    #[inline]
+    #[instrument(level = "debug", skip_all, fields(mol_idx = self.index.index(), idx))]
     pub fn get_atom_idx(&self, idx: impl Into<NodeIndex<Ix>>) -> Option<(Ix, Atom)> {
-        self.get_atom_idx_impl(idx.into())
+        let idx = idx.into();
+        Span::current().record("idx", &idx.0.index());
+        self.get_atom_idx_impl(idx)
     }
     fn get_atom_idx_impl(&self, idx: NodeIndex<Ix>) -> Option<(Ix, Atom)> {
         let mut idx = idx.0.index();
@@ -77,6 +80,7 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
 
         let mut ix = self.index;
         loop {
+            trace!(mol_idx = ix.index(), atom_idx = idx, "searching for atom");
             match &arena.parts[ix.index()].0 {
                 MolRepr::Redirect(i) => ix = *i,
                 MolRepr::Modify(m) => {
@@ -158,9 +162,12 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
     }
 
     /// Get an atom in this molecule.
-    #[inline(always)]
+    #[inline]
+    #[instrument(level = "debug", skip_all, fields(mol_idx = self.index.index(), idx))]
     pub fn get_atom(&self, idx: impl Into<NodeIndex<Ix>>) -> Option<Atom> {
-        self.get_atom_impl(idx.into())
+        let idx = idx.into();
+        Span::current().record("idx", &idx.0.index());
+        self.get_atom_impl(idx)
     }
     fn get_atom_impl(&self, idx: NodeIndex<Ix>) -> Option<Atom> {
         let mut idx = idx.0.index();
@@ -169,6 +176,7 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
 
         let mut ix = self.index;
         loop {
+            trace!(mol_idx = ix.index(), atom_idx = idx, "searching for atom");
             match &arena.parts[ix.index()].0 {
                 MolRepr::Redirect(i) => ix = *i,
                 MolRepr::Modify(m) => {
@@ -246,8 +254,13 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
     }
 
     /// Get a bond between two atoms in this molecule.
-    #[inline(always)]
+    #[inline]
+    #[instrument(level = "debug", skip_all, fields(mol_idx = self.index.index(), idx))]
     pub fn get_bond(&self, idx: impl Into<EdgeIndex<Ix>>) -> Option<Bond> {
+        let idx = idx.into();
+        let span = Span::current();
+        span.record("idx.source", &idx.source().index());
+        span.record("idx.target", &idx.target().index());
         self.get_bond_impl(idx.into())
     }
     fn get_bond_impl(&self, idx: EdgeIndex<Ix>) -> Option<Bond> {
@@ -259,6 +272,12 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
 
         let mut ix = self.index;
         loop {
+            trace!(
+                mol_idx = ix.index(),
+                atom_idx0 = idx0,
+                atom_idx1 = idx1,
+                "searching for bond"
+            );
             match &arena.parts[ix.index()].0 {
                 MolRepr::Redirect(i) => ix = *i,
                 MolRepr::Modify(m) => ix = m.base,

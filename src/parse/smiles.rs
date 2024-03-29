@@ -365,7 +365,10 @@ impl<'a> SmilesParser<'a> {
                             .count();
                         let elem = &self.input[start..(start + len + 1)];
                         if event_enabled!(Level::TRACE, elem, "found an element") {
-                            trace!(elem = String::from_utf8_lossy(elem).to_string(), "found an element");
+                            trace!(
+                                elem = String::from_utf8_lossy(elem).to_string(),
+                                "found an element"
+                            );
                         }
                         self.index += len;
                         let protons = ATOM_DATA
