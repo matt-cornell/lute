@@ -210,7 +210,12 @@ impl<Ix: IndexType> Arena<Ix> {
 
                     // no similar moddeds exist, this is the last ism
                     if it.peek().is_none() {
-                        info!(idx = self.parts.len(), base = i, ?node_map, "created isomorphism");
+                        info!(
+                            idx = self.parts.len(),
+                            base = i,
+                            ?node_map,
+                            "created isomorphism"
+                        );
                         frag = Some((
                             (
                                 MolRepr::Modify(ModdedMol {
@@ -249,10 +254,7 @@ impl<Ix: IndexType> Arena<Ix> {
         }
         let idx = self.push_frag((MolRepr::Atomic(bits), Ix::new(mol.node_count())));
         info!(idx = idx.index(), "inserting atomic");
-        (
-            idx,
-            atom_map,
-        )
+        (idx, atom_map)
     }
 
     /// Insert a molecule into the arena, deduplicating common parts.
@@ -334,10 +336,17 @@ impl<Ix: IndexType> Arena<Ix> {
         'main: while idx < frags.len() {
             let (i, subs) = frags[idx];
             let cmp = self.molecule(Ix::new(i));
+            if span_enabled!(Level::TRACE, atoms) {
+                trace!(atoms = ?cmp.node_references().map(|n| n.weight().to_string()).collect::<Vec<_>>());
+            }
             let mut found_any = false;
             preds_found.clear();
 
             let mut it = isomorphisms_iter(&cmp, &mol, &mut amatch, &mut bmatch, true).peekable();
+            trace!("before first ism check");
+            if it.peek().is_some() {
+                debug!(idx, "isomorphisms exist");
+            }
             'isms: while let Some(ism) = it.next() {
                 if ism.len() == mol.node_count() {
                     mods.clear();
@@ -390,6 +399,7 @@ impl<Ix: IndexType> Arena<Ix> {
                     let mol_id = mol.from_index(mol_i);
                     let graph_atom = cmp.get_atom(graph_id).unwrap();
                     let mol_atom = mol.node_weight(mol_id).unwrap();
+                    trace!(graph_atom.protons, mol_atom.protons);
 
                     // find the unmatched neighbors
                     let mut neighbors = mol
@@ -420,10 +430,16 @@ impl<Ix: IndexType> Arena<Ix> {
                     }
 
                     if matched[mol_i].0 != usize::MAX {
-                        trace!(mol_i, frag = matched[mol_i].0, cmp_i = matched[mol_i].1, "atom already matched");
+                        trace!(
+                            mol_i,
+                            frag = matched[mol_i].0,
+                            cmp_i = matched[mol_i].1,
+                            "atom already matched"
+                        );
                         // search through subgraphs
                         if preds_found.is_empty() && !subs.is_empty() {
-                            let _span = trace_span!("searching predecessors", frag = mol_i).entered();
+                            let _span =
+                                trace_span!("searching predecessors", frag = mol_i).entered();
                             search_stack.clear();
                             search_stack.extend_from_slice(subs);
                             while let Some(pred) = search_stack.pop() {
@@ -459,7 +475,10 @@ impl<Ix: IndexType> Arena<Ix> {
                     );
                     for (b, n) in neighbors {
                         assert_eq!(b, Bond::Single);
-                        debug!(neighbor = mol.to_index(n), "adding an additional suppressed R-group");
+                        debug!(
+                            neighbor = mol.to_index(n),
+                            "adding an additional suppressed R-group"
+                        );
                         if let Some(a) = rbonds.get_mut(&n) {
                             a.data.set_other(a.data.other() - diff);
                             a.data.set_unknown(a.data.unknown() + diff);
@@ -482,7 +501,7 @@ impl<Ix: IndexType> Arena<Ix> {
             } else {
                 let mut index = 0;
                 frags.retain(|(_, subs)| {
-                    let res = index < idx || !subs.contains(&Ix::new(i));
+                    let res = index < idx || (index != idx && !subs.contains(&Ix::new(i)));
                     index += 1;
                     res
                 });
@@ -503,7 +522,11 @@ impl<Ix: IndexType> Arena<Ix> {
             mods: rbonds,
             additional: additional_rs,
         };
-        trace!(n_mods = modded.mods.len(), n_adds = modded.additional.len(), "tracked modifications");
+        trace!(
+            n_mods = modded.mods.len(),
+            n_adds = modded.additional.len(),
+            "tracked modifications"
+        );
         let filtered = NodeFilter::new(&modded, |i| matched[modded.to_index(i)].0 == usize::MAX);
         trace!(?matched, "matched nodes");
         let ext_start = found.len();

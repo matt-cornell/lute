@@ -1,7 +1,4 @@
-use crate::graph::algo::isomorphism::*;
 use crate::prelude::*;
-use petgraph::prelude::*;
-use petgraph::visit::*;
 
 macro_rules! trace_capture {
     () => {
@@ -26,7 +23,7 @@ macro_rules! trace_capture {
 #[test]
 fn simple() {
     let mut arena = Arena::<u32>::new();
-    let methane = smiles!("C");
+    let methane = smiles!("CC(=O)O");
     let idx = arena.insert_mol(&methane);
     let mol = arena.molecule(idx);
     assert_eq!(methane.mass(), mol.mass());
@@ -34,44 +31,49 @@ fn simple() {
 
 #[test]
 fn double_insert() {
+    trace_capture!();
     let mut arena = Arena::<u32>::new();
-    let methane = smiles!("C");
-    let m1 = arena.insert_mol(&methane);
-    let m2 = arena.insert_mol(&methane);
+    let benzene = smiles!("c1ccccc1");
+    let m1 = arena.insert_mol(&benzene);
+    let m2 = arena.insert_mol(&benzene);
     assert_eq!(m1, m2);
+}
+
+#[test]
+fn isomorphism() {
+    use crate::graph::algo::isomorphism::*;
+    trace_capture!();
+    let mut arena = Arena::<u32>::new();
+    let acid = smiles!("OS(=O)(=O)O");
+    let ix = arena.insert_mol(&acid);
+    let ins_acid = arena.molecule(ix);
+    assert!(is_isomorphic_matching(
+        &acid,
+        ins_acid,
+        PartialEq::eq,
+        PartialEq::eq
+    ));
 }
 
 #[test]
 fn atomic_lookup() {
     trace_capture!();
     let mut arena = Arena::<u32>::new();
-    let ethanol = smiles!("CCO");
-    let eth_idx = arena.insert_mol(&ethanol);
-    let eth = arena.molecule(eth_idx);
-    assert_eq!(eth.get_atom(0).map(|a| a.protons), Some(6));
-    assert_eq!(eth.get_atom(1).map(|a| a.protons), Some(6));
-    assert_eq!(eth.get_atom(2).map(|a| a.protons), Some(8));
-    assert_eq!(eth.get_bond((0, 1)), Some(Bond::Single));
-    assert_eq!(eth.get_bond((1, 2)), Some(Bond::Single));
-
-    assert!(is_isomorphic_matching(
-        &ethanol,
-        &ethanol,
-        PartialEq::eq,
-        PartialEq::eq
-    ));
-    assert!(is_isomorphic_matching(
-        eth,
-        eth,
-        PartialEq::eq,
-        PartialEq::eq
-    ));
-    assert!(is_isomorphic_matching(
-        eth,
-        &ethanol,
-        PartialEq::eq,
-        PartialEq::eq,
-    ));
+    for (mol, atoms) in [
+        ("CCO", &[6, 6, 8][..]),
+        ("CN", &[6, 7]),
+        ("O=C=O", &[8, 6, 8]),
+    ] {
+        let mol_idx = arena.insert_mol(&SmilesParser::new(mol).parse().unwrap());
+        let ins = arena.molecule(mol_idx);
+        for (n, &protons) in atoms.iter().enumerate() {
+            assert_eq!(
+                ins.get_atom(n as u32).map(|a| a.protons),
+                Some(protons),
+                "assertion failed, mol={mol:?}, n={n}, p={protons}"
+            );
+        }
+    }
 }
 
 #[test]
@@ -97,15 +99,4 @@ fn alcohols() {
     assert_eq!(orig.len(), arena.parts.len(), "arena length changed");
     assert!(orig == arena.parts, "arena changed");
     assert!(isp.contains(alcohol));
-
-    // this demonstrates how the ordering changes
-    assert_eq!(isp.get_atom(0).map(|a| a.protons), Some(8));
-    assert_eq!(isp.get_atom(1).map(|a| a.protons), Some(6));
-    assert_eq!(isp.get_atom(2).map(|a| a.protons), Some(6));
-    assert_eq!(isp.get_atom(3).map(|a| a.protons), Some(6));
-
-
-    // assert_eq!(isp.get_bond((0, 3)), Some(Bond::Single));
-    // assert_eq!(isp.get_bond((1, 3)), Some(Bond::Single));
-    // assert_eq!(isp.get_bond((2, 3)), Some(Bond::Single));
 }

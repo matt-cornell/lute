@@ -1,7 +1,7 @@
 use clap::ValueEnum;
-use std::path::Path;
 use std::fmt::{self, Display, Formatter};
-use std::io::{stdout, stderr, Write};
+use std::io::{stderr, stdout, Write};
+use std::path::Path;
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum OutputType {

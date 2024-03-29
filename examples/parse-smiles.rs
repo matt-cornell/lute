@@ -27,6 +27,6 @@ fn main() {
             #[cfg(feature = "mol-svg")]
             OutputType::Svg => write_output(cli.out.as_deref(), fmt_as_svg(&graph)),
         },
-        Err(err) => error!("{err}"),
+        Err(err) => tracing::error!("{err}"),
     }
 }

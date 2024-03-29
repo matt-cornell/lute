@@ -58,8 +58,12 @@ impl<T: Binary, const N: usize, F> Debug for ConnectedGraphIter<T, N, F> {
     }
 }
 
-impl<G: IntoNeighbors + NodeIndexable, T: PrimInt + Binary, const N: usize, F: FnMut(usize) -> usize>
-    Walker<G> for ConnectedGraphIter<T, N, F>
+impl<
+        G: IntoNeighbors + NodeIndexable,
+        T: PrimInt + Binary,
+        const N: usize,
+        F: FnMut(usize) -> usize,
+    > Walker<G> for ConnectedGraphIter<T, N, F>
 {
     type Item = BitSet<T, N>;
     #[instrument(name = "connected_next", level = "debug", skip_all, fields(bits = ?self.full))]
