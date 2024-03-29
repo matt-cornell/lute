@@ -3,7 +3,7 @@ use super::*;
 gen_defs!(all Arena as arena);
 
 #[no_mangle]
-pub unsafe extern "C" fn CHEMSIM_add_moleclue(
+pub unsafe extern "C" fn LUTE_add_moleclue(
     mut arena: NonNull<Arena>,
     graph: NonNull<Graph>,
 ) -> u32 {

@@ -1,9 +1,10 @@
-use chem_sim::prelude::*;
+use lute::prelude::*;
 use clap::Parser;
 use std::path::PathBuf;
 
 mod common;
 use common::*;
+
 #[derive(Parser)]
 #[command(version, about)]
 struct Cli {
@@ -18,7 +19,7 @@ struct Cli {
 fn main() {
     init_tracing();
     let cli = Cli::parse();
-    let mut parser = chem_sim::parse::SmilesParser::new(&cli.input);
+    let mut parser = SmilesParser::new(&cli.input);
     parser.suppress = !cli.unsuppress;
     match parser.parse() {
         Ok(graph) => match cli.fmt {

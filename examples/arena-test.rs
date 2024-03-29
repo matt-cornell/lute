@@ -1,4 +1,4 @@
-use chem_sim::prelude::*;
+use lute::prelude::*;
 use clap::Parser;
 use petgraph::prelude::*;
 use std::path::PathBuf;
@@ -46,7 +46,7 @@ fn main() {
         eprintln!("arena: {:#?}", arena.expose_parts());
     }
 
-    let graph = chem_sim::graph::compact::GraphCompactor::<&StableUnGraph<Atom, Bond, u16>>::new(
+    let graph = lute::graph::GraphCompactor::<&StableUnGraph<Atom, Bond, u16>>::new(
         arena.graph(),
     );
 

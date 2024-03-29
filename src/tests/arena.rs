@@ -7,9 +7,9 @@ macro_rules! trace_capture {
         use tracing_subscriber::prelude::*;
 
         let targets = Targets::new()
-            .with_target("chem_sim::parse", LevelFilter::INFO)
-            .with_target("chem_sim::arena::molecule", LevelFilter::DEBUG)
-            .with_target("chem_sim::arena::arena", LevelFilter::TRACE);
+            .with_target("lute::parse", LevelFilter::INFO)
+            .with_target("lute::arena::molecule", LevelFilter::DEBUG)
+            .with_target("lute::arena::arena", LevelFilter::TRACE);
 
         let formatter = layer().compact().with_writer(TestWriter::new());
 
