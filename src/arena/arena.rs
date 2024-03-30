@@ -620,13 +620,8 @@ impl<Ix: IndexType> Arena<Ix> {
         let modded = ModdedGraph {
             graph: mol,
             mods: rbonds,
-            additional: SmallVec::new(),
         };
-        trace!(
-            n_mods = modded.mods.len(),
-            n_adds = modded.additional.len(),
-            "tracked modifications"
-        );
+        trace!(n_mods = modded.mods.len(), "tracked modifications");
         let filtered = NodeFilter::new(&modded, |i| matched[modded.to_index(i)].0 == usize::MAX);
         trace!(?matched, "matched nodes");
         let ext_start = found.len();

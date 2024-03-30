@@ -153,9 +153,10 @@ impl<'a> SmilesParser<'a> {
                     }
                     self.index += 1;
                     let start_idx = self.index;
-                    let (atom, bond, ex) = self
-                        .parse_chain(true)?
-                        .ok_or(SmilesError::new(self.index, ExpectedAtom(Some(self.input[start_idx]))))?;
+                    let (atom, bond, ex) = self.parse_chain(true)?.ok_or(SmilesError::new(
+                        self.index,
+                        ExpectedAtom(Some(self.input[start_idx])),
+                    ))?;
                     if bond == Bond::Non {
                         continue;
                     }
@@ -215,7 +216,10 @@ impl<'a> SmilesParser<'a> {
                         }
                         last_atom = atom;
                     } else if ex {
-                        Err(SmilesError::new(self.index, ExpectedAtom(self.input.get(self.index).copied())))?
+                        Err(SmilesError::new(
+                            self.index,
+                            ExpectedAtom(self.input.get(self.index).copied()),
+                        ))?
                     } else {
                         break;
                     }
@@ -441,20 +445,25 @@ impl<'a> SmilesParser<'a> {
                             .take_while(u8::is_ascii_lowercase)
                             .take(4)
                             .count();
-                        let elem = &self.input[(start + 1)..(start + len)];
+                        let elem = &self.input[(start + 1)..(start + len + 1)];
                         if event_enabled!(Level::TRACE, elem, "found an element") {
                             trace!(
                                 elem = String::from_utf8_lossy(elem).to_string(),
                                 "found an element"
                             );
                         }
-                        self.index += len + 1;
+                        self.index += len;
+                        eprintln!("next: {:?} @ {}", self.input.get(self.index), self.index);
                         let protons = ATOM_DATA
                             .iter()
-                            .position(|a| a.sym.as_bytes()[0] == c && a.sym.as_bytes()[1..] == *elem)
+                            .position(|a| {
+                                a.sym.as_bytes()[0] == c && a.sym.as_bytes()[1..] == *elem
+                            })
                             .ok_or(SmilesError::new(
                                 start,
-                                UnknownElement(EChar::new(elem, (len + 1) as _).unwrap()),
+                                UnknownElement(
+                                    EChar::new(&self.input[start..], (len + 1) as _).unwrap(),
+                                ),
                             ))? as _;
                         self.graph
                             .add_node(Atom::new_isotope_scratch(protons, isotope, scratch))
@@ -627,6 +636,19 @@ impl<'a> SmilesParser<'a> {
         (bond, incr)
     }
 
+    /// Update bond counts
+    #[instrument(level = "debug", skip(self), fields(self.input, self.index))]
+    fn update_bonds(&mut self) -> Result<(), SmilesError> {
+        for n in self.graph.node_indices() {
+            let bc = self.graph.edges(n).count();
+            self.graph[n].set_other_bonds(
+                bc.try_into()
+                    .map_err(|_| TooManyBonds(TooMany::Other, bc))?,
+            )?;
+        }
+        Ok(())
+    }
+
     /// Saturate all atoms with hydrogens
     #[instrument(level = "debug", skip(self), fields(self.input, self.index))]
     fn update_hydrogens(&mut self) -> Result<(), SmilesError> {
@@ -636,7 +658,8 @@ impl<'a> SmilesParser<'a> {
                 x @ 14..=17 => Some(18 - (x as i8) + self.graph[atom].charge),
                 _ => None,
             };
-            trace!(atom = %self.graph[atom], ex_bonds, "checking atom");
+            let a = self.graph[atom];
+            trace!(atom = %a, ex_bonds, "checking atom");
             if let Some(ex_bonds) = ex_bonds {
                 let bond_count = (self
                     .graph
@@ -644,7 +667,7 @@ impl<'a> SmilesParser<'a> {
                     .fold(0f32, |c, b| c + b.weight().bond_count())
                     .ceil()
                     .clamp(0.0, 127.0) as i8)
-                    + (self.graph[atom].data.hydrogen() as i8);
+                    + (a.data.hydrogen() + a.data.unknown()) as i8;
                 if self.suppress {
                     let mut walk = self.graph.neighbors(atom).detach();
                     let mut count = 0;
@@ -668,19 +691,6 @@ impl<'a> SmilesParser<'a> {
                     }
                 }
             }
-        }
-        Ok(())
-    }
-
-    /// Update bond counts
-    #[instrument(level = "debug", skip(self), fields(self.input, self.index))]
-    fn update_bonds(&mut self) -> Result<(), SmilesError> {
-        for n in self.graph.node_indices() {
-            let bc = self.graph.edges(n).count();
-            self.graph[n].set_other_bonds(
-                bc.try_into()
-                    .map_err(|_| TooManyBonds(TooMany::Other, bc))?,
-            )?;
         }
         Ok(())
     }
@@ -857,8 +867,8 @@ impl<'a> SmilesParser<'a> {
     /// Parse the molecule, consuming self. This is taken by value to avoid cleanup.
     pub fn parse(mut self) -> Result<MoleculeGraph, SmilesError> {
         self.parse_chain(false)?;
-        self.update_hydrogens()?;
         self.update_bonds()?;
+        self.update_hydrogens()?;
         self.update_stereo();
         if self.validate {
             self.validate();

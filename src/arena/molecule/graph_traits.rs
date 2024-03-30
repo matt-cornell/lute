@@ -269,8 +269,7 @@ pub mod iter {
                             };
 
                             // get the correct offset index
-                            let offset = idx
-                                + self.offset.index();
+                            let offset = idx + self.offset.index();
                             return Some(EdgeReference::with_weight(
                                 EdgeIndex::new(self.orig_idx, Ix::new(offset)),
                                 arena.graph()[e],
@@ -326,8 +325,7 @@ pub mod iter {
                             |v| {
                                 v.iter()
                                     .map(|&(n, i)| {
-                                        let id = f[n.index()]
-                                            + i.index();
+                                        let id = f[n.index()] + i.index();
                                         Ix::new(id)
                                     })
                                     .collect()

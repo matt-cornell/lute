@@ -242,7 +242,11 @@ impl Atom {
                 _ => self.isotope & (1 << ATOM_DATA[other.protons as usize].group as u8 + 2) != 0,
             }
         } else {
-            self == other
+            self.protons == other.protons
+                && self.charge == other.charge
+                && (self.isotope == 0 || self.isotope == other.isotope)
+                && (self.data.chirality() == Chirality::None
+                    || self.data.chirality() == other.data.chirality())
         }
     }
 }
