@@ -13,7 +13,7 @@ pub use node_impls::*;
 #[repr(C)]
 pub struct Molecule<Ix, R> {
     arena: R,
-    index: Ix,
+    pub index: Ix,
 }
 impl<Ix, R> Molecule<Ix, R> {
     pub fn from_arena<'a, 'b: 'a, A: ArenaAccessible<Ix = Ix, Access<'a> = R> + 'a>(

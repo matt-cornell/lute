@@ -204,8 +204,8 @@ impl<Ix: IndexType> Arena<Ix> {
                         if mn.len() != cn.len() {
                             break 'opt;
                         }
-                        mn.sort();
-                        cn.sort();
+                        mn.sort_unstable();
+                        cn.sort_unstable();
                         if mn != cn {
                             break 'opt;
                         }
@@ -427,8 +427,8 @@ impl<Ix: IndexType> Arena<Ix> {
                     if mn.len() != cn.len() {
                         break 'opt;
                     }
-                    mn.sort();
-                    cn.sort();
+                    mn.sort_unstable();
+                    cn.sort_unstable();
                     if mn != cn {
                         break 'opt;
                     }
@@ -573,7 +573,7 @@ impl<Ix: IndexType> Arena<Ix> {
                                 }
                             }
                             // sort it just for that lookup speed boost
-                            preds_found.sort();
+                            preds_found.sort_unstable();
                         }
                         // predecessor not found, this atom is already accounted for
                         if preds_found.binary_search(&Ix::new(mol_i)).is_err() {
@@ -669,7 +669,7 @@ impl<Ix: IndexType> Arena<Ix> {
                 }
             }
         }
-        found.sort();
+        found.sort_unstable();
         error!("BrokenMol linking not implemented");
         <Ix as IndexType>::max()
     }
