@@ -3,6 +3,7 @@
 use crate::graph::misc::DataValueMap;
 use petgraph::{visit::*, Undirected};
 use petgraph::{Incoming, Outgoing};
+use tracing::instrument;
 
 use self::semantic::EdgeMatcher;
 use self::semantic::NodeMatcher;
@@ -81,6 +82,7 @@ mod state {
         }
 
         /// Find the next (least) node in the Tout set.
+        #[instrument(level = "trace", skip_all)]
         pub fn next_out_index(&self, from_index: usize) -> Option<usize> {
             self.out[from_index..]
                 .iter()
@@ -92,6 +94,7 @@ mod state {
         }
 
         /// Find the next (least) node in the N - M set.
+        #[instrument(level = "trace", skip_all)]
         pub fn next_rest_index(&self, from_index: usize) -> Option<usize> {
             self.mapping[from_index..]
                 .iter()
@@ -236,6 +239,7 @@ mod matching {
         },
     }
 
+    #[instrument(level = "trace", skip_all)]
     fn is_feasible<G0, G1, NM, EM>(
         st: &mut (Vf2State<'_, G0>, Vf2State<'_, G1>),
         nodes: (G0::NodeId, G1::NodeId),
@@ -417,6 +421,7 @@ mod matching {
         true
     }
 
+    #[instrument(level = "trace", skip_all)]
     fn next_candidate<G0, G1>(
         st: &mut (Vf2State<'_, G0>, Vf2State<'_, G1>),
     ) -> Option<(G0::NodeId, G1::NodeId, OpenList)>
@@ -453,6 +458,7 @@ mod matching {
         }
     }
 
+    #[instrument(level = "trace", skip_all)]
     fn next_from_ix<G0, G1>(
         st: &mut (Vf2State<'_, G0>, Vf2State<'_, G1>),
         nx: G1::NodeId,
@@ -478,6 +484,7 @@ mod matching {
         }
     }
 
+    #[instrument(level = "trace", skip_all)]
     fn pop_state<G0, G1>(
         st: &mut (Vf2State<'_, G0>, Vf2State<'_, G1>),
         nodes: (G0::NodeId, G1::NodeId),
@@ -489,6 +496,7 @@ mod matching {
         st.1.pop_mapping(nodes.1);
     }
 
+    #[instrument(level = "trace", skip_all)]
     fn push_state<G0, G1>(
         st: &mut (Vf2State<'_, G0>, Vf2State<'_, G1>),
         nodes: (G0::NodeId, G1::NodeId),
@@ -501,6 +509,7 @@ mod matching {
     }
 
     /// Return Some(bool) if isomorphism is decided, else None.
+    #[instrument(level = "trace", skip_all)]
     pub fn try_match<G0, G1, NM, EM>(
         st: &mut (Vf2State<'_, G0>, Vf2State<'_, G1>),
         node_match: &mut NM,
@@ -521,6 +530,7 @@ mod matching {
         }
     }
 
+    #[instrument(level = "trace", skip_all)]
     fn isomorphisms<G0, G1, NM, EM>(
         st: &mut (Vf2State<'_, G0>, Vf2State<'_, G1>),
         node_match: &mut NM,
@@ -652,6 +662,7 @@ mod matching {
     {
         type Item = Vec<usize>;
 
+        #[instrument(level = "trace", skip_all, name = "ism_next")]
         fn next(&mut self) -> Option<Self::Item> {
             isomorphisms(
                 &mut self.st,

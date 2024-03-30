@@ -29,6 +29,7 @@ tracing = "0.1.40"
 
 [dev-dependencies]
 clap = { version = "4.5.1", features = ["derive"] }
+tracing-flame = "0.2.0"
 tracing-subscriber = "0.3.18"
 
 [lib]

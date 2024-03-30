@@ -44,9 +44,10 @@ pub fn write_output<O: Display>(path: Option<&Path>, out: O) {
     }
 }
 
-pub fn init_tracing() {
+pub fn init_tracing(flame: Option<&Path>) -> Option<tracing_flame::FlushGuard<impl Write>> {
     use tracing_subscriber::filter::*;
     use tracing_subscriber::prelude::*;
+    use tracing_subscriber::*;
     let targets = match std::env::var("RUST_LOG") {
         Ok(var) => var.parse::<Targets>().unwrap_or_else(|e| {
             eprintln!("Ignoring `RUST_LOG={var:?}`: {e}");
@@ -59,9 +60,19 @@ pub fn init_tracing() {
             Targets::new().with_default(tracing::Level::ERROR)
         }
     };
-    let fmt = tracing_subscriber::fmt::layer().with_writer(stderr);
-    tracing_subscriber::registry()
-        .with(targets)
-        .with(fmt)
-        .init();
+
+    if let Some(flame) = flame {
+        let fmt = fmt::layer().with_writer(stderr);
+        let (flame, guard) =
+            tracing_flame::FlameLayer::with_file(flame).expect("FlameLayer failed");
+        registry()
+            .with(fmt.with_filter(targets))
+            .with(flame.with_module_path(false))
+            .init();
+        return Some(guard);
+    } else {
+        let fmt = fmt::fmt().with_writer(stderr).finish();
+        fmt.with(targets).init();
+        None
+    }
 }
