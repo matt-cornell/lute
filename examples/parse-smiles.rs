@@ -16,11 +16,13 @@ struct Cli {
     unsuppress: bool,
     #[arg(short, long)]
     arena: bool,
+    #[arg(short, long)]
+    bench: Option<PathBuf>,
     input: String,
 }
 fn main() {
-    init_tracing();
     let cli = Cli::parse();
+    let _guard = init_tracing(cli.bench.as_deref());
     let mut parser = SmilesParser::new(&cli.input);
     parser.suppress = !cli.unsuppress;
     match parser.parse() {

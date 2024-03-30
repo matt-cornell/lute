@@ -18,13 +18,13 @@ struct Cli {
     #[arg(short, long)]
     graph: bool,
     #[arg(short, long)]
-    log: bool,
+    bench: Option<PathBuf>,
     inputs: Vec<String>,
 }
 
 fn main() {
-    init_tracing();
     let cli = Cli::parse();
+    let _guard = init_tracing(cli.bench.as_deref());
     let mut arena = Arena::<u16>::new();
 
     for (n, input) in cli.inputs.iter().enumerate() {

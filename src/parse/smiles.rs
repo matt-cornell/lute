@@ -241,7 +241,7 @@ impl<'a> SmilesParser<'a> {
     }
 
     /// Parse an atom or an atom with hydrogens attached (in brackets)
-    #[instrument(level = "trace", skip(self), fields(self.input, self.index))]
+    #[instrument(level = "trace", skip_all, fields(self.input, self.index))]
     fn get_atom(&mut self) -> Result<Option<NodeIndex>, SmilesError> {
         match self.input.get(self.index) {
             None => Ok(None),
@@ -550,7 +550,7 @@ impl<'a> SmilesParser<'a> {
     }
 
     /// Handle loops. Since this needs to know which bond to use, it also parses a bond.
-    #[instrument(level = "debug", skip(self), fields(self.input, self.index))]
+    #[instrument(level = "debug", skip_all, fields(self.input, self.index))]
     fn handle_loops(&mut self, last_atom: NodeIndex) -> Result<(Bond, bool), SmilesError> {
         loop {
             let bond_idx = self.index;
@@ -617,7 +617,7 @@ impl<'a> SmilesParser<'a> {
     }
 
     /// Parse a single bond
-    #[instrument(level = "trace", skip(self), fields(self.input, self.index))]
+    #[instrument(level = "trace", skip_all, fields(self.input, self.index))]
     fn get_bond(&mut self) -> (Bond, bool) {
         let (bond, incr) = match self.input.get(self.index) {
             Some(&b'.') => (Bond::Non, true),
@@ -637,7 +637,7 @@ impl<'a> SmilesParser<'a> {
     }
 
     /// Update bond counts
-    #[instrument(level = "debug", skip(self), fields(self.input, self.index))]
+    #[instrument(level = "debug", skip_all, fields(self.input, self.index))]
     fn update_bonds(&mut self) -> Result<(), SmilesError> {
         for n in self.graph.node_indices() {
             let bc = self.graph.edges(n).count();
@@ -650,7 +650,7 @@ impl<'a> SmilesParser<'a> {
     }
 
     /// Saturate all atoms with hydrogens
-    #[instrument(level = "debug", skip(self), fields(self.input, self.index))]
+    #[instrument(level = "debug", skip_all, fields(self.input, self.index))]
     fn update_hydrogens(&mut self) -> Result<(), SmilesError> {
         for atom in self.graph.node_indices() {
             let ex_bonds = match self.graph[atom].protons {
@@ -696,7 +696,7 @@ impl<'a> SmilesParser<'a> {
     }
 
     /// Update stereochemistry
-    #[instrument(level = "debug", skip(self), fields(self.input, self.index))]
+    #[instrument(level = "debug", skip_all, fields(self.input, self.index))]
     fn update_stereo(&mut self) {
         use crate::molecule::*;
 
@@ -849,7 +849,7 @@ impl<'a> SmilesParser<'a> {
     }
 
     /// Perform some checks on the molecule. Panics on failure (which should be impossible).
-    #[instrument(level = "trace", skip(self), fields(self.input, self.index))]
+    #[instrument(level = "trace", skip_all, fields(self.input, self.index))]
     fn validate(&self) {
         for node in self.graph.node_references() {
             assert_eq!(
@@ -865,6 +865,7 @@ impl<'a> SmilesParser<'a> {
     }
 
     /// Parse the molecule, consuming self. This is taken by value to avoid cleanup.
+    #[instrument(level = "debug", skip_all)]
     pub fn parse(mut self) -> Result<MoleculeGraph, SmilesError> {
         self.parse_chain(false)?;
         self.update_bonds()?;
