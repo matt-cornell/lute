@@ -3,7 +3,6 @@ use crate::prelude::*;
 macro_rules! trace_capture {
     () => {
         use tracing_subscriber::filter::{LevelFilter, Targets};
-        use tracing_subscriber::fmt::*;
         use tracing_subscriber::prelude::*;
 
         let targets = Targets::new()
@@ -11,7 +10,7 @@ macro_rules! trace_capture {
             .with_target("lute::arena::molecule", LevelFilter::DEBUG)
             .with_target("lute::arena::arena", LevelFilter::TRACE);
 
-        let formatter = layer().compact().with_writer(TestWriter::new());
+        let formatter = tracing_subscriber::fmt::layer().with_test_writer();
 
         let _guard = tracing_subscriber::registry()
             .with(targets)

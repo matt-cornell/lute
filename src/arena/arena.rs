@@ -174,6 +174,64 @@ impl<Ix: IndexType> Arena<Ix> {
             'main: for i in frags {
                 debug!(idx = i, "matching fragment");
                 let cmp = self.molecule(Ix::new(i));
+
+                // optimistic happy path for when the layouts are the same
+                // in most cases, molecules are given by canonical SMILES, so this isn't that
+                // unlikely
+                'opt: {
+                    trace!(idx = i, "checking happy path");
+                    let mut mn = SmallVec::<usize, 3>::new();
+                    let mut cn = SmallVec::<usize, 3>::new();
+                    mods.clear();
+                    for i in 0..cmp.node_count() {
+                        let mi = mol.from_index(i);
+                        let ci = Ix::new(i);
+                        let mol_atom = mol.node_weight(mi).unwrap();
+                        let graph_atom = cmp.get_atom(ci).unwrap();
+                        if !graph_atom.matches(&mol_atom) {
+                            break 'opt;
+                        }
+                        if graph_atom != mol_atom {
+                            let mi = Ix::new(i);
+                            if let Err(idx) = mods.binary_search_by_key(&mi, |m| m.0) {
+                                mods.insert(idx, (mi, mol_atom));
+                            }
+                        }
+                        mn.clear();
+                        cn.clear();
+                        mn.extend(mol.neighbors(mi).map(|i| mol.to_index(i)));
+                        cn.extend(cmp.neighbors(ci.into()).map(|i| i.0.index()));
+                        if mn.len() != cn.len() {
+                            break 'opt;
+                        }
+                        mn.sort();
+                        cn.sort();
+                        if mn != cn {
+                            break 'opt;
+                        }
+                    }
+                    debug!(idx = i, mods = mods.len(), "happy path succeeded");
+                    
+                    // perfect match!
+                    if mods.is_empty() {
+                        let node_map = (0..cmp.node_count()).collect();
+                        info!(idx = i, ?node_map, "perfect isomorphism");
+                        return (Ix::new(i), node_map);
+                    }
+
+                    // not quite perfect, let's see if there's already another modded mol
+                    for (idx, frag) in self.parts.iter().enumerate() {
+                        if let MolRepr::Modify(m) = &frag.0 {
+                            if m.base.index() == i && m.patch == mods {
+                                let node_map = (0..cmp.node_count()).collect();
+                                info!(idx, base = i, ?node_map, "matched isomorphism");
+                                return (Ix::new(idx), node_map);
+                            }
+                        }
+                    }
+                    debug!(idx = i, "no perfect match, falling back to normal");
+                }
+
                 let mut it =
                     isomorphisms_iter(&cmp, &mol, &mut amatch, &mut bmatch, false).peekable();
                 while let Some(ism) = it.next() {
@@ -339,13 +397,69 @@ impl<Ix: IndexType> Arena<Ix> {
             if span_enabled!(Level::TRACE, atoms) {
                 trace!(atoms = ?cmp.node_references().map(|n| n.weight().to_string()).collect::<Vec<_>>());
             }
+
+            // optimistic happy path for when the layouts are the same
+            // in most cases, molecules are given by canonical SMILES, so this isn't that
+            // unlikely
+            'opt: {
+                trace!(idx = i, "checking happy path");
+                let mut mn = SmallVec::<usize, 3>::new();
+                let mut cn = SmallVec::<usize, 3>::new();
+                mods.clear();
+                for i in 0..cmp.node_count() {
+                    let mi = mol.from_index(i);
+                    let ci = Ix::new(i);
+                    let mol_atom = mol.node_weight(mi).unwrap();
+                    let graph_atom = cmp.get_atom(ci).unwrap();
+                    if !graph_atom.matches(&mol_atom) {
+                        break 'opt;
+                    }
+                    if graph_atom != mol_atom {
+                        let mi = Ix::new(i);
+                        if let Err(idx) = mods.binary_search_by_key(&mi, |m| m.0) {
+                            mods.insert(idx, (mi, mol_atom));
+                        }
+                    }
+                    mn.clear();
+                    cn.clear();
+                    mn.extend(mol.neighbors(mi).map(|i| mol.to_index(i)));
+                    cn.extend(cmp.neighbors(ci.into()).map(|i| i.0.index()));
+                    if mn.len() != cn.len() {
+                        break 'opt;
+                    }
+                    mn.sort();
+                    cn.sort();
+                    if mn != cn {
+                        break 'opt;
+                    }
+                }
+                debug!(idx = i, mods = mods.len(), "happy path succeeded");
+                
+                // perfect match!
+                if mods.is_empty() {
+                    info!(idx = i, "perfect isomorphism");
+                    return Ix::new(i);
+                }
+
+                // not quite perfect, let's see if there's already another modded mol
+                for (idx, frag) in self.parts.iter().enumerate() {
+                    if let MolRepr::Modify(m) = &frag.0 {
+                        if m.base.index() == i && m.patch == mods {
+                            info!(idx, base = i, "matched isomorphism");
+                            return Ix::new(idx);
+                        }
+                    }
+                }
+                debug!(idx = i, "no perfect match, falling back to normal");
+            }
             let mut found_any = false;
             preds_found.clear();
 
             let mut it = isomorphisms_iter(&cmp, &mol, &mut amatch, &mut bmatch, true).peekable();
-            trace!("before first ism check");
             if it.peek().is_some() {
                 debug!(idx, "isomorphisms exist");
+            } else {
+                debug!(idx, "no isomorphisms found");
             }
             'isms: while let Some(ism) = it.next() {
                 if ism.len() == mol.node_count() {
