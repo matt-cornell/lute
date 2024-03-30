@@ -53,6 +53,7 @@ fn main() {
     match cli.fmt {
         OutputType::None => {}
         OutputType::Dot => write_output(cli.out.as_deref(), fmt_as_dot(&graph)),
+        OutputType::DDot => write_output(cli.out.as_deref(), AsDisp(Dot::new(&graph))),
         #[cfg(feature = "mol-svg")]
         OutputType::Svg => write_output(cli.out.as_deref(), fmt_as_svg(&graph)),
     }

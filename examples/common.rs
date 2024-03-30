@@ -1,12 +1,23 @@
 use clap::ValueEnum;
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{self, Debug, Display, Formatter};
 use std::io::{stderr, stdout, Write};
 use std::path::Path;
+
+pub use petgraph::dot::Dot;
+
+#[derive(Debug, Clone, Copy)]
+pub struct AsDisp<T>(pub T);
+impl<T: Debug> Display for AsDisp<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Debug::fmt(&self.0, f)
+    }
+}
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum OutputType {
     None,
     Dot,
+    DDot,
     #[cfg(feature = "mol-svg")]
     Svg,
 }
@@ -15,6 +26,7 @@ impl Display for OutputType {
         match self {
             Self::None => f.write_str("none"),
             Self::Dot => f.write_str("dot"),
+            Self::DDot => f.write_str("d-dot"),
             #[cfg(feature = "mol-svg")]
             Self::Svg => f.write_str("svg"),
         }

@@ -158,16 +158,18 @@ pub mod iter {
         }
     }
 
-    #[allow(dead_code)]
     #[derive(Clone)]
     pub struct EdgeReferences<Ix, R> {
         stack: SmallVec<Ix, 3>,
+        // `StableGraph` doesn't have walkers, so we need to buffer our references
+        buffer: SmallVec<EdgeReference<Ix>, 3>,
         arena: R,
     }
     impl<Ix, R> EdgeReferences<Ix, R> {
         pub fn new(mol_idx: Ix, arena: R) -> Self {
             Self {
                 stack: smallvec![mol_idx],
+                buffer: smallvec![],
                 arena,
             }
         }
@@ -176,7 +178,30 @@ pub mod iter {
         type Item = EdgeReference<Ix>;
 
         fn next(&mut self) -> Option<Self::Item> {
-            error!("edge references checked");
+            if let Some(eref) = self.buffer.pop() {
+                return Some(eref);
+            }
+            let arena = self.arena.get_arena();
+            while let Some(idx) = self.stack.pop() {
+                match arena.parts[idx.index()].0 {
+                    MolRepr::Redirect(r) | MolRepr::Modify(ModdedMol {base: r, ..}) => self.stack.push(r),
+                    MolRepr::Broken(BrokenMol {ref frags, ..}) => {
+                        self.stack.extend_from_slice(frags);
+                        error!("Attempted to iterate over the edges of a broken molecule, not yet implemented!");
+                    }
+                    MolRepr::Atomic(ref b) => {
+                        let mut it = arena.graph().edge_references().filter_map(|e| {
+                            let s = b.index(e.source().index())?;
+                            let t = b.index(e.target().index())?;
+                            Some(EdgeReference::with_weight((Ix::new(s), Ix::new(t)).into(), *e.weight()))
+                        });
+                        if let Some(ret) = it.next() {
+                            self.buffer.extend(it);
+                            return Some(ret);
+                        }
+                    }
+                }
+            }
             None
         }
     }
