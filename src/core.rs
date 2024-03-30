@@ -223,25 +223,27 @@ impl Atom {
         base - ELECTRON_MASS * self.charge as f32
     }
 
-    /// These atoms are the same, or either one is an R-group
-    pub fn eq_or_r(&self, other: &Self) -> bool {
-        self.protons == 0 || other.protons == 0 || self == other
-    }
-    /// These atoms are the same, or both R-groups
-    pub fn eq_match_r(&self, other: &Self) -> bool {
-        (self.protons == 0 && other.protons == 0) || self == other
-    }
     /// The first atom, used in a pattern, could refer to the second.
     /// If the first atom has no isotope or chirality and the second does, this can still return true.
     /// Otherwise, acts the same as `eq_or_r`
     pub fn matches(&self, other: &Self) -> bool {
-        self.protons == 0
-            || other.protons == 0
-            || (self.protons == other.protons
-                && (self.isotope == 0 || self.isotope == other.isotope)
-                && ((self.data.chirality() == Chirality::None
-                    && self.data.is_compatible(other.data))
-                    || self.data == other.data))
+        if !self.data.is_compatible(other.data) {
+            return false;
+        }
+        if self.protons == 0 {
+            match other.protons {
+                // this is a superset of the other
+                0 => !self.isotope & other.isotope == 0,
+                // bit 0 is hydrogen match
+                1 => self.isotope & 1 != 0,
+                // bit 1 is carbon match
+                6 => self.isotope & 2 != 0,
+                // the next bits are based on the ordering in atom_info.rs
+                _ => self.isotope & (1 << ATOM_DATA[other.protons as usize].group as u8 + 2) != 0,
+            }
+        } else {
+            self == other
+        }
     }
 }
 impl Display for Atom {

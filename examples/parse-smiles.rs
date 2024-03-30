@@ -1,5 +1,5 @@
-use lute::prelude::*;
 use clap::Parser;
+use lute::prelude::*;
 use std::path::PathBuf;
 
 mod common;
@@ -36,8 +36,7 @@ fn main() {
                     #[cfg(feature = "mol-svg")]
                     OutputType::Svg => write_output(cli.out.as_deref(), fmt_as_svg(mol)),
                 }
-            }
-            else {
+            } else {
                 match cli.fmt {
                     OutputType::None => {}
                     OutputType::Dot => write_output(cli.out.as_deref(), fmt_as_dot(&graph)),
@@ -46,7 +45,7 @@ fn main() {
                     OutputType::Svg => write_output(cli.out.as_deref(), fmt_as_svg(&graph)),
                 }
             }
-        },
+        }
         Err(err) => tracing::error!("{err}"),
     }
 }

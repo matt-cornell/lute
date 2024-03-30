@@ -211,7 +211,7 @@ impl<Ix: IndexType> Arena<Ix> {
                         }
                     }
                     debug!(idx = i, mods = mods.len(), "happy path succeeded");
-                    
+
                     // perfect match!
                     if mods.is_empty() {
                         let node_map = (0..cmp.node_count()).collect();
@@ -381,7 +381,6 @@ impl<Ix: IndexType> Arena<Ix> {
         let mut found = Vec::new();
         let mut matched = vec![(usize::MAX, 0); mol.node_bound()];
         let mut mods = SmallVec::<(Ix, Atom), 4>::with_capacity(mol.node_count());
-        let mut additional_rs = SmallVec::<(G::NodeId, Atom, Bond), MODDED_GRAPH_LEN>::new();
         let mut rbonds = HybridMap::<G::NodeId, Atom, MODDED_GRAPH_LEN>::new();
         let mut idx = 0;
         let mut amatch = Atom::matches;
@@ -434,7 +433,7 @@ impl<Ix: IndexType> Arena<Ix> {
                     }
                 }
                 debug!(idx = i, mods = mods.len(), "happy path succeeded");
-                
+
                 // perfect match!
                 if mods.is_empty() {
                     info!(idx = i, "perfect isomorphism");
@@ -530,19 +529,6 @@ impl<Ix: IndexType> Arena<Ix> {
                     cmp.neighbors(graph_id)
                         .for_each(|n| neighbors.retain(|e| ism[mol.to_index(e.1)] != n.0.index()));
 
-                    // graph atom is an R-group, matched on mol. no need to track it as being owned
-                    if graph_atom.protons == 0 && !mol_atom.protons == 0 {
-                        additional_rs.reserve(neighbors.len());
-                        for (b, n) in neighbors {
-                            let idx = additional_rs
-                                .binary_search_by_key(&mol.to_index(n), |r| mol.to_index(r.0))
-                                .unwrap_or_else(|x| x);
-                            trace!(neighbor = mol.to_index(n), bond = ?b, "adding additional R-group");
-                            additional_rs.insert(idx, (n, Atom::new(0), b));
-                        }
-                        continue;
-                    }
-
                     if matched[mol_i].0 != usize::MAX {
                         trace!(
                             mol_i,
@@ -634,7 +620,7 @@ impl<Ix: IndexType> Arena<Ix> {
         let modded = ModdedGraph {
             graph: mol,
             mods: rbonds,
-            additional: additional_rs,
+            additional: SmallVec::new(),
         };
         trace!(
             n_mods = modded.mods.len(),
@@ -660,13 +646,8 @@ impl<Ix: IndexType> Arena<Ix> {
         }));
         debug!(count = found.len() - ext_start, "unmatched sections split");
         for (i, ism) in &found[ext_start..] {
-            let cmp = self.molecule(Ix::new(*i));
             for (cmp_i, &mol_i) in ism.iter().enumerate() {
-                let graph_atom = cmp.get_atom(Ix::new(cmp_i)).unwrap();
-                let mol_atom = mol.node_weight(mol.from_index(mol_i)).unwrap();
-                if mol_atom.protons == 0 || graph_atom.protons != 0 {
-                    matched[mol_i] = (*i, cmp_i);
-                }
+                matched[mol_i] = (*i, cmp_i);
             }
         }
         found.sort_unstable();
