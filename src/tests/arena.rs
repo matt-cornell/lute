@@ -41,7 +41,6 @@ fn double_insert() {
 #[test]
 fn isomorphism() {
     use crate::graph::algo::isomorphism::*;
-    trace_capture!();
     let mut arena = Arena::<u32>::new();
     let acid = smiles!("OS(=O)(=O)O");
     let ix = arena.insert_mol(&acid);
@@ -97,6 +96,6 @@ fn alcohols() {
     // if these aren't equal, the output is just ugly
     assert_eq!(orig.len(), arena.parts.len(), "arena length changed");
     assert!(orig == arena.parts, "arena changed");
-    
+
     assert!(isp.contains(alcohol));
 }

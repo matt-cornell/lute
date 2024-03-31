@@ -111,7 +111,7 @@ impl<Ix: IndexType> Arena<Ix> {
         while let Some((MolRepr::Redirect(r), _)) = self.parts.get(group.index()) {
             group = *r;
         }
-        let mut stack = SmallVec::<_, 3>::new(); 
+        let mut stack = SmallVec::<_, 3>::new();
         let mut seen = BSType::new();
         stack.push(mol);
         while let Some(i) = stack.pop() {
@@ -125,8 +125,10 @@ impl<Ix: IndexType> Arena<Ix> {
             seen.set(idx, true);
             match self.parts.get(idx).map(|s| &s.0) {
                 None => warn!(idx, "OOB node found when checking for membership"),
-                Some(MolRepr::Redirect(i) | MolRepr::Modify(ModdedMol {base: i, ..})) => stack.push(*i),
-                Some(MolRepr::Broken(BrokenMol {frags, ..})) => stack.extend_from_slice(&frags),
+                Some(MolRepr::Redirect(i) | MolRepr::Modify(ModdedMol { base: i, .. })) => {
+                    stack.push(*i)
+                }
+                Some(MolRepr::Broken(BrokenMol { frags, .. })) => stack.extend_from_slice(&frags),
                 Some(MolRepr::Atomic(_)) => {}
             }
         }
@@ -654,7 +656,7 @@ impl<Ix: IndexType> Arena<Ix> {
             frags.push(Ix::new(frag));
 
             let cmp = self.molecule(Ix::new(frag));
-            
+
             for (cmp_i, &mol_i) in ism.iter().enumerate() {
                 let cmp_id = Ix::new(cmp_i).into();
                 let mol_id = mol.from_index(mol_i);
@@ -683,7 +685,13 @@ impl<Ix: IndexType> Arena<Ix> {
 
         bonds.sort_unstable();
 
-        let out = (MolRepr::Broken(BrokenMol {frags, bonds}), Ix::new(mol.node_count()));
-        self.parts.iter().position(|f| *f == out).map_or_else(|| self.push_frag(out), Ix::new)
+        let out = (
+            MolRepr::Broken(BrokenMol { frags, bonds }),
+            Ix::new(mol.node_count()),
+        );
+        self.parts
+            .iter()
+            .position(|f| *f == out)
+            .map_or_else(|| self.push_frag(out), Ix::new)
     }
 }

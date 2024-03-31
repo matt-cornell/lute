@@ -26,7 +26,7 @@ impl<T: PrimInt + Zero, const N: usize> BitSet<T, N> {
     pub fn set(&mut self, idx: usize, bit: bool) -> bool {
         let zero = T::zero();
         let bits = zero.leading_zeros() as usize;
-        
+
         let mut si = idx / bits;
         let sb = idx % bits;
         let mask = T::one() << sb;
@@ -52,7 +52,11 @@ impl<T: PrimInt + Zero, const N: usize> BitSet<T, N> {
             if idx == self.minimum {
                 // start iterating at si since idx is the smallest element, everything below must
                 // be zero
-                if let Some((n, &blk)) = self.bits[si..].iter().enumerate().find(|(_, &blk)| blk != zero) {
+                if let Some((n, &blk)) = self.bits[si..]
+                    .iter()
+                    .enumerate()
+                    .find(|(_, &blk)| blk != zero)
+                {
                     self.minimum = (n + si + self.offset) * bits + blk.trailing_zeros() as usize;
                 } else {
                     let ret = self.bits.get(si).map_or(false, |&b| b & mask != zero);
@@ -77,7 +81,6 @@ impl<T: PrimInt + Zero, const N: usize> BitSet<T, N> {
             *i = T::zero();
         }
         self.minimum = usize::MAX;
-
     }
 
     pub fn all_zero(&self) -> bool {
@@ -115,7 +118,9 @@ impl<T: PrimInt + Zero, const N: usize> BitSet<T, N> {
             let ones = blk.count_ones() as usize;
             match idx.cmp(&ones) {
                 Ordering::Greater => idx -= ones,
-                Ordering::Equal => return Some((i + self.offset + 1) * bits - blk.leading_zeros() as usize - 1),
+                Ordering::Equal => {
+                    return Some((i + self.offset + 1) * bits - blk.leading_zeros() as usize - 1)
+                }
                 Ordering::Less => {
                     let mut j = 0;
                     loop {

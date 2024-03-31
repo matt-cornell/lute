@@ -169,9 +169,33 @@ pub mod iter {
                     MolRepr::Redirect(r) | MolRepr::Modify(ModdedMol { base: r, .. }) => {
                         self.stack.push(r)
                     }
-                    MolRepr::Broken(BrokenMol { ref frags, .. }) => {
+                    MolRepr::Broken(BrokenMol {
+                        ref frags,
+                        ref bonds,
+                    }) => {
                         self.stack.extend_from_slice(frags);
-                        error!("Attempted to iterate over the edges of a broken molecule, not yet implemented!");
+                        let offsets = frags
+                            .iter()
+                            .scan(0, |count, idx| {
+                                let old = *count;
+                                *count += arena.parts[idx.index()].1.index();
+                                Some(old)
+                            })
+                            .collect::<SmallVec<_, 3>>();
+                        let mut it = bonds.iter().map(|b| {
+                            EdgeReference::with_weight(
+                                EdgeIndex::new(
+                                    Ix::new(offsets[b.an.index()] + b.ai.index()),
+                                    Ix::new(offsets[b.bn.index()] + b.bi.index()),
+                                ),
+                                Bond::Single,
+                            )
+                        });
+                        let ret = it.next();
+                        self.buffer.extend(it);
+                        if ret.is_some() {
+                            return ret;
+                        }
                     }
                     MolRepr::Atomic(ref b) => {
                         let mut it = arena.graph().edge_references().filter_map(|e| {
