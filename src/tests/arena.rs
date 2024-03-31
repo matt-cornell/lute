@@ -97,5 +97,6 @@ fn alcohols() {
     // if these aren't equal, the output is just ugly
     assert_eq!(orig.len(), arena.parts.len(), "arena length changed");
     assert!(orig == arena.parts, "arena changed");
+    
     assert!(isp.contains(alcohol));
 }

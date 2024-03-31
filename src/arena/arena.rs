@@ -102,31 +102,35 @@ impl<Ix: IndexType> Arena<Ix> {
         Ix::new(idx)
     }
 
-    fn contains_group_impl(&self, mol: Ix, group: Ix, seen: &mut BSType) -> bool {
-        if mol == group {
-            return true;
-        }
-        if seen.get(mol.index()) {
+    /// Check if `mol` contains `group`
+    #[instrument(level = "debug", skip(self))]
+    pub fn contains_group(&self, mol: Ix, mut group: Ix) -> bool {
+        if mol.index() >= self.parts.len() || group.index() >= self.parts.len() {
             return false;
         }
-        seen.set(mol.index(), true);
-        match self.parts.get(mol.index()) {
-            Some((MolRepr::Broken(b), _)) => b
-                .frags
-                .iter()
-                .any(|f| self.contains_group_impl(*f as _, group, seen)),
-            Some((MolRepr::Redirect(r), _)) => self.contains_group_impl(*r, group, seen),
-            _ => false,
-        }
-    }
-
-    /// Check if `mol` contains `group`
-    pub fn contains_group(&self, mol: Ix, mut group: Ix) -> bool {
         while let Some((MolRepr::Redirect(r), _)) = self.parts.get(group.index()) {
             group = *r;
         }
+        let mut stack = SmallVec::<_, 3>::new(); 
         let mut seen = BSType::with_capacity(self.parts.len());
-        self.contains_group_impl(mol, group, &mut seen)
+        stack.push(mol);
+        while let Some(i) = stack.pop() {
+            let idx = i.index();
+            if i == group {
+                return true;
+            }
+            if seen.get(idx) {
+                continue;
+            }
+            seen.set(idx, true);
+            match self.parts.get(idx).map(|s| &s.0) {
+                None => warn!(idx, "OOB node found when checking for membership"),
+                Some(MolRepr::Redirect(i) | MolRepr::Modify(ModdedMol {base: i, ..})) => stack.push(*i),
+                Some(MolRepr::Broken(BrokenMol {frags, ..})) => stack.extend_from_slice(&frags),
+                Some(MolRepr::Atomic(_)) => {}
+            }
+        }
+        false
     }
 
     /// Get a graph of the molecule at the given index. Note that `Molecule::from_arena` could give
