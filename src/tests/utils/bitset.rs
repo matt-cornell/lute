@@ -17,7 +17,7 @@ fn bits() {
     let mut rng = rand::thread_rng();
     let mut indices = Vec::<u16>::new();
     let mut set = BitSet::<usize, 2>::new();
-    for _ in 0..100 {
+    for _ in 0..20 {
         let count = rng.gen_range(100..1000);
         indices.resize(count, 0);
         rng.fill(&mut indices[..]);

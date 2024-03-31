@@ -339,6 +339,7 @@ impl<Ix: IndexType> Arena<Ix> {
             "molecule has too many atoms: {}, max is {max}",
             mol.node_count()
         );
+        let mut scratch = Vec::new();
         let mut frags = {
             let (mut frags, mut src) = self
                 .parts
@@ -353,7 +354,6 @@ impl<Ix: IndexType> Arena<Ix> {
                 })
                 .partition::<Vec<_>, _>(|v| v.1.is_empty());
             let mut edge = frags.iter().map(|i| i.0).collect::<Vec<_>>();
-            let mut scratch = Vec::new();
             frags.reserve(src.len());
             while !edge.is_empty() {
                 for (i, subs) in &mut src {
@@ -375,7 +375,7 @@ impl<Ix: IndexType> Arena<Ix> {
                 }
             }
             debug_assert!(
-                src.iter().all(|i| i.0 == 0),
+                src.iter().all(|i| i.0 == usize::MAX),
                 "cycle detected in arena fragments?"
             );
             debug!(?frags, "topo-sorted fragments");
@@ -397,9 +397,6 @@ impl<Ix: IndexType> Arena<Ix> {
         'main: while idx < frags.len() {
             let (i, subs) = frags[idx];
             let cmp = self.molecule(Ix::new(i));
-            if span_enabled!(Level::TRACE, atoms) {
-                trace!(atoms = ?cmp.node_references().map(|n| n.weight().to_string()).collect::<Vec<_>>());
-            }
 
             // optimistic happy path for when the layouts are the same
             // in most cases, molecules are given by canonical SMILES, so this isn't that
@@ -627,7 +624,6 @@ impl<Ix: IndexType> Arena<Ix> {
         };
         trace!(n_mods = modded.mods.len(), "tracked modifications");
         let filtered = NodeFilter::new(&modded, |i| matched[modded.to_index(i)].0 == usize::MAX);
-        trace!(?matched, "matched nodes");
         let ext_start = found.len();
         found.extend(ConnectedGraphIter::new(&filtered).iter(mol).map(|bits| {
             let graph = GraphCompactor::<
@@ -644,13 +640,50 @@ impl<Ix: IndexType> Arena<Ix> {
             (ix.index(), out)
         }));
         debug!(count = found.len() - ext_start, "unmatched sections split");
+        found.sort_unstable();
+        // reassign all because we just invalidated our indices
         for (i, ism) in &found[ext_start..] {
             for (cmp_i, &mol_i) in ism.iter().enumerate() {
                 matched[mol_i] = (*i, cmp_i);
             }
         }
-        found.sort_unstable();
-        error!("BrokenMol linking not implemented");
-        <Ix as IndexType>::max()
+        let mut frags = SmallVec::with_capacity(found.len());
+        let mut bonds = SmallVec::with_capacity(found.len() - 1);
+
+        for &(frag, ref ism) in &found {
+            frags.push(Ix::new(frag));
+
+            let cmp = self.molecule(Ix::new(frag));
+            
+            for (cmp_i, &mol_i) in ism.iter().enumerate() {
+                let cmp_id = Ix::new(cmp_i).into();
+                let mol_id = mol.from_index(mol_i);
+                let cmp_atom = cmp.get_atom(cmp_id).unwrap();
+                let mol_atom = mol.node_weight(mol_id).unwrap();
+                let extra_rs = cmp_atom.data.unknown() - mol_atom.data.unknown();
+                if extra_rs == 0 {
+                    continue;
+                }
+                scratch.clear();
+                scratch.extend(mol.neighbors(mol_id).map(|n| mol.to_index(n)));
+                for n in cmp.neighbors(cmp_id).map(|n| n.0.index()) {
+                    let (bn, bi) = matched[n];
+                    // use ordering check to ensure only one bond is made
+                    if bn > frag {
+                        bonds.push(InterFragBond {
+                            an: Ix::new(frag),
+                            ai: Ix::new(cmp_i),
+                            bn: Ix::new(bn),
+                            bi: Ix::new(bi),
+                        });
+                    }
+                }
+            }
+        }
+
+        bonds.sort_unstable();
+
+        let out = (MolRepr::Broken(BrokenMol {frags, bonds}), Ix::new(mol.node_count()));
+        self.parts.iter().position(|f| *f == out).map_or_else(|| self.push_frag(out), Ix::new)
     }
 }
