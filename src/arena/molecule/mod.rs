@@ -67,7 +67,7 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
     #[instrument(level = "debug", skip_all, fields(mol_idx = self.index.index(), idx))]
     pub fn get_atom_idx(&self, idx: impl Into<NodeIndex<Ix>>) -> Option<(Ix, Atom)> {
         let idx = idx.into();
-        Span::current().record("idx", &idx.0.index());
+        Span::current().record("idx", idx.0.index());
         self.get_atom_idx_impl(idx)
     }
     fn get_atom_idx_impl(&self, idx: NodeIndex<Ix>) -> Option<(Ix, Atom)> {
@@ -121,7 +121,7 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
     #[instrument(level = "debug", skip_all, fields(mol_idx = self.index.index(), idx))]
     pub fn get_atom(&self, idx: impl Into<NodeIndex<Ix>>) -> Option<Atom> {
         let idx = idx.into();
-        Span::current().record("idx", &idx.0.index());
+        Span::current().record("idx", idx.0.index());
         self.get_atom_impl(idx)
     }
     fn get_atom_impl(&self, idx: NodeIndex<Ix>) -> Option<Atom> {
@@ -171,9 +171,9 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
     pub fn get_bond(&self, idx: impl Into<EdgeIndex<Ix>>) -> Option<Bond> {
         let idx = idx.into();
         let span = Span::current();
-        span.record("idx.source", &idx.source().index());
-        span.record("idx.target", &idx.target().index());
-        self.get_bond_impl(idx.into())
+        span.record("idx.source", idx.source().index());
+        span.record("idx.target", idx.target().index());
+        self.get_bond_impl(idx)
     }
     fn get_bond_impl(&self, idx: EdgeIndex<Ix>) -> Option<Bond> {
         let mut idx0 = idx.source().index();

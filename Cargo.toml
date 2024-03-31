@@ -41,6 +41,9 @@ name = "parse-smiles"
 [[example]]
 name = "arena-test"
 
+[[example]]
+name = "alcohols"
+
 [features]
 default = ["mol-svg", "rand"]
 nightly = ["rand?/nightly", "lock_api/nightly"]

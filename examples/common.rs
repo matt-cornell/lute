@@ -69,7 +69,7 @@ pub fn init_tracing(flame: Option<&Path>) -> Option<tracing_flame::FlushGuard<im
             .with(fmt.with_filter(targets))
             .with(flame.with_module_path(false))
             .init();
-        return Some(guard);
+        Some(guard)
     } else {
         let fmt = fmt::fmt().with_writer(stderr).finish();
         fmt.with(targets).init();

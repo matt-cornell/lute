@@ -239,7 +239,7 @@ impl Atom {
                 // bit 1 is carbon match
                 6 => self.isotope & 2 != 0,
                 // the next bits are based on the ordering in atom_info.rs
-                _ => self.isotope & (1 << ATOM_DATA[other.protons as usize].group as u8 + 2) != 0,
+                _ => self.isotope & (1 << (ATOM_DATA[other.protons as usize].group as u8 + 2)) != 0,
             }
         } else {
             self.protons == other.protons

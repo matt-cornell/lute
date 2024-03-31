@@ -128,7 +128,7 @@ impl<Ix: IndexType> Arena<Ix> {
                 Some(MolRepr::Redirect(i) | MolRepr::Modify(ModdedMol { base: i, .. })) => {
                     stack.push(*i)
                 }
-                Some(MolRepr::Broken(BrokenMol { frags, .. })) => stack.extend_from_slice(&frags),
+                Some(MolRepr::Broken(BrokenMol { frags, .. })) => stack.extend_from_slice(frags),
                 Some(MolRepr::Atomic(_)) => {}
             }
         }
