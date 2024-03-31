@@ -112,7 +112,7 @@ impl<Ix: IndexType> Arena<Ix> {
             group = *r;
         }
         let mut stack = SmallVec::<_, 3>::new(); 
-        let mut seen = BSType::with_capacity(self.parts.len());
+        let mut seen = BSType::new();
         stack.push(mol);
         while let Some(i) = stack.pop() {
             let idx = i.index();

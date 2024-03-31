@@ -100,8 +100,7 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix> + Copy> GetAdjacencyMatrix for Mol
     type AdjMatrix = crate::utils::bitset::BitSet<usize, 1>;
 
     fn adjacency_matrix(&self) -> Self::AdjMatrix {
-        let nc = self.node_count();
-        let mut out = Self::AdjMatrix::with_capacity(nc * (nc + 1) / 2);
+        let mut out = Self::AdjMatrix::new();
         for e in self.edge_references() {
             let s = e.source().0.index();
             let t = e.target().0.index();

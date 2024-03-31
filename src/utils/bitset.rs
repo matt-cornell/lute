@@ -1,77 +1,108 @@
-use itertools::{EitherOrBoth::*, Itertools};
 use num_traits::*;
 use smallvec::SmallVec;
 use std::fmt::{self, Binary, Debug, Formatter};
-use std::ops::*;
 
 #[derive(Default, Clone, PartialEq, Eq)]
-pub struct BitSet<T, const N: usize>(SmallVec<T, N>);
+pub struct BitSet<T, const N: usize> {
+    bits: SmallVec<T, N>,
+    offset: usize,
+    minimum: usize,
+}
 impl<T: PrimInt + Zero, const N: usize> BitSet<T, N> {
     pub const fn new() -> Self {
-        Self(SmallVec::new())
-    }
-    pub fn with_capacity(cap: usize) -> Self {
-        let bits = T::zero().leading_zeros() as usize;
-        let len = (cap + bits - 1) / bits;
-        Self(SmallVec::from_elem(T::zero(), len))
-    }
-    pub fn from_buf(buf: SmallVec<T, N>) -> Self {
-        Self(buf)
-    }
-
-    pub fn as_slice(&self) -> &[T] {
-        self.0.as_slice()
+        Self {
+            bits: SmallVec::new(),
+            offset: 0,
+            minimum: usize::MAX,
+        }
     }
 
     pub fn get(&self, idx: usize) -> bool {
         let bits = T::zero().leading_zeros() as usize;
-        self.0
-            .get(idx / bits)
+        self.bits
+            .get(idx / bits - self.offset)
             .map_or(false, |&i| i & (T::one() << (idx % bits)) != T::zero())
     }
-    pub fn set(&mut self, idx: usize, bit: bool) {
-        let bits = T::zero().leading_zeros() as usize;
-        let si = idx / bits;
+    pub fn set(&mut self, idx: usize, bit: bool) -> bool {
+        let zero = T::zero();
+        let bits = zero.leading_zeros() as usize;
+        
+        let mut si = idx / bits;
         let sb = idx % bits;
-        if si >= self.0.len() {
-            self.0.resize(si + 1, T::zero());
-        }
-        let word = self.0[si];
-        self.0[si] = if bit {
-            word | (T::one() << sb)
+        let mask = T::one() << sb;
+        if bit {
+            if si < self.offset {
+                let l = self.bits.len();
+                self.bits.resize(l + si, zero);
+                self.bits.copy_within(..l, si);
+                self.offset = si;
+            } else if si >= self.bits.len() {
+                self.bits.resize(si + 1, zero);
+            }
+            si -= self.offset;
+            if idx < self.minimum || self.minimum == usize::MAX {
+                self.minimum = idx;
+            }
+            let blk = self.bits[si];
+            let ret = blk & mask != zero;
+            self.bits[si] = blk | mask;
+            ret
         } else {
-            word & !(T::one() << sb)
-        };
+            si -= self.offset;
+            if idx == self.minimum {
+                // start iterating at si since idx is the smallest element, everything below must
+                // be zero
+                if let Some((n, &blk)) = self.bits[si..].iter().enumerate().find(|(_, &blk)| blk != zero) {
+                    self.minimum = (n + si + self.offset) * bits + blk.trailing_zeros() as usize;
+                } else {
+                    let ret = self.bits.get(si).map_or(false, |&b| b & mask != zero);
+                    // no other bits were found, this set is empty
+                    self.minimum = usize::MAX;
+                    self.offset = 0;
+                    self.bits.truncate(0);
+                    return ret;
+                }
+            }
+            if let Some(blk) = self.bits.get_mut(si) {
+                let ret = *blk & mask != zero;
+                *blk = *blk & !mask;
+                ret
+            } else {
+                false
+            }
+        }
     }
     pub fn clear(&mut self) {
-        for i in &mut self.0 {
+        for i in &mut self.bits {
             *i = T::zero();
         }
+        self.minimum = usize::MAX;
+
     }
 
     pub fn all_zero(&self) -> bool {
         let zero = T::zero();
-        self.0.iter().all(|&i| i == zero)
+        self.bits.iter().all(|&i| i == zero)
     }
     pub fn all_ones(&self) -> bool {
         let ones = !T::zero();
-        self.0.iter().all(|&i| i == ones)
+        self.offset == 0 && self.bits.iter().all(|&i| i == ones)
     }
     pub fn count_ones(&self) -> usize {
-        self.0.iter().map(|i| i.count_ones() as usize).sum()
+        self.bits.iter().map(|i| i.count_ones() as usize).sum()
     }
     pub fn max_set(&self) -> Option<usize> {
-        let mut i = self.0.len() - 1;
+        let mut i = self.bits.len() - 1;
         let zero = T::zero();
-        while i > 0 && self.0[i] == zero {
+        while i > 0 && self.bits[i] == zero {
             i -= 1;
         }
-        let v = self.0[i];
+        let v = self.bits[i];
         if v == zero {
             None
         } else {
             let bits = zero.leading_zeros() as usize;
-            Some(i * bits + (bits - v.leading_zeros() as usize))
+            Some((i + self.offset) * bits + (bits - v.leading_zeros() as usize))
         }
     }
     pub fn nth(&self, mut idx: usize) -> Option<usize> {
@@ -80,11 +111,11 @@ impl<T: PrimInt + Zero, const N: usize> BitSet<T, N> {
         let zero = T::zero();
         let one = T::one();
         let bits = zero.leading_zeros() as usize;
-        for (i, &blk) in self.0.iter().enumerate() {
+        for (i, &blk) in self.bits.iter().enumerate() {
             let ones = blk.count_ones() as usize;
             match idx.cmp(&ones) {
                 Ordering::Greater => idx -= ones,
-                Ordering::Equal => return Some((i + 1) * bits - blk.leading_zeros() as usize - 1),
+                Ordering::Equal => return Some((i + self.offset + 1) * bits - blk.leading_zeros() as usize - 1),
                 Ordering::Less => {
                     let mut j = 0;
                     loop {
@@ -97,7 +128,7 @@ impl<T: PrimInt + Zero, const N: usize> BitSet<T, N> {
                         }
                         j += 1;
                     }
-                    return Some(i * bits + j);
+                    return Some((i + self.offset) * bits + j);
                 }
             }
         }
@@ -111,14 +142,15 @@ impl<T: PrimInt + Zero, const N: usize> BitSet<T, N> {
     pub fn index(&self, bit: usize) -> Option<usize> {
         let zero = T::zero();
         let one = T::one();
-        let bits = T::zero().leading_zeros() as usize;
+        let bits = zero.leading_zeros() as usize;
+        let bit = bit.checked_sub(self.offset * bits)?;
         let prev: usize = self
-            .0
+            .bits
             .get(..(bit / bits))?
             .iter()
             .map(|blk| blk.count_ones() as usize)
             .sum();
-        let blk = *self.0.get(bit / bits)?;
+        let blk = *self.bits.get(bit / bits)?;
         let mask = one << (bit % bits);
         (blk & mask != zero).then_some(())?;
         let curr = (blk & (mask - one)).count_ones() as usize;
@@ -129,208 +161,9 @@ impl<T: PrimInt + Zero, const N: usize> BitSet<T, N> {
 impl<T: Binary, const N: usize> Debug for BitSet<T, N> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let mut l = f.debug_list();
-        for i in &self.0 {
+        for i in &self.bits {
             l.entry(&format_args!("{i:0>0$b}", std::mem::size_of::<T>() * 8));
         }
         l.finish()
-    }
-}
-
-impl<T: PrimInt, const N: usize> BitAnd for BitSet<T, N> {
-    type Output = BitSet<T, N>;
-
-    fn bitand(mut self, rhs: Self) -> BitSet<T, N> {
-        self &= rhs;
-        self
-    }
-}
-
-impl<T: PrimInt, const N: usize> BitAnd<&Self> for BitSet<T, N> {
-    type Output = BitSet<T, N>;
-
-    fn bitand(mut self, rhs: &Self) -> BitSet<T, N> {
-        self &= rhs;
-        self
-    }
-}
-
-impl<T: PrimInt, const N: usize> BitAnd for &BitSet<T, N> {
-    type Output = BitSet<T, N>;
-
-    fn bitand(self, rhs: Self) -> BitSet<T, N> {
-        BitSet(self.0.iter().zip(&rhs.0).map(|(l, r)| *l & *r).collect())
-    }
-}
-
-impl<T: PrimInt, const N: usize> BitAndAssign for BitSet<T, N> {
-    fn bitand_assign(&mut self, rhs: Self) {
-        *self &= &rhs;
-    }
-}
-
-impl<T: PrimInt, const N: usize> BitAndAssign<&Self> for BitSet<T, N> {
-    fn bitand_assign(&mut self, rhs: &Self) {
-        self.0
-            .iter_mut()
-            .zip(&rhs.0)
-            .for_each(|(l, r)| *l = *l & *r);
-    }
-}
-
-impl<T: PrimInt, const N: usize> BitOr for BitSet<T, N> {
-    type Output = BitSet<T, N>;
-
-    fn bitor(mut self, rhs: Self) -> BitSet<T, N> {
-        self |= rhs;
-        self
-    }
-}
-
-impl<T: PrimInt, const N: usize> BitOr<&Self> for BitSet<T, N> {
-    type Output = BitSet<T, N>;
-
-    fn bitor(mut self, rhs: &Self) -> BitSet<T, N> {
-        self |= rhs;
-        self
-    }
-}
-
-impl<T: PrimInt, const N: usize> BitOr for &BitSet<T, N> {
-    type Output = BitSet<T, N>;
-
-    fn bitor(self, rhs: Self) -> BitSet<T, N> {
-        BitSet(
-            self.0
-                .iter()
-                .zip_longest(&rhs.0)
-                .map(|e| match e {
-                    Left(i) | Right(i) => *i,
-                    Both(l, r) => *l | *r,
-                })
-                .collect(),
-        )
-    }
-}
-
-impl<T: PrimInt, const N: usize> BitOrAssign for BitSet<T, N> {
-    fn bitor_assign(&mut self, rhs: Self) {
-        *self |= &rhs;
-    }
-}
-
-impl<T: PrimInt, const N: usize> BitOrAssign<&Self> for BitSet<T, N> {
-    fn bitor_assign(&mut self, rhs: &Self) {
-        let mut iter = rhs.0.iter();
-        self.0
-            .iter_mut()
-            .zip(iter.by_ref())
-            .for_each(|(l, r)| *l = *l | *r);
-        self.0.extend(iter.copied());
-    }
-}
-
-impl<T: PrimInt, const N: usize> BitXor for BitSet<T, N> {
-    type Output = BitSet<T, N>;
-
-    fn bitxor(mut self, rhs: Self) -> BitSet<T, N> {
-        self ^= rhs;
-        self
-    }
-}
-
-impl<T: PrimInt, const N: usize> BitXor<&Self> for BitSet<T, N> {
-    type Output = BitSet<T, N>;
-
-    fn bitxor(mut self, rhs: &Self) -> BitSet<T, N> {
-        self ^= rhs;
-        self
-    }
-}
-
-impl<T: PrimInt, const N: usize> BitXor for &BitSet<T, N> {
-    type Output = BitSet<T, N>;
-
-    fn bitxor(self, rhs: Self) -> BitSet<T, N> {
-        BitSet(
-            self.0
-                .iter()
-                .zip_longest(&rhs.0)
-                .map(|e| match e {
-                    Left(i) | Right(i) => *i,
-                    Both(l, r) => *l ^ *r,
-                })
-                .collect(),
-        )
-    }
-}
-
-impl<T: PrimInt, const N: usize> BitXorAssign for BitSet<T, N> {
-    fn bitxor_assign(&mut self, rhs: Self) {
-        *self ^= &rhs;
-    }
-}
-
-impl<T: PrimInt, const N: usize> BitXorAssign<&Self> for BitSet<T, N> {
-    fn bitxor_assign(&mut self, rhs: &Self) {
-        let mut iter = rhs.0.iter();
-        self.0
-            .iter_mut()
-            .zip(iter.by_ref())
-            .for_each(|(l, r)| *l = *l ^ *r);
-        self.0.extend(iter.copied());
-    }
-}
-
-impl<'a, T, const N: usize> Not for &'a BitSet<T, N> {
-    type Output = InvSet<'a, T>;
-
-    fn not(self) -> InvSet<'a, T> {
-        InvSet(&self.0)
-    }
-}
-
-/// Since `BitSet` is a set, we can't construct its complement in a finite amount of space.
-/// Instead, we have an `InvSet` which does basically the same thing so operations can be used.
-#[derive(Debug, Clone, Copy)]
-pub struct InvSet<'a, T>(&'a [T]);
-
-impl<T: PrimInt, const N: usize> BitAnd<InvSet<'_, T>> for BitSet<T, N> {
-    type Output = BitSet<T, N>;
-
-    fn bitand(mut self, rhs: InvSet<'_, T>) -> BitSet<T, N> {
-        self &= rhs;
-        self
-    }
-}
-
-impl<T: PrimInt, const N: usize> BitAnd<&InvSet<'_, T>> for BitSet<T, N> {
-    type Output = BitSet<T, N>;
-
-    fn bitand(mut self, rhs: &InvSet<'_, T>) -> BitSet<T, N> {
-        self &= rhs;
-        self
-    }
-}
-
-impl<T: PrimInt, const N: usize> BitAnd<&InvSet<'_, T>> for &BitSet<T, N> {
-    type Output = BitSet<T, N>;
-
-    fn bitand(self, rhs: &InvSet<'_, T>) -> BitSet<T, N> {
-        BitSet(self.0.iter().zip(rhs.0).map(|(l, r)| *l & !*r).collect())
-    }
-}
-
-impl<T: PrimInt, const N: usize> BitAndAssign<InvSet<'_, T>> for BitSet<T, N> {
-    fn bitand_assign(&mut self, rhs: InvSet<'_, T>) {
-        *self &= &rhs;
-    }
-}
-
-impl<T: PrimInt, const N: usize> BitAndAssign<&InvSet<'_, T>> for BitSet<T, N> {
-    fn bitand_assign(&mut self, rhs: &InvSet<'_, T>) {
-        self.0
-            .iter_mut()
-            .zip(rhs.0)
-            .for_each(|(l, r)| *l = *l & !*r);
     }
 }

@@ -14,7 +14,7 @@ pub struct ConnectedGraphIter<T = usize, const N: usize = 8, F = fn(usize) -> us
 
 impl<T: PrimInt, const N: usize> ConnectedGraphIter<T, N, fn(usize) -> usize> {
     pub fn new<G: IntoNodeIdentifiers + NodeIndexable>(graph: G) -> Self {
-        let mut full = BitSet::with_capacity(graph.node_bound());
+        let mut full = BitSet::new();
         let mut max = 0;
         for id in graph.node_identifiers() {
             let idx = graph.to_index(id);
@@ -37,7 +37,7 @@ impl<T: PrimInt, const N: usize> ConnectedGraphIter<T, N, fn(usize) -> usize> {
 }
 impl<T: PrimInt, const N: usize, F: FnMut(usize) -> usize> ConnectedGraphIter<T, N, F> {
     pub fn with_cvt<G: IntoNodeIdentifiers + NodeIndexable>(graph: G, cvt: F) -> Self {
-        let mut full = BitSet::with_capacity(graph.node_bound());
+        let mut full = BitSet::new();
         let mut max = 0;
         for id in graph.node_identifiers() {
             let idx = graph.to_index(id);
@@ -68,26 +68,11 @@ impl<
     type Item = BitSet<T, N>;
     #[instrument(name = "connected_next", level = "debug", skip_all, fields(bits = ?self.full))]
     fn walk_next(&mut self, graph: G) -> Option<BitSet<T, N>> {
-        //let mut start = None;
-        let bits = T::zero().count_zeros() as usize;
-        //for (n, (&f, &s)) in self
-        //    .full
-        //    .as_slice()
-        //    .iter()
-        //    .zip(self.seen.as_slice())
-        //    .enumerate()
-        //{
-        //    let bit = (f & !s).trailing_zeros() as usize;
-        //    if bit < bits {
-        //        start = Some(n * bits + bit);
-        //        break;
-        //    }
-        //}
         let start = self.full.nth(0);
         trace!(start, "starting node");
         let start = graph.from_index(start?);
         let mut stack: SmallVec<G::NodeId, 8> = smallvec![start];
-        let mut out = BitSet::with_capacity(self.full.as_slice().len() * bits);
+        let mut out = BitSet::new();
         while let Some(id) = stack.pop() {
             let idx = graph.to_index(id);
             self.full.set(idx, false);
