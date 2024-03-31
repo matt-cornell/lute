@@ -143,7 +143,7 @@ where
         let diff_x = max_x - min_x + 40.0;
         let diff_y = max_y - min_y + 40.0;
         let max_axis = std::cmp::max_by(diff_x, diff_y, f32::total_cmp);
-        writeln!(f, "<svg width=\"{max_axis}\" height=\"{max_axis}\">")?;
+        writeln!(f, "<svg width=\"{max_axis}px\" height=\"{max_axis}px\" xmlns=\"http://www.w3.org/2000/svg\">")?;
         let mut add_x = -min_x + 20.0;
         let mut add_y = -min_y + 20.0;
         if diff_y > diff_x {
@@ -166,10 +166,35 @@ where
             match *edge.weight() {
                 Bond::Non => {},
                 Bond::Single | Bond::Left | Bond::Right => write!(f, "  <line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\"/>\n")?,
-                Bond::Double | Bond::DoubleE | Bond::DoubleZ => write!(f, "  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n", x1 - dx, y1 - dy, x2 - dx, y2 - dy, x1 + dx, y1 + dy, x2 + dx, y2 + dy)?,
-                Bond::Triple => write!(f, "  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n", x1 - 2 * dx, y1 - 2 * dy, x2 - 2 * dx, y2 - 2 * dy, x1 + 2 * dx, y1 + 2 * dy, x2 + 2 * dx, y2 + 2 * dy, x1, y1, x2, y2)?,
-                Bond::Quad => write!(f, "  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n", x1 - 3 * dx, y1 - 3 * dy, x2 - 3 * dx, y2 - 3 * dy, x1 - dx, y1 - dy, x2 - dx, y2 - dy, x1 + dx, y1 + dy, x2 + dx, y2 + dy, x1 + 3 * dx, y1 + 3 * dy, x2 + 3 * dx, y2 + 3 * dy)?,
-                Bond::Aromatic => write!(f, "  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\"  stroke-dasharray=\"10,10\"/>\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n", x1 - dx, y1 - dy, x2 - dx, y2 - dy, x1 + dx, y1 + dy, x2 + dx, y2 + dy)?,
+                Bond::Double | Bond::DoubleE | Bond::DoubleZ => write!(f,
+                    "  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n",
+                    x1 - dx, y1 - dy,
+                    x2 - dx, y2 - dy,
+                    x1 + dx, y1 + dy,
+                    x2 + dx, y2 + dy)?,
+                Bond::Triple => write!(f,
+                    "  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n",
+                    x1 - 2 * dx, y1 - 2 * dy,
+                    x2 - 2 * dx, y2 - 2 * dy,
+                    x1 + 2 * dx, y1 + 2 * dy,
+                    x2 + 2 * dx, y2 + 2 * dy,
+                    x1, y1, x2, y2)?,
+                Bond::Quad => write!(f,
+                    "  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n",
+                    x1 - 3 * dx, y1 - 3 * dy,
+                    x2 - 3 * dx, y2 - 3 * dy,
+                    x1 - dx, y1 - dy,
+                    x2 - dx, y2 - dy,
+                    x1 + dx, y1 + dy,
+                    x2 + dx, y2 + dy,
+                    x1 + 3 * dx, y1 + 3 * dy,
+                    x2 + 3 * dx, y2 + 3 * dy)?,
+                Bond::Aromatic => write!(f,
+                    "  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\"  stroke-dasharray=\"10,10\"/>\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n",
+                    x1 - dx, y1 - dy,
+                    x2 - dx, y2 - dy,
+                    x1 + dx, y1 + dy,
+                    x2 + dx, y2 + dy)?,
                 _ => panic!("invalid bond!")
             }
         }
