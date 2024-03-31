@@ -1,5 +1,3 @@
-use std::collections::BTreeSet;
-
 use super::arena::*;
 use super::*;
 pub mod graph_traits;
@@ -99,56 +97,13 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
                     ));
                 }
                 MolRepr::Broken(b) => {
-                    let empty = BTreeSet::new();
-                    let mut skips = HybridMap::<Ix, BTreeSet<Ix>, 4>::new();
-                    for i in &b.bonds {
-                        if arena
-                            .molecule(i.an)
-                            .get_atom(NodeIndex(i.ai))
-                            .unwrap()
-                            .protons
-                            == 0
-                        {
-                            if let Some(s) = skips.get_mut(&i.an) {
-                                s.insert(i.ai);
-                            } else {
-                                skips.insert(i.an, [i.ai].into());
-                            }
-                        }
-                        if arena
-                            .molecule(i.bn)
-                            .get_atom(NodeIndex(i.bi))
-                            .unwrap()
-                            .protons
-                            == 0
-                        {
-                            if let Some(s) = skips.get_mut(&i.bn) {
-                                s.insert(i.bi);
-                            } else {
-                                skips.insert(i.bn, [i.bi].into());
-                            }
-                        }
-                    }
                     let mut found = false;
                     for p in &b.frags {
-                        let mut s = arena.parts[p.index()].1.index();
-                        let r = skips.get(p).unwrap_or(&empty);
-                        let mut ic = 0;
-                        for i in r {
-                            if i.index() < ic {
-                                ic += 1;
-                            }
-                            if i.index() < s {
-                                s -= 1;
-                            } else {
-                                break;
-                            }
-                        }
+                        let s = arena.parts[p.index()].1.index();
                         if idx > s {
                             idx -= s;
                         } else {
                             ix = *p;
-                            idx += ic;
                             found = true;
                             break;
                         }
@@ -191,56 +146,13 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
                     return Some(arena.graph()[petgraph::graph::NodeIndex::new(i)]);
                 }
                 MolRepr::Broken(b) => {
-                    let empty = BTreeSet::new();
-                    let mut skips = HybridMap::<Ix, BTreeSet<Ix>, 4>::new();
-                    for i in &b.bonds {
-                        if arena
-                            .molecule(i.an)
-                            .get_atom(NodeIndex(i.ai))
-                            .unwrap()
-                            .protons
-                            == 0
-                        {
-                            if let Some(s) = skips.get_mut(&i.an) {
-                                s.insert(i.ai);
-                            } else {
-                                skips.insert(i.an, [i.ai].into());
-                            }
-                        }
-                        if arena
-                            .molecule(i.bn)
-                            .get_atom(NodeIndex(i.bi))
-                            .unwrap()
-                            .protons
-                            == 0
-                        {
-                            if let Some(s) = skips.get_mut(&i.bn) {
-                                s.insert(i.bi);
-                            } else {
-                                skips.insert(i.bn, [i.bi].into());
-                            }
-                        }
-                    }
                     let mut found = false;
                     for p in &b.frags {
-                        let mut s = arena.parts[p.index()].1.index();
-                        let r = skips.get(p).unwrap_or(&empty);
-                        let mut ic = 0;
-                        for i in r {
-                            if i.index() < ic {
-                                ic += 1;
-                            }
-                            if i.index() < s {
-                                s -= 1;
-                            } else {
-                                break;
-                            }
-                        }
+                        let s = arena.parts[p.index()].1.index();
                         if idx > s {
                             idx -= s;
                         } else {
                             ix = *p;
-                            idx += ic;
                             found = true;
                             break;
                         }
@@ -290,59 +202,18 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
                     return Some(g[g.find_edge(Ix::new(i0).into(), Ix::new(i1).into())?]);
                 }
                 MolRepr::Broken(b) => {
-                    let empty = BTreeSet::new();
-                    let mut skips = HybridMap::<Ix, BTreeSet<Ix>, 4>::new();
-                    let mut ibs = HybridMap::<InterFragBond<Ix>, Bond, 4>::new();
+                    let mut ibs = HybridMap::<InterFragBond<Ix>, (), 4>::new();
                     for i in &b.bonds {
-                        let (ix, a) = arena.molecule(i.an).get_atom_idx(NodeIndex(i.ai)).unwrap();
-                        let mut weight = None;
-                        if a.protons == 0 {
-                            weight = weight.or_else(|| {
-                                arena.graph().edges(ix.into()).next().map(|e| *e.weight())
-                            });
-                            if let Some(s) = skips.get_mut(&i.an) {
-                                s.insert(i.ai);
-                            } else {
-                                skips.insert(i.an, [i.ai].into());
-                            }
-                        }
-                        let (ix, a) = arena.molecule(i.bn).get_atom_idx(NodeIndex(i.bi)).unwrap();
-                        if a.protons == 0 {
-                            weight = weight.or_else(|| {
-                                arena.graph().edges(ix.into()).next().map(|e| *e.weight())
-                            });
-                            if let Some(s) = skips.get_mut(&i.bn) {
-                                s.insert(i.bi);
-                            } else {
-                                skips.insert(i.bn, [i.bi].into());
-                            }
-                        }
-                        ibs.insert(*i, weight.unwrap_or(Bond::Single));
+                        ibs.insert(*i, ());
                     }
                     let mut first = None;
                     let mut found = false;
                     for p in &b.frags {
-                        let mut s = arena.parts[p.index()].1.index();
-                        let r = skips.get(p).unwrap_or(&empty);
-                        let (mut i0c, mut i1c) = (0, 0);
-                        for i in r {
-                            if i.index() < i0c {
-                                i0c += 1;
-                            }
-                            if i.index() < i1c {
-                                i1c += 1;
-                            }
-                            if i.index() < s {
-                                s -= 1;
-                            } else {
-                                break;
-                            }
-                        }
+                        let s = arena.parts[p.index()].1.index();
                         if let Some(first) = first {
                             if idx1 > s {
                                 idx1 -= s;
                             } else {
-                                idx1 += i1c;
                                 return ibs
                                     .get(&InterFragBond {
                                         an: first,
@@ -350,19 +221,16 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
                                         bn: *p,
                                         bi: Ix::new(idx1),
                                     })
-                                    .copied();
+                                    .map(|_| Bond::Single);
                             }
                         } else if idx0 > s {
                             idx0 -= s;
                             idx1 -= s;
                         } else if idx1 > s {
                             idx1 -= s;
-                            idx0 += i0c;
                             first = Some(*p);
                         } else {
                             ix = *p;
-                            idx0 += i0c;
-                            idx1 += i1c;
                             found = true;
                             break;
                         }

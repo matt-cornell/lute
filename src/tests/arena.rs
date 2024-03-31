@@ -80,13 +80,13 @@ fn alcohols() {
     trace_capture!();
     let mut arena = arena!(
         of u32:
-        smiles!("RO"),     // alcohol
+        smiles!("O&"),     // alcohol
         smiles!("CCO"),    // ethanol
         smiles!("CC(C)O"), // isopropanol
     );
     let orig = arena.parts.clone();
 
-    let alcohol = arena.insert_mol(&smiles!("OR"));
+    let alcohol = arena.insert_mol(&smiles!("O&"));
     assert_eq!(alcohol, 0);
     assert_eq!(orig.len(), arena.parts.len(), "arena length changed");
     assert!(orig == arena.parts, "arena changed");

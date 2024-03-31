@@ -68,7 +68,10 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix> + Copy> IntoEdges for Molecule<Ix,
     type Edges = iter::EdgesDirected<Ix, R>;
 
     fn edges(self, a: Self::NodeId) -> Self::Edges {
-        iter::EdgesDirected(iter::Edges::new(self.index, a.0, self.arena), Direction::Outgoing)
+        iter::EdgesDirected(
+            iter::Edges::new(self.index, a.0, self.arena),
+            Direction::Outgoing,
+        )
     }
 }
 impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix> + Copy> IntoEdgesDirected for Molecule<Ix, R> {
@@ -88,11 +91,7 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix> + Copy> IntoNeighbors for Molecule
 impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix> + Copy> IntoNeighborsDirected for Molecule<Ix, R> {
     type NeighborsDirected = iter::Neighbors<Ix, R>;
 
-    fn neighbors_directed(
-        self,
-        n: Self::NodeId,
-        _dir: Direction,
-    ) -> Self::NeighborsDirected {
+    fn neighbors_directed(self, n: Self::NodeId, _dir: Direction) -> Self::NeighborsDirected {
         iter::Neighbors(iter::Edges::new(self.index, n.0, self.arena))
     }
 }
@@ -104,7 +103,7 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix> + Copy> GetAdjacencyMatrix for Mol
         for e in self.edge_references() {
             let s = e.source().0.index();
             let t = e.target().0.index();
-            let i = if t == 0 {0} else {t * (t - 1) / 2} + s;
+            let i = if t == 0 { 0 } else { t * (t - 1) / 2 } + s;
             out.set(i, true);
         }
         out
@@ -112,8 +111,8 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix> + Copy> GetAdjacencyMatrix for Mol
     fn is_adjacent(&self, matrix: &Self::AdjMatrix, a: Self::NodeId, b: Self::NodeId) -> bool {
         let a = a.0.index();
         let b = b.0.index();
-        let (s, t) = if a < b {(a, b)} else {(b, a)};
-        let i = if t == 0 {0} else {t * (t - 1) / 2} + s;
+        let (s, t) = if a < b { (a, b) } else { (b, a) };
+        let i = if t == 0 { 0 } else { t * (t - 1) / 2 } + s;
         matrix.get(i)
     }
 }
@@ -167,8 +166,10 @@ pub mod iter {
             let arena = self.arena.get_arena();
             while let Some(idx) = self.stack.pop() {
                 match arena.parts[idx.index()].0 {
-                    MolRepr::Redirect(r) | MolRepr::Modify(ModdedMol {base: r, ..}) => self.stack.push(r),
-                    MolRepr::Broken(BrokenMol {ref frags, ..}) => {
+                    MolRepr::Redirect(r) | MolRepr::Modify(ModdedMol { base: r, .. }) => {
+                        self.stack.push(r)
+                    }
+                    MolRepr::Broken(BrokenMol { ref frags, .. }) => {
                         self.stack.extend_from_slice(frags);
                         error!("Attempted to iterate over the edges of a broken molecule, not yet implemented!");
                     }
@@ -176,7 +177,10 @@ pub mod iter {
                         let mut it = arena.graph().edge_references().filter_map(|e| {
                             let s = b.index(e.source().index())?;
                             let t = b.index(e.target().index())?;
-                            Some(EdgeReference::with_weight((Ix::new(s), Ix::new(t)).into(), *e.weight()))
+                            Some(EdgeReference::with_weight(
+                                (Ix::new(s), Ix::new(t)).into(),
+                                *e.weight(),
+                            ))
                         });
                         if let Some(ret) = it.next() {
                             self.buffer.extend(it);
@@ -192,7 +196,7 @@ pub mod iter {
     #[derive(Clone)]
     enum State<Ix: IndexType> {
         Uninit,
-        Broken(SmallVec<(Ix, Bond), 4>),
+        Broken(SmallVec<Ix, 4>),
         Atomic(WalkNeighbors<Ix>),
     }
     impl<Ix: IndexType> Debug for State<Ix> {
@@ -215,7 +219,6 @@ pub mod iter {
         arena: R,
         state: State<Ix>,
         offset: Ix,
-        skip: BTreeSet<Ix>,
     }
     impl<Ix: IndexType, R> Edges<Ix, R> {
         pub fn new(mol_idx: Ix, atom_idx: Ix, arena: R) -> Self {
@@ -226,7 +229,6 @@ pub mod iter {
                 orig_idx: atom_idx,
                 state: State::Uninit,
                 offset: Ix::new(0),
-                skip: BTreeSet::new(),
             }
         }
     }
@@ -266,9 +268,7 @@ pub mod iter {
                             };
 
                             // get the correct offset index
-                            let offset = idx
-                                + self.skip.range(..Ix::new(idx)).count().index()
-                                + self.offset.index();
+                            let offset = idx + self.offset.index();
                             return Some(EdgeReference::with_weight(
                                 EdgeIndex::new(self.orig_idx, Ix::new(offset)),
                                 arena.graph()[e],
@@ -278,54 +278,26 @@ pub mod iter {
                     }
                     MolRepr::Broken(ref b) => {
                         if let State::Broken(next) = &mut self.state {
-                            if let Some((id, w)) = next.pop() {
+                            if let Some(id) = next.pop() {
                                 return Some(EdgeReference::with_weight(
                                     EdgeIndex::new(self.orig_idx, id),
-                                    w,
+                                    Bond::Single,
                                 ));
                             }
                         }
                         debug!("generating state for broken molecule");
-                        let empty = BTreeSet::new();
-                        let mut skips = HybridMap::<Ix, BTreeSet<Ix>, 4>::new();
                         let mut ibs = HybridMap::<_, SmallVec<_, 4>, 4>::new();
                         let mut idx = self.atom_idx.index();
                         for i in &b.bonds {
-                            let (ix, a) =
-                                arena.molecule(i.an).get_atom_idx(NodeIndex(i.ai)).unwrap();
-                            let mut weight = None;
-                            if a.protons == 0 {
-                                weight = weight.or_else(|| {
-                                    arena.graph().edges(ix.into()).next().map(|e| *e.weight())
-                                });
-                                if let Some(s) = skips.get_mut(&i.an) {
-                                    s.insert(i.ai);
-                                } else {
-                                    skips.insert(i.an, [i.ai].into());
-                                }
-                            }
-                            let (ix, a) =
-                                arena.molecule(i.bn).get_atom_idx(NodeIndex(i.bi)).unwrap();
-                            if a.protons == 0 {
-                                weight = weight.or_else(|| {
-                                    arena.graph().edges(ix.into()).next().map(|e| *e.weight())
-                                });
-                                if let Some(s) = skips.get_mut(&i.bn) {
-                                    s.insert(i.bi);
-                                } else {
-                                    skips.insert(i.bn, [i.bi].into());
-                                }
-                            }
-                            let weight = weight.unwrap_or(Bond::Single);
                             if let Some(s) = ibs.get_mut(&(i.an, i.ai)) {
-                                s.push((i.bn, i.bi, weight));
+                                s.push((i.bn, i.bi));
                             } else {
-                                ibs.insert((i.an, i.ai), smallvec![(i.bn, i.bi, weight)]);
+                                ibs.insert((i.an, i.ai), smallvec![(i.bn, i.bi)]);
                             }
                             if let Some(s) = ibs.get_mut(&(i.bn, i.bi)) {
-                                s.push((i.an, i.ai, weight));
+                                s.push((i.an, i.ai));
                             } else {
-                                ibs.insert((i.bn, i.bi), smallvec![(i.an, i.ai, weight)]);
+                                ibs.insert((i.bn, i.bi), smallvec![(i.an, i.ai)]);
                             }
                         }
                         let mut new_idx = None;
@@ -333,26 +305,13 @@ pub mod iter {
                         let mut counter = 0;
                         let mut up_idx = true;
                         for p in &b.frags {
-                            let mut s = arena.parts[p.index()].1.index();
-                            let r = skips.get(p).unwrap_or(&empty);
-                            let mut ic = 0;
-                            for i in r {
-                                if i.index() < ic {
-                                    ic += 1;
-                                }
-                                if i.index() < s {
-                                    s -= 1;
-                                } else {
-                                    break;
-                                }
-                            }
+                            let s = arena.parts[p.index()].1.index();
                             f.push(counter);
                             counter += s;
                             if up_idx {
                                 if idx > s {
                                     idx -= s;
                                 } else {
-                                    idx += ic;
                                     new_idx = Some(*p);
                                     up_idx = false;
                                 }
@@ -364,11 +323,9 @@ pub mod iter {
                             SmallVec::new,
                             |v| {
                                 v.iter()
-                                    .map(|&(n, i, b)| {
-                                        let id = f[n.index()]
-                                            + i.index()
-                                            + skips.get(&n).map_or(0, |s| s.range(..i).count());
-                                        (Ix::new(id), b)
+                                    .map(|&(n, i)| {
+                                        let id = f[n.index()] + i.index();
+                                        Ix::new(id)
                                     })
                                     .collect()
                             },

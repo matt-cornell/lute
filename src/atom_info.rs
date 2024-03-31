@@ -4,6 +4,7 @@ use ElemGroup::*;
 
 /// Element group on the periodic table
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub enum ElemGroup {
     /// Alkali metal
     Alkali,
@@ -45,7 +46,7 @@ impl AtomData {
 
 /// All of the data, just index the array by the atomic number
 pub static ATOM_DATA: &[AtomData] = &[
-    AtomData::new("unknown",       "R",  0.0000, Nonmet),
+    AtomData::new("unknown",       "*",  0.0000, Nonmet),
     AtomData::new("hydrogen",      "H",  1.0078, Nonmet),
     AtomData::new("helium",        "He", 4.0026, Noble ),
     AtomData::new("lithium",       "Li", 6.9410, Alkali),

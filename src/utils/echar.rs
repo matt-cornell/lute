@@ -24,6 +24,20 @@ impl<const N: usize> Display for EChar<N> {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct TextByte(pub u8);
+impl Display for TextByte {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self.0 {
+            c @ 32..=127 => write!(f, "'{}'", c as char),
+            b'\n' => f.write_str("\\n"),
+            b'\r' => f.write_str("\\r"),
+            b'\t' => f.write_str("\\t"),
+            _ => write!(f, "'\\x{:0>2x}'", self.0),
+        }
+    }
+}
+
 /// Simple intermediate for index printer that doesn't allocate
 pub struct IdxPrint(pub usize);
 impl Display for IdxPrint {

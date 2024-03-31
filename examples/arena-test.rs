@@ -1,5 +1,5 @@
-use lute::prelude::*;
 use clap::Parser;
+use lute::prelude::*;
 use petgraph::prelude::*;
 use std::path::PathBuf;
 
@@ -46,9 +46,7 @@ fn main() {
         eprintln!("arena: {:#?}", arena.expose_parts());
     }
 
-    let graph = lute::graph::GraphCompactor::<&StableUnGraph<Atom, Bond, u16>>::new(
-        arena.graph(),
-    );
+    let graph = lute::graph::GraphCompactor::<&StableUnGraph<Atom, Bond, u16>>::new(arena.graph());
 
     match cli.fmt {
         OutputType::None => {}
