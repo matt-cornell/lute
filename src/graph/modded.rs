@@ -1,16 +1,16 @@
 use super::misc::DataValueMap;
-use hybridmap::HybridMap;
 use petgraph::data::*;
 use petgraph::prelude::Direction;
 use petgraph::visit::*;
 use std::hash::Hash;
+use small_map::ASmallMap;
 
 #[derive(Debug, Clone)]
 pub struct ModdedGraph<G: GraphBase + Data, const N: usize> {
     /// Base graph
     pub graph: G,
     /// Modified nodes
-    pub mods: HybridMap<G::NodeId, G::NodeWeight, N>,
+    pub mods: ASmallMap<N, G::NodeId, G::NodeWeight>,
 }
 
 impl<G: GraphBase + Data, const N: usize> ModdedGraph<G, N>
@@ -20,7 +20,7 @@ where
     pub fn new(graph: G) -> Self {
         Self {
             graph,
-            mods: HybridMap::new(),
+            mods: ASmallMap::new(),
         }
     }
 }

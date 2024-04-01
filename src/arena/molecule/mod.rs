@@ -1,8 +1,9 @@
 use super::arena::*;
 use super::*;
+use small_map::ASmallMap;
+
 pub mod graph_traits;
 mod node_impls;
-use hybridmap::HybridMap;
 pub use node_impls::*;
 
 /// A `Molecule` acts like a graph, and can have graph algorithms used on it. It's immutable, with all
@@ -202,7 +203,7 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
                     return Some(g[g.find_edge(Ix::new(i0).into(), Ix::new(i1).into())?]);
                 }
                 MolRepr::Broken(b) => {
-                    let mut ibs = HybridMap::<InterFragBond<Ix>, (), 4>::new();
+                    let mut ibs = ASmallMap::<8, InterFragBond<Ix>, ()>::new();
                     for i in &b.bonds {
                         ibs.insert(*i, ());
                     }

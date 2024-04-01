@@ -1,9 +1,8 @@
 use petgraph::visit::*;
-use std::collections::{
-    hash_map::{Entry, HashMap},
-    VecDeque,
-};
+use std::collections::hash_map::Entry;
+use std::collections::VecDeque;
 use std::hash::Hash;
+use ahash::*;
 
 #[derive(Default, Clone)]
 pub struct RingsIterator<N> {

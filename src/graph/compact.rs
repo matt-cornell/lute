@@ -3,9 +3,9 @@
 use petgraph::data::*;
 use petgraph::prelude::*;
 use petgraph::visit::*;
-use std::collections::HashMap;
-use std::hash::Hash;
 
+use std::hash::Hash;
+use ahash::*;
 use super::misc::DataValueMap;
 
 /// Override `NodeIndexable` so that they're always compact

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use ahash::HashMap;
 
 /// A `Container` corresponds to a reaction vessel. It's at this layer that actual reactions are
 /// handled.

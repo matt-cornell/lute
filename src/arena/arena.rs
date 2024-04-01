@@ -4,7 +4,6 @@
 
 use super::*;
 use crate::graph::*;
-use hybridmap::HybridMap;
 use itertools::Itertools;
 use petgraph::graph::DefaultIx;
 use petgraph::prelude::*;
@@ -12,6 +11,7 @@ use petgraph::visit::*;
 use smallvec::SmallVec;
 use std::fmt::Debug;
 use std::hash::Hash;
+use small_map::ASmallMap;
 
 #[macro_export]
 macro_rules! arena {
@@ -387,7 +387,7 @@ impl<Ix: IndexType> Arena<Ix> {
         let mut found = Vec::new();
         let mut matched = vec![(usize::MAX, 0); mol.node_bound()];
         let mut mods = SmallVec::<(Ix, Atom), 4>::with_capacity(mol.node_count());
-        let mut rbonds = HybridMap::<G::NodeId, Atom, MODDED_GRAPH_LEN>::new();
+        let mut rbonds = ASmallMap::<MODDED_GRAPH_LEN, G::NodeId, Atom>::new();
         let mut idx = 0;
         let mut amatch = Atom::matches;
         let mut bmatch = PartialEq::eq;

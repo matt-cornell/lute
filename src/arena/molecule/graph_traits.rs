@@ -310,7 +310,7 @@ pub mod iter {
                             }
                         }
                         debug!("generating state for broken molecule");
-                        let mut ibs = HybridMap::<_, SmallVec<_, 4>, 4>::new();
+                        let mut ibs = ASmallMap::<8, _, SmallVec<_, 4>>::new();
                         let mut idx = self.atom_idx.index();
                         for i in &b.bonds {
                             if let Some(s) = ibs.get_mut(&(i.an, i.ai)) {
