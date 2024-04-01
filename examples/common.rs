@@ -20,6 +20,8 @@ pub enum OutputType {
     DDot,
     #[cfg(feature = "mol-svg")]
     Svg,
+    #[cfg(all(feature = "mol-svg", feature = "resvg"))]
+    Png,
 }
 impl Display for OutputType {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -29,6 +31,8 @@ impl Display for OutputType {
             Self::DDot => f.write_str("d-dot"),
             #[cfg(feature = "mol-svg")]
             Self::Svg => f.write_str("svg"),
+            #[cfg(all(feature = "mol-svg", feature = "resvg"))]
+            Self::Png => f.write_str("png"),
         }
     }
 }
@@ -38,6 +42,18 @@ pub fn write_output<O: Display>(path: Option<&Path>, out: O) {
         std::fs::File::create(p).and_then(|mut f| write!(f, "{}", out))
     } else {
         write!(stdout(), "{}", out)
+    };
+    if let Err(err) = res {
+        tracing::error!("{err}");
+    }
+}
+
+#[allow(dead_code)]
+pub fn write_bytes(path: Option<&Path>, bytes: &[u8]) {
+    let res = if let Some(p) = path {
+        std::fs::File::create(p).and_then(|mut f| f.write_all(bytes))
+    } else {
+        stdout().write_all(bytes)
     };
     if let Err(err) = res {
         tracing::error!("{err}");

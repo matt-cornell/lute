@@ -4,6 +4,9 @@ use petgraph::visit::*;
 use petgraph::Undirected;
 use std::fmt::{self, Debug, Display};
 
+#[cfg(feature= "resvg")]
+use resvg::*;
+
 pub const SVG_SUPPRESSED_R: &str = "#407F00";
 pub const SVG_SUPPRESSED_H: &str = "#577478";
 pub const SVG_BOND_COLOR: &str = "#444";
@@ -55,21 +58,55 @@ pub fn atom_radius(protons: u8) -> u8 {
     }
 }
 
-pub fn fmt_as_svg<'a, G>(graph: G) -> impl Display + Copy + 'a
+pub fn fmt_as_svg<'a, G>(graph: G) -> SvgFormatter<G>
 where
     G: Data<NodeWeight = Atom, EdgeWeight = Bond>
         + GraphProp<EdgeType = Undirected>
         + GraphRef
         + IntoNodeReferences
         + IntoEdgeReferences
-        + NodeCompactIndexable
-        + 'a,
+        + NodeCompactIndexable,
 {
     SvgFormatter(graph)
 }
 
+#[cfg(feature = "resvg")]
+lazy_static::lazy_static! {
+    static ref OPTS: usvg::Options = usvg::Options {font_family: "DejaVu Sans Mono".to_string(), ..Default::default()};
+    static ref FONTS: usvg::fontdb::Database = {
+        use usvg::fontdb::*;
+        let mut db = Database::new();
+        db.load_font_source(Source::Binary(std::sync::Arc::new(include_bytes!("../../data/DejaVuSansMono.ttf"))));
+        db
+    };
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct SvgFormatter<G>(pub G);
+#[cfg(feature = "resvg")]
+impl<G> SvgFormatter<G>
+where
+    G: Data<NodeWeight = Atom, EdgeWeight = Bond>
+        + GraphRef
+        + IntoNodeReferences
+        + IntoEdgeReferences
+        + NodeCompactIndexable,
+{
+    pub fn render_to_bytes(&self, bytes: &mut [u8], w: u32, h: u32) {
+        let s = self.to_string();
+        let tree = usvg::Tree::from_str(&s, &OPTS, &FONTS).unwrap();
+        let mut pm = tiny_skia::PixmapMut::from_bytes(bytes, w, h).unwrap();
+        resvg::render(&tree, Default::default(), &mut pm);
+    }
+    pub fn render(&self, size: Option<(u32, u32)>) -> tiny_skia::Pixmap {
+        let s = self.to_string();
+        let tree = usvg::Tree::from_str(&s, &OPTS, &FONTS).unwrap();
+        let (w, h) = size.unwrap_or_else(|| tree.size().to_int_size().dimensions());
+        let mut pm = tiny_skia::Pixmap::new(w, h).unwrap();
+        resvg::render(&tree, Default::default(), &mut pm.as_mut());
+        pm
+    }
+}
 impl<G> Display for SvgFormatter<G>
 where
     G: Data<NodeWeight = Atom, EdgeWeight = Bond>

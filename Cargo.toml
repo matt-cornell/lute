@@ -23,6 +23,7 @@ modular-bitfield = "0.11.2"
 num-traits = "0.2.18"
 petgraph = "0.6.4"
 rand = { version = "0.8.5", optional = true }
+resvg = { version = "0.40.0", optional = true, default-features = false, features = ["text", "system-fonts", "png"] }
 smallvec = "2.0.0-alpha.5"
 thiserror = "1.0.57"
 tracing = "0.1.40"
@@ -45,10 +46,11 @@ name = "arena-test"
 name = "alcohols"
 
 [features]
-default = ["mol-svg", "rand"]
+default = ["mol-svg", "rand", "resvg"]
 nightly = ["rand?/nightly", "lock_api/nightly"]
 
-mol-svg = ["coordgen"]
-rand = ["dep:rand", "gcd"]
+mol-svg = ["dep:coordgen"]
+resvg = ["dep:resvg", "dep:lazy_static"]
+rand = ["dep:rand", "dep:gcd"]
 
-c-ffi = ["concat-idents"]
+c-ffi = ["dep:concat-idents"]
