@@ -3,23 +3,23 @@ use petgraph::{visit::*, Direction};
 use std::iter::Map;
 use std::ops::Range;
 
-impl<Ix: Copy + PartialEq, R> GraphBase for Molecule<Ix, R> {
+impl<Ix: Copy + Ord, R> GraphBase for Molecule<Ix, R> {
     type NodeId = NodeIndex<Ix>;
     type EdgeId = EdgeIndex<Ix>;
 }
 
-impl<Ix: Copy + PartialEq, R: Copy> GraphRef for Molecule<Ix, R> {}
+impl<Ix: Copy + Ord, R: Copy> GraphRef for Molecule<Ix, R> {}
 
-impl<Ix: Copy + PartialEq, R> GraphProp for Molecule<Ix, R> {
+impl<Ix: Copy + Ord, R> GraphProp for Molecule<Ix, R> {
     type EdgeType = petgraph::Undirected;
 }
 
-impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> NodeCount for Molecule<Ix, R> {
+impl<Ix: IndexType + Ord, R: ArenaAccessor<Ix = Ix>> NodeCount for Molecule<Ix, R> {
     fn node_count(&self) -> usize {
         self.arena.get_arena().parts[self.index.index()].1.index()
     }
 }
-impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> NodeIndexable for Molecule<Ix, R> {
+impl<Ix: IndexType + Ord, R: ArenaAccessor<Ix = Ix>> NodeIndexable for Molecule<Ix, R> {
     fn node_bound(&self) -> usize {
         self.arena.get_arena().parts[self.index.index()].1.index()
     }
@@ -30,21 +30,21 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> NodeIndexable for Molecule<Ix, R>
         NodeIndex(Ix::new(i))
     }
 }
-impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> NodeCompactIndexable for Molecule<Ix, R> {}
+impl<Ix: IndexType + Ord, R: ArenaAccessor<Ix = Ix>> NodeCompactIndexable for Molecule<Ix, R> {}
 
-impl<Ix: IndexType, R> Data for Molecule<Ix, R> {
+impl<Ix: IndexType + Ord, R> Data for Molecule<Ix, R> {
     type NodeWeight = Atom;
     type EdgeWeight = Bond;
 }
 
-impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix> + Copy> IntoNodeIdentifiers for Molecule<Ix, R> {
+impl<Ix: IndexType + Ord, R: ArenaAccessor<Ix = Ix> + Copy> IntoNodeIdentifiers for Molecule<Ix, R> {
     type NodeIdentifiers = Map<Range<usize>, fn(usize) -> NodeIndex<Ix>>;
 
     fn node_identifiers(self) -> Self::NodeIdentifiers {
         (0..self.node_count()).map(|ix| NodeIndex(Ix::new(ix)))
     }
 }
-impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix> + Copy> IntoNodeReferences for Molecule<Ix, R> {
+impl<Ix: IndexType + Ord, R: ArenaAccessor<Ix = Ix> + Copy> IntoNodeReferences for Molecule<Ix, R> {
     type NodeRef = NodeReference<Ix>;
     type NodeReferences = iter::NodeReferences<Ix, R>;
 
@@ -56,7 +56,7 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix> + Copy> IntoNodeReferences for Mol
         }
     }
 }
-impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix> + Copy> IntoEdgeReferences for Molecule<Ix, R> {
+impl<Ix: IndexType + Ord, R: ArenaAccessor<Ix = Ix> + Copy> IntoEdgeReferences for Molecule<Ix, R> {
     type EdgeRef = EdgeReference<Ix>;
     type EdgeReferences = iter::EdgeReferences<Ix, R>;
 
@@ -64,7 +64,7 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix> + Copy> IntoEdgeReferences for Mol
         iter::EdgeReferences::new(self.index, self.arena)
     }
 }
-impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix> + Copy> IntoEdges for Molecule<Ix, R> {
+impl<Ix: IndexType + Ord, R: ArenaAccessor<Ix = Ix> + Copy> IntoEdges for Molecule<Ix, R> {
     type Edges = iter::EdgesDirected<Ix, R>;
 
     fn edges(self, a: Self::NodeId) -> Self::Edges {
@@ -74,28 +74,28 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix> + Copy> IntoEdges for Molecule<Ix,
         )
     }
 }
-impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix> + Copy> IntoEdgesDirected for Molecule<Ix, R> {
+impl<Ix: IndexType + Ord, R: ArenaAccessor<Ix = Ix> + Copy> IntoEdgesDirected for Molecule<Ix, R> {
     type EdgesDirected = iter::EdgesDirected<Ix, R>;
 
     fn edges_directed(self, a: Self::NodeId, dir: Direction) -> Self::EdgesDirected {
         iter::EdgesDirected(iter::Edges::new(self.index, a.0, self.arena), dir)
     }
 }
-impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix> + Copy> IntoNeighbors for Molecule<Ix, R> {
+impl<Ix: IndexType + Ord, R: ArenaAccessor<Ix = Ix> + Copy> IntoNeighbors for Molecule<Ix, R> {
     type Neighbors = iter::Neighbors<Ix, R>;
 
     fn neighbors(self, a: Self::NodeId) -> Self::Neighbors {
         iter::Neighbors(iter::Edges::new(self.index, a.0, self.arena))
     }
 }
-impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix> + Copy> IntoNeighborsDirected for Molecule<Ix, R> {
+impl<Ix: IndexType + Ord, R: ArenaAccessor<Ix = Ix> + Copy> IntoNeighborsDirected for Molecule<Ix, R> {
     type NeighborsDirected = iter::Neighbors<Ix, R>;
 
     fn neighbors_directed(self, n: Self::NodeId, _dir: Direction) -> Self::NeighborsDirected {
         iter::Neighbors(iter::Edges::new(self.index, n.0, self.arena))
     }
 }
-impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix> + Copy> GetAdjacencyMatrix for Molecule<Ix, R> {
+impl<Ix: IndexType + Ord, R: ArenaAccessor<Ix = Ix> + Copy> GetAdjacencyMatrix for Molecule<Ix, R> {
     type AdjMatrix = crate::utils::bitset::BitSet<usize, 1>;
 
     fn adjacency_matrix(&self) -> Self::AdjMatrix {
@@ -130,7 +130,7 @@ pub mod iter {
         pub(crate) mol_idx: Ix,
         pub(crate) arena: R,
     }
-    impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Iterator for NodeReferences<Ix, R> {
+    impl<Ix: IndexType + Ord, R: ArenaAccessor<Ix = Ix>> Iterator for NodeReferences<Ix, R> {
         type Item = NodeReference<Ix>;
 
         fn next(&mut self) -> Option<Self::Item> {
@@ -156,7 +156,7 @@ pub mod iter {
             }
         }
     }
-    impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Iterator for EdgeReferences<Ix, R> {
+    impl<Ix: IndexType + Ord, R: ArenaAccessor<Ix = Ix>> Iterator for EdgeReferences<Ix, R> {
         type Item = EdgeReference<Ix>;
 
         fn next(&mut self) -> Option<Self::Item> {
@@ -236,7 +236,7 @@ pub mod iter {
     /// This is probably *not* what you want to use! It returns all neighboring edges, and is more
     /// for implementation than direct use!
     #[derive(Debug, Clone)]
-    pub struct Edges<Ix: IndexType, R> {
+    pub struct Edges<Ix: IndexType + Ord, R> {
         orig_idx: Ix,
         mol_idx: Ix,
         atom_idx: Ix,
@@ -244,7 +244,7 @@ pub mod iter {
         state: State<Ix>,
         offset: Ix,
     }
-    impl<Ix: IndexType, R> Edges<Ix, R> {
+    impl<Ix: IndexType + Ord, R> Edges<Ix, R> {
         pub fn new(mol_idx: Ix, atom_idx: Ix, arena: R) -> Self {
             Self {
                 mol_idx,
@@ -256,7 +256,7 @@ pub mod iter {
             }
         }
     }
-    impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Iterator for Edges<Ix, R> {
+    impl<Ix: IndexType + Ord, R: ArenaAccessor<Ix = Ix>> Iterator for Edges<Ix, R> {
         type Item = EdgeReference<Ix>;
 
         #[instrument(level = "debug", name = "edges_next", skip(self), fields(mol_idx = self.mol_idx.index(), atom_idx = self.atom_idx.index()))]
@@ -361,9 +361,9 @@ pub mod iter {
         }
     }
 
-    pub struct Neighbors<Ix: IndexType, R>(pub Edges<Ix, R>);
+    pub struct Neighbors<Ix: IndexType + Ord, R>(pub Edges<Ix, R>);
 
-    impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Iterator for Neighbors<Ix, R> {
+    impl<Ix: IndexType + Ord, R: ArenaAccessor<Ix = Ix>> Iterator for Neighbors<Ix, R> {
         type Item = NodeIndex<Ix>;
 
         fn next(&mut self) -> Option<Self::Item> {
@@ -377,15 +377,14 @@ pub mod iter {
         }
     }
 
-    pub struct EdgesDirected<Ix: IndexType, R>(pub Edges<Ix, R>, pub Direction);
+    pub struct EdgesDirected<Ix: IndexType + Ord, R>(pub Edges<Ix, R>, pub Direction);
 
-    impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Iterator for EdgesDirected<Ix, R> {
+    impl<Ix: IndexType + Ord, R: ArenaAccessor<Ix = Ix>> Iterator for EdgesDirected<Ix, R> {
         type Item = EdgeReference<Ix>;
 
         fn next(&mut self) -> Option<Self::Item> {
             let idx = self.0.orig_idx;
-            self.0
-                .find(|i| (self.1 == Direction::Incoming) ^ (i.source().0 == idx))
+            self.0.next().map(|e| if (e.source().0 == idx) ^ (self.1 == Direction::Outgoing) { e.rev() } else { e })
         }
     }
 }

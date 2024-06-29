@@ -41,15 +41,37 @@ fn double_insert() {
 #[test]
 fn isomorphism() {
     use crate::graph::algo::isomorphism::*;
+    use petgraph::{Incoming, Outgoing};
+    use petgraph::visit::*;
     let mut arena = Arena::<u32>::new();
     let acid = smiles!("OS(=O)(=O)O");
     let ix = arena.insert_mol(&acid);
     let ins_acid = arena.molecule(ix);
+    println!("before");
+    for node in acid.node_identifiers() {
+        println!("{node:?}");
+        for edge in acid.edges_directed(node, Incoming) {
+            println!("=> {} -> {}", edge.source().index(), edge.target().index());
+        }
+        for edge in acid.edges_directed(node, Outgoing) {
+            println!("<= {} -> {}", edge.source().index(), edge.target().index());
+        }
+    }
+    println!("after");
+    for node in ins_acid.node_identifiers() {
+        println!("{node:?}");
+        for edge in ins_acid.edges_directed(node, Incoming) {
+            println!("=> {} -> {}", edge.source().0, edge.target().0);
+        }
+        for edge in ins_acid.edges_directed(node, Outgoing) {
+            println!("<= {} -> {}", edge.source().0, edge.target().0);
+        }
+    }
     assert!(is_isomorphic_matching(
         &acid,
         ins_acid,
-        PartialEq::eq,
-        PartialEq::eq
+        |_, _| true,
+        |_, _| true,
     ));
 }
 

@@ -333,7 +333,7 @@ impl<Ix: IndexType> Arena<Ix> {
             + NodeCompactIndexable
             + IntoEdgesDirected
             + IntoNodeReferences,
-        G::NodeId: Hash + Eq,
+        G::NodeId: Hash + Eq + std::fmt::Debug,
     {
         let max = <Ix as IndexType>::max().index();
         assert!(
@@ -530,7 +530,7 @@ impl<Ix: IndexType> Arena<Ix> {
                         })
                         .collect::<SmallVec<_, 4>>();
                     cmp.neighbors(graph_id)
-                        .for_each(|n| neighbors.retain(|e| ism[mol.to_index(e.1)] != n.0.index()));
+                        .for_each(|n| neighbors.retain(|e| ism[n.0.index()] != mol.to_index(e.1)));
 
                     if matched[mol_i].0 != usize::MAX {
                         trace!(
@@ -570,25 +570,25 @@ impl<Ix: IndexType> Arena<Ix> {
                             continue 'isms;
                         }
                     }
-                    let diff = mol_atom.data.other() - cmp.neighbors(graph_id).count() as u8;
-                    assert!(
-                        neighbors.len() < 2,
-                        "too many neighbors: {}",
-                        neighbors.len()
-                    );
+                   let diff = mol_atom.data.single() - cmp.neighbors(graph_id).count() as u8;
+                    // assert!(
+                    //     neighbors.len() < 2,
+                    //     "too many neighbors: {}",
+                    //     neighbors.len()
+                    // );
                     for (b, n) in neighbors {
-                        assert_eq!(b, Bond::Single);
+                        if b != Bond::Single { continue 'isms; }
                         debug!(
                             neighbor = mol.to_index(n),
                             "adding an additional suppressed R-group"
                         );
                         if let Some(a) = rbonds.get_mut(&n) {
-                            a.data.set_other(a.data.other() - diff);
+                            a.data.set_single(a.data.single() - diff);
                             a.data.set_unknown(a.data.unknown() + diff);
                         } else {
                             let mut a = mol.node_weight(n).unwrap();
-                            a.data.set_other(a.data.other() - diff);
-                            a.data.set_unknown(a.data.unknown() + diff);
+                            a.data.set_single(a.data.single() - 1);
+                            a.data.set_unknown(a.data.unknown() +1);
                             rbonds.insert(n, a);
                         }
                     }

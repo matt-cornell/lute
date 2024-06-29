@@ -1,8 +1,8 @@
 //! Taken from `petgraph`! It's been modified to only work for undirected graphs (which saves some space) and not require `EdgeCount`
 
 use crate::graph::misc::DataValueMap;
-use petgraph::{visit::*, Undirected};
-use petgraph::{Incoming, Outgoing};
+use petgraph::visit::*;
+use petgraph::{Outgoing, Undirected};
 use tracing::instrument;
 
 use self::semantic::EdgeMatcher;
@@ -178,8 +178,8 @@ mod semantic {
 
     impl<G0, G1, F> EdgeMatcher<G0, G1> for F
     where
-        G0: GraphBase + DataValueMap + IntoEdgesDirected,
-        G1: GraphBase + DataValueMap + IntoEdgesDirected,
+        G0: GraphBase + DataValueMap + IntoEdgesDirected + NodeIndexable,
+        G1: GraphBase + DataValueMap + IntoEdgesDirected + NodeIndexable,
         G0::NodeWeight: Copy,
         G1::NodeWeight: Copy,
         F: FnMut(&G0::EdgeWeight, &G1::EdgeWeight) -> bool,
@@ -198,14 +198,12 @@ mod semantic {
         ) -> bool {
             let w0 = g0
                 .edges_directed(e0.0, Outgoing)
-                .find(|edge| edge.target() == e0.1)
-                .and_then(|edge| g0.edge_weight(edge.id()));
+                .find(|edge| edge.target() == e0.1);
             let w1 = g1
                 .edges_directed(e1.0, Outgoing)
-                .find(|edge| edge.target() == e1.1)
-                .and_then(|edge| g1.edge_weight(edge.id()));
+                .find(|edge| edge.target() == e1.1);
             if let (Some(x), Some(y)) = (w0, w1) {
-                self(&x, &y)
+                self(x.weight(), y.weight())
             } else {
                 false
             }
@@ -297,32 +295,6 @@ mod matching {
             }};
         }
 
-        macro_rules! r_pred {
-            ($j:tt) => {{
-                let mut pred_count = 0;
-                for n_neigh in field!(st, $j)
-                    .graph
-                    .neighbors_directed(field!(nodes, $j), Incoming)
-                {
-                    pred_count += 1;
-                    // the self loop case is handled in outgoing
-                    let m_neigh = field!(st, $j).mapping[field!(st, $j).graph.to_index(n_neigh)];
-                    if m_neigh == std::usize::MAX {
-                        continue;
-                    }
-                    let has_edge = field!(st, 1 - $j).graph.is_adjacent(
-                        &field!(st, 1 - $j).adjacency_matrix,
-                        field!(st, 1 - $j).graph.from_index(m_neigh),
-                        field!(nodes, 1 - $j),
-                    );
-                    if !has_edge {
-                        return false;
-                    }
-                }
-                pred_count
-            }};
-        }
-
         // Check syntactic feasibility of mapping by ensuring adjacencies
         // of nx map to adjacencies of mx.
         //
@@ -341,10 +313,6 @@ mod matching {
         //      Ñ is G0 - M - Tin - Tout
         // last attempt to add these did not speed up any of the testcases
         if r_succ!(0) > r_succ!(1) {
-            return false;
-        }
-        // R_pred
-        if st.0.graph.is_directed() && r_pred!(0) > r_pred!(1) {
             return false;
         }
 
@@ -382,34 +350,6 @@ mod matching {
                             field!(edges, 1 - $j),
                         ) {
                             return false;
-                        }
-                    }
-                    if field!(st, $j).graph.is_directed() {
-                        for n_neigh in field!(st, $j)
-                            .graph
-                            .neighbors_directed(field!(nodes, $j), Incoming)
-                        {
-                            // the self loop case is handled in outgoing
-                            let m_neigh =
-                                field!(st, $j).mapping[field!(st, $j).graph.to_index(n_neigh)];
-                            if m_neigh == std::usize::MAX {
-                                continue;
-                            }
-
-                            let e0 = (n_neigh, field!(nodes, $j));
-                            let e1 = (
-                                field!(st, 1 - $j).graph.from_index(m_neigh),
-                                field!(nodes, 1 - $j),
-                            );
-                            let edges = (e0, e1);
-                            if !edge_match.eq(
-                                st.0.graph,
-                                st.1.graph,
-                                field!(edges, $j),
-                                field!(edges, 1 - $j),
-                            ) {
-                                return false;
-                            }
                         }
                     }
                 }};

@@ -18,6 +18,7 @@ const ELECTRON_MASS: f32 = 0.00054858;
 pub enum TooMany {
     H,
     R,
+    Single,
     Other,
 }
 impl TooMany {
@@ -25,6 +26,7 @@ impl TooMany {
         match self {
             Self::H => "hydrogen",
             Self::R => "unknown",
+            Self::Single => "single",
             Self::Other => "other",
         }
     }
@@ -64,23 +66,24 @@ impl Chirality {
 pub struct AtomData {
     pub hydrogen: B4,
     pub unknown: B4,
+    pub single: B4,
     pub other: B4,
     pub chirality: Chirality,
-    pub scratch: B10,
+    pub scratch: B6,
 }
 impl AtomData {
     /// Count the total number of bonded atoms
     #[inline(always)]
     pub fn total_bonds(self) -> u8 {
-        self.hydrogen() + self.unknown() + self.other()
+        self.hydrogen() + self.unknown() + self.single() + self.other()
     }
     /// Check if two bonding layouts are compatible
     pub fn is_compatible(self, other: Self) -> bool {
         let h1 = self.hydrogen();
-        let o1 = self.other();
+        let o1 = self.single();
         let mut u1 = self.unknown();
         let h2 = other.hydrogen();
-        let o2 = other.other();
+        let o2 = other.single();
         let mut u2 = other.unknown();
         if h1 + u1 + o1 != h2 + u2 + o2 {
             return false;
@@ -149,7 +152,7 @@ impl Atom {
             data: AtomData::new(),
         }
     }
-    pub fn new_scratch(protons: u8, scratch: u16) -> Self {
+    pub fn new_scratch(protons: u8, scratch: u8) -> Self {
         Self {
             protons,
             isotope: 0,
@@ -165,7 +168,7 @@ impl Atom {
             data: AtomData::new(),
         }
     }
-    pub fn new_isotope_scratch(protons: u8, isotope: u16, scratch: u16) -> Self {
+    pub fn new_isotope_scratch(protons: u8, isotope: u16, scratch: u8) -> Self {
         Self {
             protons,
             isotope,
@@ -192,6 +195,14 @@ impl Atom {
             Err(TooManyBonds(TooMany::R, r as _))
         }
     }
+    pub fn set_single_bonds(&mut self, b: u8) -> Result<(), TooManyBonds> {
+        if b < 16 {
+            self.data.set_single(b);
+            Ok(())
+        } else {
+            Err(TooManyBonds(TooMany::Single, b as _))
+        }
+    }
     pub fn set_other_bonds(&mut self, b: u8) -> Result<(), TooManyBonds> {
         if b < 16 {
             self.data.set_other(b);
@@ -202,11 +213,11 @@ impl Atom {
     }
 
     #[inline(always)]
-    pub fn map_scratch<F: FnOnce(u16) -> u16>(&mut self, f: F) {
+    pub fn map_scratch<F: FnOnce(u8) -> u8>(&mut self, f: F) {
         self.data.set_scratch(f(self.data.scratch()));
     }
     #[inline(always)]
-    pub fn with_scratch<R, F: FnOnce(&mut u16) -> R>(&mut self, f: F) -> R {
+    pub fn with_scratch<R, F: FnOnce(&mut u8) -> R>(&mut self, f: F) -> R {
         let mut scratch = self.data.scratch();
         let r = f(&mut scratch);
         self.data.set_scratch(scratch);

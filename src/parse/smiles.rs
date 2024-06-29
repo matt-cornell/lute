@@ -453,7 +453,6 @@ impl<'a> SmilesParser<'a> {
                             );
                         }
                         self.index += len;
-                        eprintln!("next: {:?} @ {}", self.input.get(self.index), self.index);
                         let protons = ATOM_DATA
                             .iter()
                             .position(|a| {
@@ -640,7 +639,16 @@ impl<'a> SmilesParser<'a> {
     #[instrument(level = "debug", skip_all, fields(self.input, self.index))]
     fn update_bonds(&mut self) -> Result<(), SmilesError> {
         for n in self.graph.node_indices() {
-            let bc = self.graph.edges(n).count();
+            let mut sc = 0;
+            let mut bc = 0;
+            for b in self.graph.edges(n) {
+                if b.weight() == &Bond::Single { sc += 1; }
+                else { bc += 1; }
+            }
+            self.graph[n].set_single_bonds(
+                sc.try_into()
+                    .map_err(|_| TooManyBonds(TooMany::Single, sc))?,
+            )?;
             self.graph[n].set_other_bonds(
                 bc.try_into()
                     .map_err(|_| TooManyBonds(TooMany::Other, bc))?,
@@ -854,7 +862,7 @@ impl<'a> SmilesParser<'a> {
         for node in self.graph.node_references() {
             assert_eq!(
                 self.graph.edges(node.id()).count(),
-                node.weight().data.other() as usize
+                (node.weight().data.single() + node.weight().data.other()) as usize
             );
         }
         for &edge in self.graph.edge_weights() {
