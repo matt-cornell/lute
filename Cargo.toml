@@ -9,7 +9,6 @@ autoexamples = false
 [dependencies]
 ahash = "0.8.11"
 atoi = "2.0.0"
-binary-heap-plus = "0.5.0"
 bstr = { version = "1.9.1", default-features = false, features = ["std"] }
 c-enum = "0.2.3"
 concat-idents = { version = "1.1.5", optional = true }

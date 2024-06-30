@@ -1,10 +1,9 @@
-use binary_heap_plus::BinaryHeap;
 use petgraph::algo::Measure;
 use petgraph::prelude::*;
 use petgraph::unionfind::UnionFind;
 use petgraph::visit::*;
 use std::cmp::Ordering;
-use std::collections::VecDeque;
+use std::collections::{BinaryHeap, VecDeque};
 use std::fmt::{self, Debug, Formatter};
 use std::mem::MaybeUninit;
 
