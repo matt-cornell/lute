@@ -62,7 +62,6 @@ pub fn fmt_as_svg<'a, G>(graph: G) -> SvgFormatter<G>
 where
     G: Data<NodeWeight = Atom, EdgeWeight = Bond>
         + GraphProp<EdgeType = Undirected>
-        + GraphRef
         + IntoNodeReferences
         + IntoEdgeReferences
         + NodeCompactIndexable,
@@ -87,7 +86,6 @@ pub struct SvgFormatter<G>(pub G);
 impl<G> SvgFormatter<G>
 where
     G: Data<NodeWeight = Atom, EdgeWeight = Bond>
-        + GraphRef
         + IntoNodeReferences
         + IntoEdgeReferences
         + NodeCompactIndexable,
@@ -110,7 +108,6 @@ where
 impl<G> Display for SvgFormatter<G>
 where
     G: Data<NodeWeight = Atom, EdgeWeight = Bond>
-        + GraphRef
         + IntoNodeReferences
         + IntoEdgeReferences
         + NodeCompactIndexable,

@@ -152,7 +152,6 @@ impl<Ix: IndexType> Arena<Ix> {
         G: Data<NodeWeight = Atom, EdgeWeight = Bond>
             + misc::DataValueMap
             + GraphProp<EdgeType = Undirected>
-            + GraphRef
             + GetAdjacencyMatrix
             + NodeCompactIndexable
             + IntoEdgesDirected
@@ -328,7 +327,6 @@ impl<Ix: IndexType> Arena<Ix> {
         G: Data<NodeWeight = Atom, EdgeWeight = Bond>
             + misc::DataValueMap
             + GraphProp<EdgeType = Undirected>
-            + GraphRef
             + GetAdjacencyMatrix
             + NodeCompactIndexable
             + IntoEdgesDirected
