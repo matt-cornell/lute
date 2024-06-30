@@ -642,8 +642,11 @@ impl<'a> SmilesParser<'a> {
             let mut sc = 0;
             let mut bc = 0;
             for b in self.graph.edges(n) {
-                if b.weight() == &Bond::Single { sc += 1; }
-                else { bc += 1; }
+                if b.weight() == &Bond::Single {
+                    sc += 1;
+                } else {
+                    bc += 1;
+                }
             }
             self.graph[n].set_single_bonds(
                 sc.try_into()

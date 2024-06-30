@@ -37,7 +37,9 @@ impl<Ix: IndexType + Ord, R> Data for Molecule<Ix, R> {
     type EdgeWeight = Bond;
 }
 
-impl<Ix: IndexType + Ord, R: ArenaAccessor<Ix = Ix> + Copy> IntoNodeIdentifiers for Molecule<Ix, R> {
+impl<Ix: IndexType + Ord, R: ArenaAccessor<Ix = Ix> + Copy> IntoNodeIdentifiers
+    for Molecule<Ix, R>
+{
     type NodeIdentifiers = Map<Range<usize>, fn(usize) -> NodeIndex<Ix>>;
 
     fn node_identifiers(self) -> Self::NodeIdentifiers {
@@ -88,7 +90,9 @@ impl<Ix: IndexType + Ord, R: ArenaAccessor<Ix = Ix> + Copy> IntoNeighbors for Mo
         iter::Neighbors(iter::Edges::new(self.index, a.0, self.arena))
     }
 }
-impl<Ix: IndexType + Ord, R: ArenaAccessor<Ix = Ix> + Copy> IntoNeighborsDirected for Molecule<Ix, R> {
+impl<Ix: IndexType + Ord, R: ArenaAccessor<Ix = Ix> + Copy> IntoNeighborsDirected
+    for Molecule<Ix, R>
+{
     type NeighborsDirected = iter::Neighbors<Ix, R>;
 
     fn neighbors_directed(self, n: Self::NodeId, _dir: Direction) -> Self::NeighborsDirected {
@@ -384,7 +388,13 @@ pub mod iter {
 
         fn next(&mut self) -> Option<Self::Item> {
             let idx = self.0.orig_idx;
-            self.0.next().map(|e| if (e.source().0 == idx) ^ (self.1 == Direction::Outgoing) { e.rev() } else { e })
+            self.0.next().map(|e| {
+                if (e.source().0 == idx) ^ (self.1 == Direction::Outgoing) {
+                    e.rev()
+                } else {
+                    e
+                }
+            })
         }
     }
 }

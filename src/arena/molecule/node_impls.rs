@@ -48,7 +48,9 @@ impl<Ix: Copy> EdgeIndex<Ix> {
 impl<Ix: Ord> PartialEq for EdgeIndex<Ix> {
     fn eq(&self, other: &Self) -> bool {
         let EdgeIndex(mut a, mut b) = self.as_ref();
-        if a.cmp(b) != other.0.cmp(&other.1) { std::mem::swap(&mut a, &mut b) }
+        if a.cmp(b) != other.0.cmp(&other.1) {
+            std::mem::swap(&mut a, &mut b)
+        }
         *a == other.0 && *b == other.1
     }
 }
@@ -57,18 +59,26 @@ impl<Ix: Ord> PartialOrd for EdgeIndex<Ix> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         let EdgeIndex(mut sa, mut sb) = self.as_ref();
         let EdgeIndex(mut oa, mut ob) = other.as_ref();
-        if sa > sb { std::mem::swap(&mut sa, &mut sb) }
-        if oa > ob { std::mem::swap(&mut oa, &mut ob) }
+        if sa > sb {
+            std::mem::swap(&mut sa, &mut sb)
+        }
+        if oa > ob {
+            std::mem::swap(&mut oa, &mut ob)
+        }
         Some(sa.cmp(&sb).then(oa.cmp(&ob)))
     }
 }
 impl<Ix: Ord> Ord for EdgeIndex<Ix> {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering { self.partial_cmp(other).unwrap() }
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.partial_cmp(other).unwrap()
+    }
 }
 impl<Ix: Ord + Hash> Hash for EdgeIndex<Ix> {
     fn hash<H: Hasher>(&self, h: &mut H) {
         let EdgeIndex(mut a, mut b) = self.as_ref();
-        if a > b { std::mem::swap(&mut a, &mut b) }
+        if a > b {
+            std::mem::swap(&mut a, &mut b)
+        }
         a.hash(h);
         b.hash(h);
     }

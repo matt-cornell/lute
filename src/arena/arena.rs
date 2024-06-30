@@ -8,10 +8,10 @@ use itertools::Itertools;
 use petgraph::graph::DefaultIx;
 use petgraph::prelude::*;
 use petgraph::visit::*;
+use small_map::ASmallMap;
 use smallvec::SmallVec;
 use std::fmt::Debug;
 use std::hash::Hash;
-use small_map::ASmallMap;
 
 #[macro_export]
 macro_rules! arena {
@@ -570,14 +570,16 @@ impl<Ix: IndexType> Arena<Ix> {
                             continue 'isms;
                         }
                     }
-                   let diff = mol_atom.data.single() - cmp.neighbors(graph_id).count() as u8;
+                    let diff = mol_atom.data.single() - cmp.neighbors(graph_id).count() as u8;
                     // assert!(
                     //     neighbors.len() < 2,
                     //     "too many neighbors: {}",
                     //     neighbors.len()
                     // );
                     for (b, n) in neighbors {
-                        if b != Bond::Single { continue 'isms; }
+                        if b != Bond::Single {
+                            continue 'isms;
+                        }
                         debug!(
                             neighbor = mol.to_index(n),
                             "adding an additional suppressed R-group"
@@ -588,7 +590,7 @@ impl<Ix: IndexType> Arena<Ix> {
                         } else {
                             let mut a = mol.node_weight(n).unwrap();
                             a.data.set_single(a.data.single() - 1);
-                            a.data.set_unknown(a.data.unknown() +1);
+                            a.data.set_unknown(a.data.unknown() + 1);
                             rbonds.insert(n, a);
                         }
                     }

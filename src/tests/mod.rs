@@ -1,3 +1,4 @@
+mod algo;
 mod arena;
 mod empirical;
 mod molecule;

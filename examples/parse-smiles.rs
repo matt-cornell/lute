@@ -41,7 +41,7 @@ fn main() {
                     OutputType::Png => match fmt_as_svg(mol).render(None).encode_png() {
                         Ok(b) => write_bytes(cli.out.as_deref(), &b),
                         Err(err) => tracing::error!("{err}"),
-                    }
+                    },
                 }
             } else {
                 match cli.fmt {
@@ -54,7 +54,7 @@ fn main() {
                     OutputType::Png => match fmt_as_svg(&graph).render(None).encode_png() {
                         Ok(b) => write_bytes(cli.out.as_deref(), &b),
                         Err(err) => tracing::error!("{err}"),
-                    }
+                    },
                 }
             }
         }

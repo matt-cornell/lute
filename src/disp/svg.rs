@@ -4,7 +4,7 @@ use petgraph::visit::*;
 use petgraph::Undirected;
 use std::fmt::{self, Debug, Display};
 
-#[cfg(feature= "resvg")]
+#[cfg(feature = "resvg")]
 use resvg::*;
 
 pub const SVG_SUPPRESSED_R: &str = "#407F00";

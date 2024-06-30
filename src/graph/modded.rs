@@ -2,8 +2,8 @@ use super::misc::DataValueMap;
 use petgraph::data::*;
 use petgraph::prelude::Direction;
 use petgraph::visit::*;
-use std::hash::Hash;
 use small_map::ASmallMap;
+use std::hash::Hash;
 
 #[derive(Debug, Clone)]
 pub struct ModdedGraph<G: GraphBase + Data, const N: usize> {

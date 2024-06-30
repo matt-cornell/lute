@@ -41,8 +41,8 @@ fn double_insert() {
 #[test]
 fn isomorphism() {
     use crate::graph::algo::isomorphism::*;
-    use petgraph::{Incoming, Outgoing};
     use petgraph::visit::*;
+    use petgraph::{Incoming, Outgoing};
     let mut arena = Arena::<u32>::new();
     let acid = smiles!("OS(=O)(=O)O");
     let ix = arena.insert_mol(&acid);

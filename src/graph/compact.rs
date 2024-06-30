@@ -4,9 +4,9 @@ use petgraph::data::*;
 use petgraph::prelude::*;
 use petgraph::visit::*;
 
-use std::hash::Hash;
-use ahash::*;
 use super::misc::DataValueMap;
+use ahash::*;
+use std::hash::Hash;
 
 /// Override `NodeIndexable` so that they're always compact
 #[derive(Debug, Clone)]

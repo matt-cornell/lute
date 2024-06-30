@@ -12,13 +12,7 @@ macro_rules! gen_defs {
             #[doc = concat!("Allocate a ", stringify!($ty), " without initialization.")]
             #[no_mangle]
             pub extern "C" fn fn_name() -> *mut MaybeUninit<$ty> {
-                // On nightly, we can use `Box::try_new` for fallible allocation. On stable, we have to catch the panic.
-                #[cfg(feature = "nightly")]
                 let res = Box::try_new(MaybeUninit::uninit()).map(|b| Box::leak(b) as _);
-
-                #[cfg(not(feature = "nightly"))]
-                let res = std::panic::catch_unwind(|| Box::leak(Box::new(MaybeUninit::uninit())) as _);
-
                 res.unwrap_or(std::ptr::null_mut())
             }
         });
