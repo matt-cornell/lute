@@ -1,5 +1,5 @@
-use crate::smiles;
 use crate::graph::algo::mcb::*;
+use crate::smiles;
 
 /// Rings could be rotated or reversed, this checks all of them, panicking if none match.
 #[track_caller]
@@ -7,12 +7,16 @@ fn assert_ring_eq<T: PartialEq + std::fmt::Debug>(a: &[T], b: &mut [T]) {
     if a.len() == b.len() {
         for _ in 0..a.len() {
             b.rotate_right(1);
-            if a == b { return }
+            if a == b {
+                return;
+            }
         }
         b.reverse();
         for _ in 1..a.len() {
             b.rotate_right(1);
-            if a == b { return }
+            if a == b {
+                return;
+            }
         }
     }
     assert_eq!(a, b);
@@ -32,13 +36,19 @@ fn monocycles() {
         let benzene = smiles!("c1ccccc1");
         assert_eq!(num_cycles(&benzene), 1);
         let mut benzene_it = CycleBasis::new_struct(&benzene);
-        assert_ring_eq(&benzene_it.next().expect("benzene is cyclic").1, &mut [0, 1, 2, 3, 4, 5]);
+        assert_ring_eq(
+            &benzene_it.next().expect("benzene is cyclic").1,
+            &mut [0, 1, 2, 3, 4, 5],
+        );
     }
     {
         let toluene = smiles!("c1ccccc1C");
         assert_eq!(num_cycles(&toluene), 1);
         let mut toluene_it = CycleBasis::new_struct(&toluene);
-        assert_ring_eq(&toluene_it.next().expect("toluene is cyclic").1, &mut [0, 1, 2, 3, 4, 5]);
+        assert_ring_eq(
+            &toluene_it.next().expect("toluene is cyclic").1,
+            &mut [0, 1, 2, 3, 4, 5],
+        );
     }
     {
         let bisphenol_a = smiles!("Oc1ccc(cc1)C(c2ccc(O)cc2)(C)C");

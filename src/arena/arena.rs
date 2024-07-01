@@ -158,9 +158,11 @@ impl<Ix: IndexType> Arena<Ix> {
             + IntoNodeReferences,
         G::NodeId: Hash + Eq,
     {
-        let frags = self.parts.iter().positions(|p| {
-            p.1.index() == mol.node_count() && matches!(p.0, MolRepr::Atomic(_))
-        }).collect::<SmallVec<_, 4>>();
+        let frags = self
+            .parts
+            .iter()
+            .positions(|p| p.1.index() == mol.node_count() && matches!(p.0, MolRepr::Atomic(_)))
+            .collect::<SmallVec<_, 4>>();
         debug!(?frags, "found available fragments");
         let mut mods = SmallVec::<(Ix, Atom), 4>::with_capacity(mol.node_count());
         let mut node_map = vec![usize::MAX; mol.node_count()];
@@ -491,7 +493,11 @@ impl<Ix: IndexType> Arena<Ix> {
                             continue 'isms;
                         }
                     }
-                    let diff = mol_atom.data.single() - cmp.edges(graph_id).filter(|e| *e.weight() == Bond::Single).count() as u8;
+                    let diff = mol_atom.data.single()
+                        - cmp
+                            .edges(graph_id)
+                            .filter(|e| *e.weight() == Bond::Single)
+                            .count() as u8;
                     // assert!(
                     //     neighbors.len() < 2,
                     //     "too many neighbors: {}",
