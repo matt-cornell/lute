@@ -568,7 +568,7 @@ impl<Ix: IndexType> Arena<Ix> {
                             continue 'isms;
                         }
                     }
-                    let diff = mol_atom.data.single() - cmp.neighbors(graph_id).count() as u8;
+                    let diff = mol_atom.data.single() - cmp.edges(graph_id).filter(|e| *e.weight() == Bond::Single).count() as u8;
                     // assert!(
                     //     neighbors.len() < 2,
                     //     "too many neighbors: {}",
