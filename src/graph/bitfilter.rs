@@ -7,43 +7,44 @@ use petgraph::Direction;
 use std::fmt::{self, Binary, Debug, Formatter};
 
 #[derive(Clone)]
-pub struct BitFiltered<G, T, const N: usize> {
+pub struct BitFiltered<G, T, const N: usize, const C: bool> {
     pub graph: G,
     pub filter: BitSet<T, N>,
 }
-impl<G, T, const N: usize> BitFiltered<G, T, N> {
+impl<G, T, const N: usize, const C: bool> BitFiltered<G, T, N, C> {
     pub const fn new(graph: G, filter: BitSet<T, N>) -> Self {
         Self { graph, filter }
     }
 }
 
-impl<G: Debug, T: Binary, const N: usize> Debug for BitFiltered<G, T, N> {
+impl<G: Debug, T: Binary, const N: usize, const C: bool> Debug for BitFiltered<G, T, N, C> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("BitFiltered")
             .field("graph", &self.graph)
             .field("filter", &self.filter)
+            .field("compact", &C)
             .finish()
     }
 }
 
-impl<G: GraphBase, T, const N: usize> GraphBase for BitFiltered<G, T, N> {
+impl<G: GraphBase, T, const N: usize, const C: bool> GraphBase for BitFiltered<G, T, N, C> {
     type EdgeId = G::EdgeId;
     type NodeId = G::NodeId;
 }
 
-impl<G: GraphProp, T, const N: usize> GraphProp for BitFiltered<G, T, N> {
+impl<G: GraphProp, T, const N: usize, const C: bool> GraphProp for BitFiltered<G, T, N, C> {
     type EdgeType = G::EdgeType;
     fn is_directed(&self) -> bool {
         self.graph.is_directed()
     }
 }
 
-impl<G: Data, T, const N: usize> Data for BitFiltered<G, T, N> {
+impl<G: Data, T, const N: usize, const C: bool> Data for BitFiltered<G, T, N, C> {
     type NodeWeight = G::NodeWeight;
     type EdgeWeight = G::EdgeWeight;
 }
 
-impl<G: DataMap + NodeIndexable, T: PrimInt, const N: usize> DataMap for BitFiltered<G, T, N> {
+impl<G: DataMap + NodeIndexable, T: PrimInt, const N: usize, const C: bool> DataMap for BitFiltered<G, T, N, C> {
     fn node_weight(&self, id: Self::NodeId) -> Option<&Self::NodeWeight> {
         self.filter
             .get(self.graph.to_index(id))
@@ -53,9 +54,13 @@ impl<G: DataMap + NodeIndexable, T: PrimInt, const N: usize> DataMap for BitFilt
         self.graph.edge_weight(id)
     }
 }
-
-impl<G: DataValueMap + NodeIndexable, T: PrimInt, const N: usize> DataValueMap
-    for BitFiltered<G, T, N>
+impl<G: GraphBase, T: PrimInt, const N: usize, const C: bool> NodeCount for BitFiltered<G, T, N, C> {
+    fn node_count(&self) -> usize {
+        self.filter.count_ones()
+    }
+}
+impl<G: DataValueMap + NodeIndexable, T: PrimInt, const N: usize, const C: bool> DataValueMap
+    for BitFiltered<G, T, N, C>
 {
     fn node_weight(&self, id: Self::NodeId) -> Option<Self::NodeWeight> {
         self.filter
@@ -67,7 +72,7 @@ impl<G: DataValueMap + NodeIndexable, T: PrimInt, const N: usize> DataValueMap
     }
 }
 
-impl<G: NodeIndexable, T, const N: usize> NodeIndexable for BitFiltered<G, T, N> {
+impl<G: NodeIndexable, T, const N: usize> NodeIndexable for BitFiltered<G, T, N, false> {
     fn from_index(&self, i: usize) -> Self::NodeId {
         self.graph.from_index(i)
     }
@@ -78,8 +83,20 @@ impl<G: NodeIndexable, T, const N: usize> NodeIndexable for BitFiltered<G, T, N>
         self.graph.node_bound()
     }
 }
+impl<G: NodeIndexable, T: PrimInt, const N: usize> NodeIndexable for BitFiltered<G, T, N, true> {
+    fn from_index(&self, i: usize) -> Self::NodeId {
+        self.graph.from_index(self.filter.nth(i).unwrap())
+    }
+    fn to_index(&self, a: Self::NodeId) -> usize {
+        self.filter.index(self.graph.to_index(a)).unwrap()
+    }
+    fn node_bound(&self) -> usize {
+        self.filter.count_ones()
+    }
+}
+impl<G: NodeIndexable, T: PrimInt, const N: usize> NodeCompactIndexable for BitFiltered<G, T, N, true> {}
 
-impl<G: GetAdjacencyMatrix, T, const N: usize> GetAdjacencyMatrix for BitFiltered<G, T, N> {
+impl<G: GetAdjacencyMatrix, T, const N: usize, const C: bool> GetAdjacencyMatrix for BitFiltered<G, T, N, C> {
     type AdjMatrix = G::AdjMatrix;
 
     fn adjacency_matrix(&self) -> Self::AdjMatrix {
@@ -90,7 +107,7 @@ impl<G: GetAdjacencyMatrix, T, const N: usize> GetAdjacencyMatrix for BitFiltere
     }
 }
 
-impl<'a, G: Data, T: PrimInt, const N: usize> IntoNodeIdentifiers for &'a BitFiltered<G, T, N>
+impl<'a, G: Data, T: PrimInt, const N: usize, const C: bool> IntoNodeIdentifiers for &'a BitFiltered<G, T, N, C>
 where
     &'a G: IntoNodeIdentifiers<NodeId = G::NodeId> + NodeIndexable,
 {
@@ -102,7 +119,7 @@ where
     }
 }
 
-impl<'a, G: Data, T: PrimInt, const N: usize> IntoNodeReferences for &'a BitFiltered<G, T, N>
+impl<'a, G: Data, T: PrimInt, const N: usize, const C: bool> IntoNodeReferences for &'a BitFiltered<G, T, N, C>
 where
     &'a G: IntoNodeReferences<NodeWeight = G::NodeWeight, NodeId = G::NodeId> + NodeIndexable,
 {
@@ -115,7 +132,7 @@ where
     }
 }
 
-impl<'a, G: Data, T: PrimInt, const N: usize> IntoEdgeReferences for &'a BitFiltered<G, T, N>
+impl<'a, G: Data, T: PrimInt, const N: usize, const C: bool> IntoEdgeReferences for &'a BitFiltered<G, T, N, C>
 where
     &'a G: IntoEdgeReferences<EdgeId = G::EdgeId, NodeId = G::NodeId, EdgeWeight = G::EdgeWeight>
         + NodeIndexable,
@@ -129,7 +146,7 @@ where
     }
 }
 
-impl<'a, G: Data, T: PrimInt, const N: usize> IntoEdges for &'a BitFiltered<G, T, N>
+impl<'a, G: Data, T: PrimInt, const N: usize, const C: bool> IntoEdges for &'a BitFiltered<G, T, N, C>
 where
     &'a G: IntoEdges<EdgeId = G::EdgeId, NodeId = G::NodeId, EdgeWeight = G::EdgeWeight>
         + NodeIndexable,
@@ -141,7 +158,7 @@ where
     }
 }
 
-impl<'a, G: Data, T: PrimInt, const N: usize> IntoNeighbors for &'a BitFiltered<G, T, N>
+impl<'a, G: Data, T: PrimInt, const N: usize, const C: bool> IntoNeighbors for &'a BitFiltered<G, T, N, C>
 where
     &'a G: IntoNeighbors<EdgeId = G::EdgeId, NodeId = G::NodeId> + NodeIndexable,
 {
@@ -152,7 +169,7 @@ where
     }
 }
 
-impl<'a, G: Data, T: PrimInt, const N: usize> IntoNeighborsDirected for &'a BitFiltered<G, T, N>
+impl<'a, G: Data, T: PrimInt, const N: usize, const C: bool> IntoNeighborsDirected for &'a BitFiltered<G, T, N, C>
 where
     &'a G: IntoNeighborsDirected<EdgeId = G::EdgeId, NodeId = G::NodeId> + NodeIndexable,
 {
@@ -173,7 +190,7 @@ where
     }
 }
 
-impl<'a, G: Data, T: PrimInt, const N: usize> IntoEdgesDirected for &'a BitFiltered<G, T, N>
+impl<'a, G: Data, T: PrimInt, const N: usize, const C: bool> IntoEdgesDirected for &'a BitFiltered<G, T, N, C>
 where
     &'a G: IntoEdgesDirected<EdgeId = G::EdgeId, NodeId = G::NodeId, EdgeWeight = G::EdgeWeight>
         + NodeIndexable,

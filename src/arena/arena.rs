@@ -158,88 +158,20 @@ impl<Ix: IndexType> Arena<Ix> {
             + IntoNodeReferences,
         G::NodeId: Hash + Eq,
     {
+        let frags = self.parts.iter().positions(|p| {
+            p.1.index() == mol.node_count() && matches!(p.0, MolRepr::Atomic(_))
+        }).collect::<SmallVec<_, 4>>();
+        debug!(?frags, "found available fragments");
+        let mut mods = SmallVec::<(Ix, Atom), 4>::with_capacity(mol.node_count());
+        let mut node_map = vec![usize::MAX; mol.node_count()];
+        let mut amatch = Atom::matches;
+        let mut bmatch = PartialEq::eq;
         if find_isms {
-            let frags = self.parts.iter().positions(|p| {
-                p.1.index() == mol.node_count() && matches!(p.0, MolRepr::Atomic(_))
-            });
-            // avoid an allocation if we can
-            let frags = if span_enabled!(Level::DEBUG, frags, "found available fragments") {
-                let frags = frags.collect::<SmallVec<_, 4>>();
-                debug!(?frags, "found available fragments");
-                either::Right(frags.into_iter())
-            } else {
-                either::Left(frags)
-            };
-            let mut mods = SmallVec::<(Ix, Atom), 4>::with_capacity(mol.node_count());
-            let mut node_map = vec![usize::MAX; mol.node_count()];
-            let mut amatch = Atom::matches;
-            let mut bmatch = PartialEq::eq;
-            let mut frag = None;
-
-            'main: for i in frags {
+            let mut best: Option<(Ix, SmallVec<_, 4>, Vec<_>)> = None;
+            for &i in &frags {
                 debug!(idx = i, "matching fragment");
                 let cmp = self.molecule(Ix::new(i));
-
-                // optimistic happy path for when the layouts are the same
-                // in most cases, molecules are given by canonical SMILES, so this isn't that
-                // unlikely
-                'opt: {
-                    trace!(idx = i, "checking happy path");
-                    let mut mn = SmallVec::<usize, 3>::new();
-                    let mut cn = SmallVec::<usize, 3>::new();
-                    mods.clear();
-                    for i in 0..cmp.node_count() {
-                        let mi = mol.from_index(i);
-                        let ci = Ix::new(i);
-                        let mol_atom = mol.node_weight(mi).unwrap();
-                        let graph_atom = cmp.get_atom(ci).unwrap();
-                        if !graph_atom.matches(&mol_atom) {
-                            break 'opt;
-                        }
-                        if graph_atom != mol_atom {
-                            let mi = Ix::new(i);
-                            if let Err(idx) = mods.binary_search_by_key(&mi, |m| m.0) {
-                                mods.insert(idx, (mi, mol_atom));
-                            }
-                        }
-                        mn.clear();
-                        cn.clear();
-                        mn.extend(mol.neighbors(mi).map(|i| mol.to_index(i)));
-                        cn.extend(cmp.neighbors(ci.into()).map(|i| i.0.index()));
-                        if mn.len() != cn.len() {
-                            break 'opt;
-                        }
-                        mn.sort_unstable();
-                        cn.sort_unstable();
-                        if mn != cn {
-                            break 'opt;
-                        }
-                    }
-                    debug!(idx = i, mods = mods.len(), "happy path succeeded");
-
-                    // perfect match!
-                    if mods.is_empty() {
-                        let node_map = (0..cmp.node_count()).collect();
-                        info!(idx = i, ?node_map, "perfect isomorphism");
-                        return (Ix::new(i), node_map);
-                    }
-
-                    // not quite perfect, let's see if there's already another modded mol
-                    for (idx, frag) in self.parts.iter().enumerate() {
-                        if let MolRepr::Modify(m) = &frag.0 {
-                            if m.base.index() == i && m.patch == mods {
-                                let node_map = (0..cmp.node_count()).collect();
-                                info!(idx, base = i, ?node_map, "matched isomorphism");
-                                return (Ix::new(idx), node_map);
-                            }
-                        }
-                    }
-                    debug!(idx = i, "no perfect match, falling back to normal");
-                }
-
-                let mut it =
-                    isomorphisms_iter(&cmp, &mol, &mut amatch, &mut bmatch, false).peekable();
-                while let Some(ism) = it.next() {
+                for ism in isomorphisms_iter(&cmp, &mol, &mut amatch, &mut bmatch, false) {
                     debug_assert_eq!(ism.len(), mol.node_count());
                     mods.clear();
 
@@ -270,31 +202,22 @@ impl<Ix: IndexType> Arena<Ix> {
                             }
                         }
                     }
-
-                    // no similar moddeds exist, this is the last ism
-                    if it.peek().is_none() {
-                        info!(
-                            idx = self.parts.len(),
-                            base = i,
-                            ?node_map,
-                            "created isomorphism"
-                        );
-                        frag = Some((
-                            (
-                                MolRepr::Modify(ModdedMol {
-                                    base: Ix::new(i),
-                                    patch: mods,
-                                }),
-                                Ix::new(mol.node_count()),
-                            ),
-                            node_map,
-                        ));
-                        break 'main;
+                    if let Some((ix, ms, nm)) = &mut best {
+                        if mods.len() < ms.len() {
+                            // reusing allocations!
+                            *ix = Ix::new(i);
+                            ms.clear();
+                            ms.extend_from_slice(&mods); // this is a SmallVec, it uses Copy
+                            nm.copy_from_slice(&node_map);
+                        }
+                    } else {
+                        best = Some((Ix::new(i), mods.clone(), node_map.clone()));
                     }
                 }
             }
-            if let Some((frag, map)) = frag {
-                return (self.push_frag(frag), map);
+            if let Some((base, patch, node_map)) = best {
+                let frag = MolRepr::Modify(ModdedMol { base, patch });
+                return (self.push_frag((frag, Ix::new(mol.node_count()))), node_map);
             }
         }
         let end = petgraph::graph::NodeIndex::<Ix>::end();
@@ -331,7 +254,7 @@ impl<Ix: IndexType> Arena<Ix> {
             + NodeCompactIndexable
             + IntoEdgesDirected
             + IntoNodeReferences,
-        G::NodeId: Hash + Eq + std::fmt::Debug,
+        G::NodeId: Hash + Eq,
     {
         let max = <Ix as IndexType>::max().index();
         assert!(
@@ -628,16 +551,10 @@ impl<Ix: IndexType> Arena<Ix> {
         let filtered = NodeFilter::new(&modded, |i| matched[modded.to_index(i)].0 == usize::MAX);
         let ext_start = found.len();
         found.extend(ConnectedGraphIter::new(&filtered).iter(mol).map(|bits| {
-            let graph = GraphCompactor::<
-                BitFiltered<
-                    &NodeFilter<&ModdedGraph<G, MODDED_GRAPH_LEN>, _>,
-                    usize,
-                    ATOM_BIT_STORAGE,
-                >,
-            >::new(BitFiltered::new(&filtered, bits));
+            let graph = BitFiltered::<_, usize, ATOM_BIT_STORAGE, true>::new(&filtered, bits);
             let (ix, map) = self.insert_mol_atomic(&graph, true);
             let out = (0..map.len())
-                .map(|i| modded.to_index(graph.node_map[map[i]]))
+                .map(|i| graph.filter.index(map[i]).unwrap())
                 .collect();
             (ix.index(), out)
         }));
