@@ -57,6 +57,11 @@ impl<Ix: Ord> PartialEq for EdgeIndex<Ix> {
 impl<Ix: Ord> Eq for EdgeIndex<Ix> {}
 impl<Ix: Ord> PartialOrd for EdgeIndex<Ix> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl<Ix: Ord> Ord for EdgeIndex<Ix> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         let EdgeIndex(mut sa, mut sb) = self.as_ref();
         let EdgeIndex(mut oa, mut ob) = other.as_ref();
         if sa > sb {
@@ -65,12 +70,7 @@ impl<Ix: Ord> PartialOrd for EdgeIndex<Ix> {
         if oa > ob {
             std::mem::swap(&mut oa, &mut ob)
         }
-        Some(sa.cmp(&sb).then(oa.cmp(&ob)))
-    }
-}
-impl<Ix: Ord> Ord for EdgeIndex<Ix> {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.partial_cmp(other).unwrap()
+        sa.cmp(sb).then(oa.cmp(ob))
     }
 }
 impl<Ix: Ord + Hash> Hash for EdgeIndex<Ix> {

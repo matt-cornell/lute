@@ -37,7 +37,7 @@ mod state {
             let c0 = g.node_count();
             Vf2State {
                 graph: g,
-                mapping: vec![std::usize::MAX; c0],
+                mapping: vec![usize::MAX; c0],
                 out: vec![0; c0],
                 out_size: 0,
                 adjacency_matrix: g.adjacency_matrix(),
@@ -68,7 +68,7 @@ mod state {
         /// Restore the state to before the last added mapping
         pub fn pop_mapping(&mut self, from: G::NodeId) {
             // undo (n, m) mapping
-            self.mapping[self.graph.to_index(from)] = std::usize::MAX;
+            self.mapping[self.graph.to_index(from)] = usize::MAX;
 
             // unmark in ins and outs
             for ix in self.graph.neighbors_directed(from, Outgoing) {
@@ -88,7 +88,7 @@ mod state {
                 .iter()
                 .enumerate()
                 .find(move |&(index, &elt)| {
-                    elt > 0 && self.mapping[from_index + index] == std::usize::MAX
+                    elt > 0 && self.mapping[from_index + index] == usize::MAX
                 })
                 .map(|(index, _)| index)
         }
@@ -99,7 +99,7 @@ mod state {
             self.mapping[from_index..]
                 .iter()
                 .enumerate()
-                .find(|&(_, &elt)| elt == std::usize::MAX)
+                .find(|&(_, &elt)| elt == usize::MAX)
                 .map(|(index, _)| index)
         }
     }
@@ -279,7 +279,7 @@ mod matching {
                     } else {
                         field!(st, 1 - $j).graph.to_index(field!(nodes, 1 - $j))
                     };
-                    if m_neigh == std::usize::MAX {
+                    if m_neigh == usize::MAX {
                         continue;
                     }
                     let has_edge = field!(st, 1 - $j).graph.is_adjacent(
@@ -333,7 +333,7 @@ mod matching {
                         } else {
                             field!(st, 1 - $j).graph.to_index(field!(nodes, 1 - $j))
                         };
-                        if m_neigh == std::usize::MAX {
+                        if m_neigh == usize::MAX {
                             continue;
                         }
 

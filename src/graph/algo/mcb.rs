@@ -21,6 +21,7 @@ impl<K: PartialOrd, T> PartialOrd for MinScored<K, T> {
         Some(self.cmp(other))
     }
 }
+#[allow(clippy::eq_op)] // we have to check for PartialEq
 impl<K: PartialOrd, T> Ord for MinScored<K, T> {
     fn cmp(&self, other: &Self) -> Ordering {
         let a = &self.0;

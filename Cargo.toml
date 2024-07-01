@@ -13,10 +13,8 @@ bstr = { version = "1.9.1", default-features = false, features = ["std"] }
 c-enum = "0.2.3"
 concat-idents = { version = "1.1.5", optional = true }
 coordgen = { version = "0.2.2", optional = true }
-either = "1.10.0"
 fmtastic = "0.2.0"
 gcd = { version = "2.3.0", optional = true }
-hybridmap = "0.1.1"
 itertools = "0.12.1"
 lazy_static = { version = "1.4.0", optional = true }
 lock_api = { version = "0.4.11", features = ["nightly"] }

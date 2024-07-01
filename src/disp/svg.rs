@@ -58,7 +58,7 @@ pub fn atom_radius(protons: u8) -> u8 {
     }
 }
 
-pub fn fmt_as_svg<'a, G>(graph: G) -> SvgFormatter<G>
+pub fn fmt_as_svg<G>(graph: G) -> SvgFormatter<G>
 where
     G: Data<NodeWeight = Atom, EdgeWeight = Bond>
         + GraphProp<EdgeType = Undirected>
