@@ -63,7 +63,6 @@ pub(crate) enum MolRepr<Ix: IndexType> {
     Atomic(BSType),
     Broken(BrokenMol<Ix>),
     Modify(ModdedMol<Ix>),
-    Redirect(Ix),
 }
 
 /// The `Arena` is the backing storage for everything. It tracks all molecules and handles
@@ -104,12 +103,12 @@ impl<Ix: IndexType> Arena<Ix> {
 
     /// Check if `mol` contains `group`
     #[instrument(level = "debug", skip(self))]
-    pub fn contains_group(&self, mol: Ix, mut group: Ix) -> bool {
+    pub fn contains_group(&self, mol: Ix, group: Ix) -> bool {
+        if mol.index() < group.index() {
+            return false; // quirk of insertion order
+        }
         if mol.index() >= self.parts.len() || group.index() >= self.parts.len() {
             return false;
-        }
-        while let Some((MolRepr::Redirect(r), _)) = self.parts.get(group.index()) {
-            group = *r;
         }
         let mut stack = SmallVec::<_, 3>::new();
         let mut seen = BSType::new();
@@ -125,9 +124,7 @@ impl<Ix: IndexType> Arena<Ix> {
             seen.set(idx, true);
             match self.parts.get(idx).map(|s| &s.0) {
                 None => warn!(idx, "OOB node found when checking for membership"),
-                Some(MolRepr::Redirect(i) | MolRepr::Modify(ModdedMol { base: i, .. })) => {
-                    stack.push(*i)
-                }
+                Some(MolRepr::Modify(ModdedMol { base: i, .. })) => stack.push(*i),
                 Some(MolRepr::Broken(BrokenMol { frags, .. })) => stack.extend_from_slice(frags),
                 Some(MolRepr::Atomic(_)) => {}
             }
@@ -478,9 +475,8 @@ impl<Ix: IndexType> Arena<Ix> {
                                         search_stack.extend_from_slice(&b.frags)
                                     }
                                     MolRepr::Atomic(_) => {}
-                                    MolRepr::Redirect(to)
-                                    | MolRepr::Modify(ModdedMol { base: to, .. }) => {
-                                        search_stack.push(to)
+                                    MolRepr::Modify(ModdedMol { base, .. }) => {
+                                        search_stack.push(base)
                                     }
                                 }
                             }

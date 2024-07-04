@@ -170,9 +170,7 @@ pub mod iter {
             let arena = self.arena.get_arena();
             while let Some(idx) = self.stack.pop() {
                 match arena.parts[idx.index()].0 {
-                    MolRepr::Redirect(r) | MolRepr::Modify(ModdedMol { base: r, .. }) => {
-                        self.stack.push(r)
-                    }
+                    MolRepr::Modify(ModdedMol { base, .. }) => self.stack.push(base),
                     MolRepr::Broken(BrokenMol {
                         ref frags,
                         ref bonds,
@@ -276,9 +274,7 @@ pub mod iter {
                 }
                 let arena = self.arena.get_arena();
                 match arena.parts[self.mol_idx.index()].0 {
-                    MolRepr::Redirect(ix) | MolRepr::Modify(ModdedMol { base: ix, .. }) => {
-                        self.mol_idx = ix
-                    }
+                    MolRepr::Modify(ModdedMol { base, .. }) => self.mol_idx = base,
                     MolRepr::Atomic(ref b) => {
                         if !matches!(self.state, State::Atomic(_)) {
                             let i = b.nth(self.atom_idx.index())?;

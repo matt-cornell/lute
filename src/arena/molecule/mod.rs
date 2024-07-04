@@ -81,7 +81,6 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
         loop {
             trace!(mol_idx = ix.index(), atom_idx = idx, "searching for atom");
             match &arena.parts[ix.index()].0 {
-                MolRepr::Redirect(i) => ix = *i,
                 MolRepr::Modify(m) => {
                     if oride.is_none() {
                         if let Ok(a) = m.patch.binary_search_by_key(&Ix::new(idx), |m| m.0) {
@@ -134,7 +133,6 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
         loop {
             trace!(mol_idx = ix.index(), atom_idx = idx, "searching for atom");
             match &arena.parts[ix.index()].0 {
-                MolRepr::Redirect(i) => ix = *i,
                 MolRepr::Modify(m) => {
                     if let Ok(a) = m.patch.binary_search_by_key(&Ix::new(idx), |m| m.0) {
                         return Some(m.patch[a].1);
@@ -192,7 +190,6 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
                 "searching for bond"
             );
             match &arena.parts[ix.index()].0 {
-                MolRepr::Redirect(i) => ix = *i,
                 MolRepr::Modify(m) => ix = m.base,
                 MolRepr::Atomic(b) => {
                     // inefficient, but works
