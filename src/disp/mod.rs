@@ -1,7 +1,10 @@
+#[cfg(feature = "coordgen")]
+pub mod cgen;
 pub mod dot;
-#[cfg(feature = "mol-svg")]
 pub mod svg;
 
+mod color;
+
+#[cfg(feature = "coordgen")]
+pub use cgen::fmt_with_cg;
 pub use dot::fmt_as_dot;
-#[cfg(feature = "mol-svg")]
-pub use svg::fmt_as_svg;

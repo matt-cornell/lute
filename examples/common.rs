@@ -18,10 +18,10 @@ pub enum OutputType {
     None,
     Dot,
     DDot,
-    #[cfg(feature = "mol-svg")]
-    Svg,
-    #[cfg(all(feature = "mol-svg", feature = "resvg"))]
-    Png,
+    #[cfg(feature = "coordgen")]
+    CgSvg,
+    #[cfg(all(feature = "coordgen", feature = "resvg"))]
+    CgPng,
 }
 impl Display for OutputType {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -29,19 +29,19 @@ impl Display for OutputType {
             Self::None => f.write_str("none"),
             Self::Dot => f.write_str("dot"),
             Self::DDot => f.write_str("d-dot"),
-            #[cfg(feature = "mol-svg")]
-            Self::Svg => f.write_str("svg"),
-            #[cfg(all(feature = "mol-svg", feature = "resvg"))]
-            Self::Png => f.write_str("png"),
+            #[cfg(feature = "coordgen")]
+            Self::CgSvg => f.write_str("cg-svg"),
+            #[cfg(all(feature = "coordgen", feature = "resvg"))]
+            Self::CgPng => f.write_str("cg-png"),
         }
     }
 }
 
 pub fn write_output<O: Display>(path: Option<&Path>, out: O) {
     let res = if let Some(p) = path {
-        std::fs::File::create(p).and_then(|mut f| write!(f, "{}", out))
+        std::fs::File::create(p).and_then(|mut f| writeln!(f, "{}", out))
     } else {
-        write!(stdout(), "{}", out)
+        writeln!(stdout(), "{}", out)
     };
     if let Err(err) = res {
         tracing::error!("{err}");
