@@ -1,4 +1,5 @@
 pub mod dot;
+pub mod inchi;
 #[cfg(feature = "mol-svg")]
 pub mod svg;
 

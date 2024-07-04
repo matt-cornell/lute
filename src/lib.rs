@@ -1,7 +1,7 @@
 #![allow(clippy::module_inception)]
 #![warn(clippy::infinite_loop)]
 #![cfg_attr(feature = "c-ffi", feature(allocator_api))]
-#![feature(get_many_mut, maybe_uninit_write_slice)]
+#![feature(ascii_char, get_many_mut, maybe_uninit_write_slice)]
 
 #[rustfmt::skip]
 pub mod atom_info;
