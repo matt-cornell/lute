@@ -141,7 +141,7 @@ where
         .enumerate()
         .map(|(n, o)| (o.1, n))
         .collect::<AHashMap<_, _>>();
-    let mut visited = AHashMap::<G::NodeId, _>::with_capacity(order.len());
+    let mut visited = AHashMap::with_capacity(order.len());
     let mut last_idx = 0;
     let mut queue = Vec::new();
     let mut counter = 0usize;
@@ -150,23 +150,28 @@ where
     loop {
         if let Some((node, prev, edge, branch)) = queue.pop() {
             if let Some(node) = node {
-                if let Some(idx) = visited.get_mut(&node) {
+                if let Some(&idx) = visited.get(&node) {
                     counter += 1;
-                    if let Some(ch) = u32::try_from(counter)
+                    let len = if let Some(ch) = u32::try_from(counter)
                         .ok()
                         .and_then(|d| char::from_digit(d, 10))
                     {
-                        out.insert(*idx, ch);
+                        out.insert(idx, ch);
                         out.push_str(bond2str(edge));
                         out.push(ch);
-                        *idx += 1;
+                        1
                     } else {
                         buf.clear();
                         let _ = write!(buf, "%{counter}");
-                        out.insert_str(*idx, &buf);
+                        out.insert_str(idx, &buf);
                         out.push_str(bond2str(edge));
                         out.push_str(&buf);
-                        *idx += buf.len();
+                        buf.len()
+                    };
+                    for (_, i) in &mut visited {
+                        if *i >= idx {
+                            *i += len;
+                        }
                     }
                 } else {
                     if branch {
