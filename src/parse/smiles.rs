@@ -667,6 +667,7 @@ impl<'a> SmilesParser<'a> {
             let ex_bonds = match self.graph[atom].protons {
                 x @ 6..=9 => Some(10 - (x as i8) + self.graph[atom].charge),
                 x @ 14..=17 => Some(18 - (x as i8) + self.graph[atom].charge),
+                35 | 53 => Some(1),
                 _ => None,
             };
             let a = self.graph[atom];

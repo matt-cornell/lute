@@ -26,6 +26,7 @@ pub mod prelude {
     pub use crate::disp::fmt_as_dot;
     #[cfg(feature = "mol-svg")]
     pub use crate::disp::fmt_as_svg;
+    pub use crate::disp::smiles::*;
     pub use crate::empirical::EmpiricalFormula;
     pub use crate::graph::misc::DataValueMap;
     pub use crate::molecule::Molecule as MolTrait;

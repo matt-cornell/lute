@@ -33,6 +33,14 @@ fn main() {
                 let mol = arena.molecule(idx);
                 match cli.fmt {
                     OutputType::None => {}
+                    OutputType::FastSmiles => write_output(
+                        cli.out.as_deref(),
+                        generate_smiles(mol, SmilesConfig::fast_roundtrip()) + "\n",
+                    ),
+                    OutputType::CanonSmiles => write_output(
+                        cli.out.as_deref(),
+                        generate_smiles(mol, SmilesConfig::new()) + "\n",
+                    ),
                     OutputType::Dot => write_output(cli.out.as_deref(), fmt_as_dot(mol)),
                     OutputType::DDot => write_output(cli.out.as_deref(), AsDisp(Dot::new(mol))),
                     #[cfg(feature = "mol-svg")]
@@ -46,6 +54,14 @@ fn main() {
             } else {
                 match cli.fmt {
                     OutputType::None => {}
+                    OutputType::FastSmiles => write_output(
+                        cli.out.as_deref(),
+                        generate_smiles(&graph, SmilesConfig::fast_roundtrip()) + "\n",
+                    ),
+                    OutputType::CanonSmiles => write_output(
+                        cli.out.as_deref(),
+                        generate_smiles(&graph, SmilesConfig::new()) + "\n",
+                    ),
                     OutputType::Dot => write_output(cli.out.as_deref(), fmt_as_dot(&graph)),
                     OutputType::DDot => write_output(cli.out.as_deref(), AsDisp(Dot::new(&graph))),
                     #[cfg(feature = "mol-svg")]
