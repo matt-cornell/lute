@@ -260,10 +260,12 @@ where
             out.push('\n');
         }
 
-        for (atom, (cx, cy)) in self.0.node_references().zip(&locs) {
-            let atom = atom.weight();
+        for (node, (cx, cy)) in self.0.node_references().zip(&locs) {
+            let atom = node.weight();
             let r = atom_radius(atom.protons);
-            write!(f, "  <circle r=\"{r}\" cx=\"{cx}\" cy=\"{cy}\" fill=\"{}\" />\n  <text x=\"{cx}\" y=\"{cy}\" font-size=\"{r}\" text-anchor=\"middle\" alignment-baseline=\"middle\" fill=\"#444\">{atom}</text>\n", svg_atom_color(atom.protons))?;
+            let color = svg_atom_color(atom.protons);
+            // let atom = self.0.to_index(node.id());
+            write!(f, "  <circle r=\"{r}\" cx=\"{cx}\" cy=\"{cy}\" fill=\"{color}\" />\n  <text x=\"{cx}\" y=\"{cy}\" font-size=\"{r}\" text-anchor=\"middle\" alignment-baseline=\"middle\" fill=\"#444\">{atom}</text>\n")?;
         }
 
         f.write_str("</svg>")

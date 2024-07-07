@@ -55,6 +55,7 @@ where
     let mut out = String::with_capacity(graph.node_count());
     let mut order = Vec::new();
     if cfg.canon {
+        tracing::warn!("canonical SMILES isn't fully tested");
         let primes = primal::Sieve::new(
             primal::estimate_nth_prime(graph.node_count() as u64 + 1).1 as usize,
         );
@@ -71,7 +72,7 @@ where
             let charge = (atom.charge.signum() + 1) as usize; // 2 bits
             let weight = hydro | (charge << 6) | (protons << 8) | (count << 16) | (non_h << 22);
             // 26 bits in total, but we use a u64 in case other weights get bigger
-            (atom, n.id(), weight)
+            (atom, n.id(), (0, weight))
         }));
         order.sort_unstable_by_key(|n| n.2);
         let mut old = Vec::new();
@@ -82,22 +83,24 @@ where
             {
                 let mut it = primes.primes_from(0);
                 let mut last = None;
-                let mut prime = it.next().unwrap();
+                let mut prime = 0;
+                let mut count = 0;
                 for weight in &mut order {
                     if last != Some(weight.2) {
                         last = Some(weight.2);
                         prime = it.next().unwrap();
+                        count += 1;
                     }
-                    weight.2 = prime;
+                    weight.2 = (count, prime);
                 }
             }
             scratch.clone_from(&order);
             for (_, id, weight) in &mut order {
                 neighbors.clear();
                 neighbors.extend(graph.neighbors(*id));
-                *weight = scratch
+                weight.1 = scratch
                     .iter()
-                    .filter_map(|x| neighbors.contains(&x.1).then_some(x.2))
+                    .filter_map(|x| neighbors.contains(&x.1).then_some(x.2 .1))
                     .product();
             }
             order.sort_by_key(|n| n.2);
@@ -106,27 +109,28 @@ where
                     break;
                 }
                 doubled = true;
-                let mut last: Option<&mut usize> = None;
+                let mut last: Option<(&mut usize, usize)> = None;
                 let mut done = true;
                 let mut decr = true;
                 for i in &mut order {
-                    i.2 *= 2;
-                    if let Some(last) = &mut last {
-                        if decr && **last == i.2 {
+                    i.2 .1 *= 2;
+                    if let Some((last, li)) = &mut last {
+                        if decr && **last == i.2 .1 && *li == i.2 .0 {
                             **last -= 1;
                             decr = false;
                             done = false;
                         } else {
                             decr = true;
                         }
-                        *last = &mut i.2;
+                        *last = &mut i.2 .1;
                     } else {
-                        last = Some(&mut i.2);
+                        last = Some((&mut i.2 .1, i.2 .0));
                     }
                 }
                 if done {
                     break;
                 }
+                // break;
             } else {
                 doubled = false;
             }
@@ -134,7 +138,11 @@ where
             old.extend(order.iter().map(|i| i.1));
         }
     } else {
-        order.extend(graph.node_references().map(|i| (*i.weight(), i.id(), 0)))
+        order.extend(
+            graph
+                .node_references()
+                .map(|i| (*i.weight(), i.id(), (0, 0))),
+        )
     }
     let lookup = order
         .iter()
@@ -161,9 +169,15 @@ where
                                         b')' => depth += 1,
                                         b'(' => {
                                             depth -= 1;
+                                            let idx = out.len() - n - 1;
                                             if depth == 0 {
-                                                out.remove(out.len() - n - 1);
+                                                out.remove(idx);
                                                 break;
+                                            }
+                                            for (_, (i, _)) in &mut visited {
+                                                if *i > idx {
+                                                    *i -= 1;
+                                                }
                                             }
                                         }
                                         _ => {}
@@ -357,9 +371,16 @@ where
                     );
                     if cfg.canon {
                         queue[idx..].sort_by_cached_key(|i| usize::MAX - lookup[&i.0.unwrap()]);
+                        for i in idx..queue.len() {
+                            if visited.contains_key(&queue[i].0.unwrap()) {
+                                let elem = queue.remove(i);
+                                queue.push(elem);
+                            }
+                        }
+                        let last = queue.len() - 1;
                         for (n, i) in queue[idx..].iter().enumerate() {
                             if i.2 != Bond::Single {
-                                queue.swap(idx, idx + n);
+                                queue.swap(last, idx + n);
                                 break;
                             }
                         }
@@ -375,7 +396,7 @@ where
             } else {
                 out.push(')');
             }
-        } else if cfg.canon {
+        } else {
             if let Some((n, next)) = order[last_idx..]
                 .iter()
                 .enumerate()
@@ -386,18 +407,6 @@ where
                 if !out.is_empty() {
                     out.push('.');
                 }
-            } else {
-                break;
-            }
-        } else {
-            if let Some((n, next)) = graph
-                .node_identifiers()
-                .skip(last_idx)
-                .enumerate()
-                .find(|i| !visited.contains_key(&i.1))
-            {
-                last_idx += n + 1;
-                queue.push((Some(next), None, Bond::Non, false));
             } else {
                 break;
             }
