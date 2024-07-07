@@ -141,16 +141,39 @@ where
         .enumerate()
         .map(|(n, o)| (o.1, n))
         .collect::<AHashMap<_, _>>();
-    let mut visited = AHashMap::with_capacity(order.len());
+    let mut visited: AHashMap<_, (_, Vec<G::NodeId>)> = AHashMap::with_capacity(order.len());
     let mut last_idx = 0;
-    let mut queue = Vec::new();
+    let mut queue: Vec<(Option<G::NodeId>, Option<(_, _)>, _, _)> = Vec::new();
     let mut counter = 0usize;
     let mut buf = String::new();
     let mut edge_buf = Vec::new();
     loop {
         if let Some((node, prev, edge, branch)) = queue.pop() {
             if let Some(node) = node {
-                if let Some(&idx) = visited.get(&node) {
+                if let Some(&(idx, ref prevs)) = visited.get(&node) {
+                    if prevs.contains(&prev.unwrap().0) {
+                        match out.pop() {
+                            None => {}
+                            Some(')') => {
+                                let mut depth = 1;
+                                for (n, i) in out.bytes().rev().enumerate() {
+                                    match i {
+                                        b')' => depth += 1,
+                                        b'(' => {
+                                            depth -= 1;
+                                            if depth == 0 {
+                                                out.remove(out.len() - n - 1);
+                                                break;
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                            Some(c) => out.push(c),
+                        }
+                        continue;
+                    }
                     counter += 1;
                     let len = if let Some(ch) = u32::try_from(counter)
                         .ok()
@@ -168,9 +191,12 @@ where
                         out.push_str(&buf);
                         buf.len()
                     };
-                    for (_, i) in &mut visited {
+                    for (n, (i, prevs)) in &mut visited {
                         if *i >= idx {
                             *i += len;
+                        }
+                        if *n == prev.unwrap().0 {
+                            prevs.push(node);
                         }
                     }
                 } else {
@@ -185,6 +211,12 @@ where
                     let atom = order[idx].0;
                     edge_buf.clear();
                     edge_buf.extend(graph.edges(node));
+                    let aromatic = ([5, 6, 7, 8, 15, 16].contains(&atom.protons)
+                        || (atom.protons == 0 && [0xFFFE, 0xFFFC].contains(&atom.isotope)))
+                        && {
+                            let mut it = edge_buf.iter().filter(|e| *e.weight() == Bond::Aromatic);
+                            it.next().is_some() && it.next().is_some()
+                        };
                     let bond_count = (atom.data.unknown() + atom.data.hydrogen()) as isize
                         + edge_buf
                             .iter()
@@ -197,9 +229,18 @@ where
                         35 | 53 => Some(1),
                         _ => None,
                     };
-                    let force = ex_bonds != Some(bond_count)
+                    let needs_h = ex_bonds != Some(bond_count)
+                        && ex_bonds
+                            .map_or(true, |e| e > bond_count - atom.data.hydrogen() as isize);
+                    let force = needs_h
                         || (atom.protons > 0 && atom.isotope > 0 && cfg.isotopes)
                         || (atom.data.chirality().is_chiral() && cfg.isomers);
+                    if aromatic {
+                        match out.pop() {
+                            None | Some(':') => {}
+                            Some(c) => out.push(c),
+                        }
+                    }
                     'print_atom: {
                         if !force {
                             match atom.protons {
@@ -209,11 +250,11 @@ where
                                         break 'print_atom;
                                     }
                                     0xFFFE => {
-                                        out.push('A');
+                                        out.push(if aromatic { 'a' } else { 'A' });
                                         break 'print_atom;
                                     }
                                     0xFFFC => {
-                                        out.push('Q');
+                                        out.push(if aromatic { 'q' } else { 'Q' });
                                         break 'print_atom;
                                     }
                                     0x0100 => {
@@ -227,19 +268,19 @@ where
                                     _ => {}
                                 },
                                 5 => {
-                                    out.push('B');
+                                    out.push(if aromatic { 'b' } else { 'B' });
                                     break 'print_atom;
                                 }
                                 6 => {
-                                    out.push('C');
+                                    out.push(if aromatic { 'c' } else { 'C' });
                                     break 'print_atom;
                                 }
                                 7 => {
-                                    out.push('N');
+                                    out.push(if aromatic { 'n' } else { 'N' });
                                     break 'print_atom;
                                 }
                                 8 => {
-                                    out.push('O');
+                                    out.push(if aromatic { 'o' } else { 'O' });
                                     break 'print_atom;
                                 }
                                 9 => {
@@ -247,11 +288,11 @@ where
                                     break 'print_atom;
                                 }
                                 15 => {
-                                    out.push('P');
+                                    out.push(if aromatic { 'p' } else { 'P' });
                                     break 'print_atom;
                                 }
                                 16 => {
-                                    out.push('S');
+                                    out.push(if aromatic { 's' } else { 'S' });
                                     break 'print_atom;
                                 }
                                 17 => {
@@ -273,8 +314,15 @@ where
                         if atom.isotope > 0 && cfg.isotopes {
                             let _ = write!(out, "{}", atom.isotope);
                         }
+                        let idx = out.len();
                         out.push_str(ATOM_DATA[atom.protons as usize].sym);
-                        if ex_bonds != Some(bond_count) {
+                        if aromatic {
+                            // ascii to ascii is safe
+                            unsafe {
+                                out.as_bytes_mut()[idx].make_ascii_lowercase();
+                            }
+                        }
+                        if needs_h {
                             out.push('H');
                             let h = atom.data.hydrogen();
                             if h != 1 {
@@ -292,13 +340,20 @@ where
                         out.push(']');
                     }
                     out.extend(std::iter::repeat('&').take(atom.data.unknown() as usize));
-                    visited.insert(node, out.len());
                     let idx = queue.len();
                     queue.extend(
                         graph
                             .edges(node)
-                            .filter(|e| prev != Some(e.target()))
-                            .map(|e| (Some(e.target()), Some(node), *e.weight(), true)),
+                            .filter(|e| prev.map(|p| p.0) != Some(e.target()))
+                            .map(|e| {
+                                let w = *e.weight();
+                                let weight = if aromatic && w == Bond::Aromatic {
+                                    Bond::Single
+                                } else {
+                                    w
+                                };
+                                (Some(e.target()), Some((node, edge)), weight, true)
+                            }),
                     );
                     if cfg.canon {
                         queue[idx..].sort_by_cached_key(|i| usize::MAX - lookup[&i.0.unwrap()]);
@@ -312,6 +367,10 @@ where
                     if let Some(i) = queue.get_mut(idx) {
                         i.3 = false;
                     }
+                    visited.insert(
+                        node,
+                        (out.len(), prev.into_iter().map(|i| i.0).collect::<Vec<_>>()),
+                    );
                 }
             } else {
                 out.push(')');

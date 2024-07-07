@@ -392,23 +392,11 @@ impl<'a> SmilesParser<'a> {
                         }
                         self.graph.add_node(Atom::new_isotope_scratch(0, 0xFFFC, 2))
                     }
-                    Some(&b'x') => {
-                        if used > 0 {
-                            Err(SmilesError::new(self.index, GlobIsotope))?
-                        }
-                        self.graph.add_node(Atom::new_isotope_scratch(0, 0x0100, 2))
-                    }
-                    Some(&b'm') => {
-                        if used > 0 {
-                            Err(SmilesError::new(self.index, GlobIsotope))?
-                        }
-                        self.graph.add_node(Atom::new_isotope_scratch(0, 0x042B, 2))
-                    }
                     Some(&b'*') => {
                         if used > 0 {
                             Err(SmilesError::new(self.index, GlobIsotope))?
                         }
-                        self.graph.add_node(Atom::new_isotope_scratch(0, 0xFFFF, 2))
+                        self.graph.add_node(Atom::new_isotope(0, 0xFFFF))
                     }
                     Some(&b'A') => {
                         if used > 0 {
