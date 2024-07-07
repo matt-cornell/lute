@@ -43,6 +43,11 @@ impl SmilesConfig {
         }
     }
 }
+impl Default for SmilesConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 #[tracing::instrument(level = "trace", skip(graph))]
 pub fn generate_smiles<G>(graph: G, cfg: SmilesConfig) -> String
@@ -418,20 +423,18 @@ where
                 } else {
                     out.push(')');
                 }
-            } else {
-                if let Some((n, next)) = order[last_idx..]
-                    .iter()
-                    .enumerate()
-                    .find(|i| !visited.contains_key(&i.1 .1))
-                {
-                    last_idx += n + 1;
-                    queue.push((Some(next.1), None, Bond::Non, false));
-                    if !out.is_empty() {
-                        out.push('.');
-                    }
-                } else {
-                    break;
+            } else if let Some((n, next)) = order[last_idx..]
+                .iter()
+                .enumerate()
+                .find(|i| !visited.contains_key(&i.1 .1))
+            {
+                last_idx += n + 1;
+                queue.push((Some(next.1), None, Bond::Non, false));
+                if !out.is_empty() {
+                    out.push('.');
                 }
+            } else {
+                break;
             }
         }
     }
