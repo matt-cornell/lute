@@ -137,7 +137,7 @@ where
         sketcher.generate(mol);
         let (min_x, min_y, max_x, max_y) = sketcher.atoms().iter().map(|a| {
             let PointF(x, y) = a.borrow().coordinates;
-            (x - 20.0, x + 20.0, y - 20.0, y + 20.0)
+            (x - 20.0, y - 20.0, x + 20.0, y + 20.0)
         }).reduce(|(ix1, iy1, ax1, ay1), (ix2, iy2, ax2, ay2)| {
             (ix1.min(ix2), iy1.min(iy2), ax1.max(ax2), ay1.max(ay2))
         }).unwrap_or((0.0, 0.0, 0.0, 0.0));
@@ -153,6 +153,10 @@ where
             add_y += (diff_x - diff_y) / 2.0;
         }
 
+        for a in sketcher.atoms() {
+            a.borrow_mut().coordinates += PointF(add_x, add_y);
+        }
+
         for edge in self.0.edge_references() {
             let a1 = atoms[self.0.to_index(edge.source())].unwrap().borrow();
             let a2 = atoms[self.0.to_index(edge.target())].unwrap().borrow();
@@ -160,20 +164,18 @@ where
             let mut c2 = a2.coordinates;
             let mut d = c2 - c1;
             d.normalize();
-            if a1.atom_number != 6 {
-                c1 += d * 10.0;
-            }
-            if a2.atom_number != 6 {
-                c2 -= d * 10.0;
-            }
-            let PointF(mut x1, mut y1) = c1;
-            let PointF(mut x2, mut y2) = c2;
+            // if a1.atom_number != 6 {
+            //     c1 += d * 10.0;
+            // }
+            // if a2.atom_number != 6 {
+            //     c2 -= d * 10.0;
+            // }
+            c1 += d * 10.0;
+            c2 -= d * 10.0;
+            let PointF(x1, y1) = c1;
+            let PointF(x2, y2) = c2;
             let PointF(mut dy, dx) = d * 0.3;
             dy = -dy;
-            x1 += add_x;
-            y1 += add_y;
-            x2 += add_x;
-            y2 += add_y;
             match *edge.weight() {
                 Bond::Non => {},
                 Bond::Single | Bond::Left | Bond::Right => write!(f, "  <line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\"/>\n")?,
