@@ -105,6 +105,7 @@ where
         pm
     }
 }
+#[cfg(feature = "coordgen")]
 impl<G> Display for SvgFormatter<G>
 where
     G: Data<NodeWeight = Atom, EdgeWeight = Bond>

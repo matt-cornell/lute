@@ -24,7 +24,7 @@ pub mod prelude {
     pub use crate::arena::{Arena, Container, Molecule};
     pub use crate::core::{Atom, Bond, Chirality};
     pub use crate::disp::fmt_as_dot;
-    #[cfg(feature = "mol-svg")]
+    #[cfg(feature = "coordgen")]
     pub use crate::disp::fmt_as_svg;
     pub use crate::empirical::EmpiricalFormula;
     pub use crate::graph::misc::DataValueMap;

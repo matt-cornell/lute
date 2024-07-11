@@ -18,9 +18,9 @@ pub enum OutputType {
     None,
     Dot,
     DDot,
-    #[cfg(feature = "mol-svg")]
+    #[cfg(feature = "coordgen")]
     Svg,
-    #[cfg(all(feature = "mol-svg", feature = "resvg"))]
+    #[cfg(all(feature = "coordgen", feature = "resvg"))]
     Png,
 }
 impl Display for OutputType {
@@ -29,9 +29,9 @@ impl Display for OutputType {
             Self::None => f.write_str("none"),
             Self::Dot => f.write_str("dot"),
             Self::DDot => f.write_str("d-dot"),
-            #[cfg(feature = "mol-svg")]
+            #[cfg(feature = "coordgen")]
             Self::Svg => f.write_str("svg"),
-            #[cfg(all(feature = "mol-svg", feature = "resvg"))]
+            #[cfg(all(feature = "coordgen", feature = "resvg"))]
             Self::Png => f.write_str("png"),
         }
     }

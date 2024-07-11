@@ -46,9 +46,9 @@ name = "arena-test"
 name = "alcohols"
 
 [features]
-default = ["mol-svg", "rand", "resvg"]
+default = ["coordgen", "rand", "resvg"]
 
-mol-svg = ["dep:coordgen"]
+coordgen = ["dep:coordgen"]
 resvg = ["dep:resvg", "dep:lazy_static"]
 rand = ["dep:rand", "dep:gcd"]
 

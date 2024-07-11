@@ -52,9 +52,9 @@ fn main() {
         OutputType::None => {}
         OutputType::Dot => write_output(cli.out.as_deref(), fmt_as_dot(&graph)),
         OutputType::DDot => write_output(cli.out.as_deref(), AsDisp(Dot::new(&graph))),
-        #[cfg(feature = "mol-svg")]
+        #[cfg(feature = "coordgen")]
         OutputType::Svg => write_output(cli.out.as_deref(), fmt_as_svg(&graph)),
-        #[cfg(all(feature = "mol-svg", feature = "resvg"))]
+        #[cfg(all(feature = "coordgen", feature = "resvg"))]
         OutputType::Png => match fmt_as_svg(&graph).render(None).encode_png() {
             Ok(b) => write_bytes(cli.out.as_deref(), &b),
             Err(err) => tracing::error!("{err}"),
