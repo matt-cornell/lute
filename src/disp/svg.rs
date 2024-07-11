@@ -6,7 +6,6 @@ use petgraph::visit::*;
 use petgraph::Undirected;
 use std::fmt::{self, Display, Formatter};
 
-
 #[cfg(feature = "resvg")]
 use resvg::*;
 
@@ -120,7 +119,7 @@ where
         for e in self.0.edge_references() {
             builder.add_bond(
                 atoms[self.0.to_index(e.source())].unwrap(),
-                atoms[self.0.to_index(e.source())].unwrap(),
+                atoms[self.0.to_index(e.target())].unwrap(),
                 e.weight().bond_count().floor() as _,
             );
         }
@@ -135,12 +134,17 @@ where
         let mol = builder.finish();
         let mut sketcher = Sketcher::new(&intern);
         sketcher.generate(mol);
-        let (min_x, min_y, max_x, max_y) = sketcher.atoms().iter().map(|a| {
-            let PointF(x, y) = a.borrow().coordinates;
-            (x - 20.0, y - 20.0, x + 20.0, y + 20.0)
-        }).reduce(|(ix1, iy1, ax1, ay1), (ix2, iy2, ax2, ay2)| {
-            (ix1.min(ix2), iy1.min(iy2), ax1.max(ax2), ay1.max(ay2))
-        }).unwrap_or((0.0, 0.0, 0.0, 0.0));
+        let (min_x, min_y, max_x, max_y) = sketcher
+            .atoms()
+            .iter()
+            .map(|a| {
+                let PointF(x, y) = a.borrow().coordinates;
+                (x - 20.0, y - 20.0, x + 20.0, y + 20.0)
+            })
+            .reduce(|(ix1, iy1, ax1, ay1), (ix2, iy2, ax2, ay2)| {
+                (ix1.min(ix2), iy1.min(iy2), ax1.max(ax2), ay1.max(ay2))
+            })
+            .unwrap_or((0.0, 0.0, 0.0, 0.0));
         let diff_x = max_x - min_x + 40.0;
         let diff_y = max_y - min_y + 40.0;
         let max_axis = std::cmp::max_by(diff_x, diff_y, f32::total_cmp);
@@ -170,11 +174,11 @@ where
             // if a2.atom_number != 6 {
             //     c2 -= d * 10.0;
             // }
-            c1 += d * 10.0;
-            c2 -= d * 10.0;
+            c1 += d * 8.0;
+            c2 -= d * 8.0;
             let PointF(x1, y1) = c1;
             let PointF(x2, y2) = c2;
-            let PointF(mut dy, dx) = d * 0.3;
+            let PointF(mut dy, dx) = d * 2.0;
             dy = -dy;
             match *edge.weight() {
                 Bond::Non => {},
