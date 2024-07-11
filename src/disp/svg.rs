@@ -1,8 +1,11 @@
 use crate::atom_info::*;
 use crate::core::*;
+use coordgen_rs::prelude::*;
+use coordgen_rs::sketcher::PointF;
 use petgraph::visit::*;
 use petgraph::Undirected;
-use std::fmt::{self, Debug, Display};
+use std::fmt::{self, Display, Formatter};
+
 
 #[cfg(feature = "resvg")]
 use resvg::*;
@@ -10,7 +13,6 @@ use resvg::*;
 pub const SVG_SUPPRESSED_R: &str = "#407F00";
 pub const SVG_SUPPRESSED_H: &str = "#577478";
 pub const SVG_BOND_COLOR: &str = "#444";
-
 pub fn svg_atom_color(num: u8) -> &'static str {
     match num {
         0 => "#7FFF00",
@@ -43,18 +45,6 @@ pub fn svg_atom_color(num: u8) -> &'static str {
             ElemGroup::AlkEar => "#610061",
             ElemGroup::Halogn => "#006000",
         },
-    }
-}
-
-pub fn atom_radius(protons: u8) -> u8 {
-    match protons {
-        0 => 25,
-        1 | 2 => 8,
-        3..=10 => 11,
-        11..=18 => 14,
-        19..=36 => 16,
-        37..=54 => 19,
-        55.. => 23,
     }
 }
 
@@ -105,7 +95,6 @@ where
         pm
     }
 }
-#[cfg(feature = "coordgen")]
 impl<G> Display for SvgFormatter<G>
 where
     G: Data<NodeWeight = Atom, EdgeWeight = Bond>
@@ -114,67 +103,44 @@ where
         + NodeCompactIndexable,
 {
     #[allow(clippy::write_with_newline)]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut atoms = self
-            .0
-            .node_references()
-            .map(|a| {
-                if a.weight().protons == 0 {
-                    85
-                } else {
-                    a.weight().protons
-                }
-            })
-            .collect::<Vec<_>>();
-        let mut edges = self
-            .0
-            .edge_references()
-            .map(|e| {
-                [
-                    self.0.to_index(e.source()) as u16,
-                    self.0.to_index(e.target()) as u16,
-                    e.weight().bond_count().floor() as u16,
-                ]
-            })
-            .collect::<Vec<_>>();
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let intern = Unsync::new();
+        let mut builder = Builder::new(&intern);
+        let mut atoms = vec![None; self.0.node_count()];
+        for a in self.0.node_references() {
+            let p = if a.weight().protons == 0 {
+                85
+            } else {
+                a.weight().protons
+            };
+            let r = builder.add_atom(p);
+            r.borrow_mut().charge = a.weight().charge;
+            atoms[self.0.to_index(a.id())] = Some(r);
+        }
+        for e in self.0.edge_references() {
+            builder.add_bond(
+                atoms[self.0.to_index(e.source())].unwrap(),
+                atoms[self.0.to_index(e.source())].unwrap(),
+                e.weight().bond_count().floor() as _,
+            );
+        }
         for atom in self.0.node_references() {
             let idx = self.0.to_index(atom.id());
             let data = atom.weight().data;
-            // for _ in 0..data.hydrogen() {
-            //     edges.push([idx as _, atoms.len() as _, 1]);
-            //     atoms.push(1);
-            // }
             for _ in 0..data.unknown() {
-                edges.push([idx as _, atoms.len() as _, 1]);
-                atoms.push(85);
+                let h = builder.add_atom(1);
+                builder.add_bond(atoms[idx as usize].unwrap(), h, 85);
             }
         }
-        let locs = coordgen::gen_coords(&atoms, &edges).unwrap();
-        let mut out = String::new();
-        let min_x = locs
-            .iter()
-            .zip(&atoms)
-            .map(|(p, &a)| p.0 - atom_radius(a) as f32)
-            .min_by(f32::total_cmp)
-            .unwrap_or(0.0);
-        let min_y = locs
-            .iter()
-            .zip(&atoms)
-            .map(|(p, &a)| p.1 - atom_radius(a) as f32)
-            .min_by(f32::total_cmp)
-            .unwrap_or(0.0);
-        let max_x = locs
-            .iter()
-            .zip(&atoms)
-            .map(|(p, &a)| p.0 + atom_radius(a) as f32)
-            .max_by(f32::total_cmp)
-            .unwrap_or(0.0);
-        let max_y = locs
-            .iter()
-            .zip(&atoms)
-            .map(|(p, &a)| p.1 + atom_radius(a) as f32)
-            .max_by(f32::total_cmp)
-            .unwrap_or(0.0);
+        let mol = builder.finish();
+        let mut sketcher = Sketcher::new(&intern);
+        sketcher.generate(mol);
+        let (min_x, min_y, max_x, max_y) = sketcher.atoms().iter().map(|a| {
+            let PointF(x, y) = a.borrow().coordinates;
+            (x - 20.0, x + 20.0, y - 20.0, y + 20.0)
+        }).reduce(|(ix1, iy1, ax1, ay1), (ix2, iy2, ax2, ay2)| {
+            (ix1.min(ix2), iy1.min(iy2), ax1.max(ax2), ay1.max(ay2))
+        }).unwrap_or((0.0, 0.0, 0.0, 0.0));
         let diff_x = max_x - min_x + 40.0;
         let diff_y = max_y - min_y + 40.0;
         let max_axis = std::cmp::max_by(diff_x, diff_y, f32::total_cmp);
@@ -186,18 +152,28 @@ where
         } else {
             add_y += (diff_x - diff_y) / 2.0;
         }
-        let locs = locs
-            .iter()
-            .map(|(x, y)| ((x + add_x).floor() as i16, (y + add_y).floor() as i16))
-            .collect::<Vec<_>>();
 
         for edge in self.0.edge_references() {
-            let (x1, y1) = locs[self.0.to_index(edge.source())];
-            let (x2, y2) = locs[self.0.to_index(edge.target())];
-            let (dx, dy) = (x2 - x1, y2 - y1);
-            let (dx, dy) = (-dy as f64, dx as f64);
-            let mag = (dx * dx + dy * dy).sqrt() / 3.0;
-            let (dx, dy) = ((dx / mag) as i16, (dy / mag) as i16);
+            let a1 = atoms[self.0.to_index(edge.source())].unwrap().borrow();
+            let a2 = atoms[self.0.to_index(edge.target())].unwrap().borrow();
+            let mut c1 = a1.coordinates;
+            let mut c2 = a2.coordinates;
+            let mut d = c2 - c1;
+            d.normalize();
+            if a1.atom_number != 6 {
+                c1 += d * 10.0;
+            }
+            if a2.atom_number != 6 {
+                c2 -= d * 10.0;
+            }
+            let PointF(mut x1, mut y1) = c1;
+            let PointF(mut x2, mut y2) = c2;
+            let PointF(mut dy, dx) = d * 0.3;
+            dy = -dy;
+            x1 += add_x;
+            y1 += add_y;
+            x2 += add_x;
+            y2 += add_y;
             match *edge.weight() {
                 Bond::Non => {},
                 Bond::Single | Bond::Left | Bond::Right => write!(f, "  <line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\"/>\n")?,
@@ -209,21 +185,21 @@ where
                     x2 + dx, y2 + dy)?,
                 Bond::Triple => write!(f,
                     "  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n",
-                    x1 - 2 * dx, y1 - 2 * dy,
-                    x2 - 2 * dx, y2 - 2 * dy,
-                    x1 + 2 * dx, y1 + 2 * dy,
-                    x2 + 2 * dx, y2 + 2 * dy,
+                    x1 - 2.0 * dx, y1 - 2.0 * dy,
+                    x2 - 2.0 * dx, y2 - 2.0 * dy,
+                    x1 + 2.0 * dx, y1 + 2.0 * dy,
+                    x2 + 2.0 * dx, y2 + 2.0 * dy,
                     x1, y1, x2, y2)?,
                 Bond::Quad => write!(f,
                     "  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n",
-                    x1 - 3 * dx, y1 - 3 * dy,
-                    x2 - 3 * dx, y2 - 3 * dy,
+                    x1 - 3.0 * dx, y1 - 3.0 * dy,
+                    x2 - 3.0 * dx, y2 - 3.0 * dy,
                     x1 - dx, y1 - dy,
                     x2 - dx, y2 - dy,
                     x1 + dx, y1 + dy,
                     x2 + dx, y2 + dy,
-                    x1 + 3 * dx, y1 + 3 * dy,
-                    x2 + 3 * dx, y2 + 3 * dy)?,
+                    x1 + 3.0 * dx, y1 + 3.0 * dy,
+                    x2 + 3.0 * dx, y2 + 3.0 * dy)?,
                 Bond::Aromatic => write!(f,
                     "  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\"  stroke-dasharray=\"10,10\"/>\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n",
                     x1 - dx, y1 - dy,
@@ -234,37 +210,18 @@ where
             }
         }
 
-        if !edges.is_empty() {
-            out.push('\n')
-        }
-
         let mut idx = self.0.node_count();
 
-        for (atom, (x1, y1)) in self.0.node_references().zip(&locs) {
-            let atom = atom.weight();
+        for a in self.0.node_references() {
+            let atom = a.weight();
             let data = atom.data;
-            // for i in 0..data.hydrogen() {
-            //     let (x2, y2) = locs[idx + (i as usize)];
-            //     let r = atom_radius(1);
-            //     write!(f, "  <line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\"/>\n  <circle r=\"{r}\" cx=\"{x2}\" cy=\"{y2}\" fill=\"{}\" />\n  <text x=\"{x2}\" y=\"{y2}\" font-size=\"{r}\" text-anchor=\"middle\" alignment-baseline=\"middle\" fill=\"#444\">H</text>\n", SVG_SUPPRESSED_H)?;
-            // }
-            idx += data.hydrogen() as usize;
+            let PointF(x1, y1) = atoms[self.0.to_index(a.id())].unwrap().borrow().coordinates;
+            write!(f, "  <text x=\"{x1}\" y=\"{y1}\" font-size=\"10\" text-anchor=\"middle\" alignment-baseline=\"middle\" fill=\"{}\">{atom}</text>\n", svg_atom_color(atom.protons))?;
             for i in 0..data.unknown() {
-                let (x2, y2) = locs[idx + (i as usize)];
-                let r = atom_radius(0);
-                write!(f, "  <line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\"/>\n  <circle r=\"{r}\" cx=\"{x2}\" cy=\"{y2}\" fill=\"{}\" />\n  <text x=\"{x2}\" y=\"{y2}\" font-size=\"{r}\" text-anchor=\"middle\" alignment-baseline=\"middle\" fill=\"#444\">R</text>\n", SVG_SUPPRESSED_R)?;
+                let PointF(x2, y2) = atoms[idx + (i as usize)].unwrap().borrow().coordinates;
+                write!(f, "  <line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\"/>\n  <text x=\"{x2}\" y=\"{y2}\" font-size=\"10\" text-anchor=\"middle\" alignment-baseline=\"middle\" fill=\"{SVG_SUPPRESSED_R}\">R</text>\n")?;
             }
             idx += data.unknown() as usize;
-        }
-
-        if idx != self.0.node_count() {
-            out.push('\n');
-        }
-
-        for (atom, (cx, cy)) in self.0.node_references().zip(&locs) {
-            let atom = atom.weight();
-            let r = atom_radius(atom.protons);
-            write!(f, "  <circle r=\"{r}\" cx=\"{cx}\" cy=\"{cy}\" fill=\"{}\" />\n  <text x=\"{cx}\" y=\"{cy}\" font-size=\"{r}\" text-anchor=\"middle\" alignment-baseline=\"middle\" fill=\"#444\">{atom}</text>\n", svg_atom_color(atom.protons))?;
         }
 
         f.write_str("</svg>")

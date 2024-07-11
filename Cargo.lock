@@ -144,12 +144,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cd17eb909a8c6a894926bfcc3400a4bb0e732f5a57d37b1f14e8b29e329bace8"
 
 [[package]]
-name = "cc"
-version = "1.0.104"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "74b6a57f98764a267ff415d50a25e6e166f3831a5071af4995296ea97d210490"
-
-[[package]]
 name = "cfg-if"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -196,15 +190,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4b82cf0babdbd58558212896d1a4272303a57bdb245c2bf1147185fb45640e70"
 
 [[package]]
-name = "cmake"
-version = "0.1.50"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a31c789563b815f77f4250caee12365734369f942439b7defd71e18a48197130"
-dependencies = [
- "cc",
-]
-
-[[package]]
 name = "colorchoice"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -221,12 +206,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "coordgen"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af59563f78f813f7b476a34257137657133b9771ba00b88db8fecb47494d648b"
+name = "coordgen-rs"
+version = "0.0.1"
 dependencies = [
- "cmake",
+ "ahash",
+ "orx-imp-vec",
 ]
 
 [[package]]
@@ -435,7 +419,7 @@ dependencies = [
  "c-enum",
  "clap",
  "concat-idents",
- "coordgen",
+ "coordgen-rs",
  "fmtastic",
  "gcd",
  "itertools",
@@ -515,6 +499,41 @@ name = "once_cell"
 version = "1.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3fdb12b2476b595f9358c5161aa467c2438859caa136dec86c26fdd2efe17b92"
+
+[[package]]
+name = "orx-fixed-vec"
+version = "2.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "92b1feab17e804565dc7203abe7010f2923c6bebbcd2ea44ce539a6b14aba7d7"
+dependencies = [
+ "orx-pinned-vec",
+]
+
+[[package]]
+name = "orx-imp-vec"
+version = "2.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b11d7d04077ed5f3188b12fb5f073dcddced66af345ba6ef01eac2c4ce9cd6b7"
+dependencies = [
+ "orx-fixed-vec",
+ "orx-pinned-vec",
+ "orx-split-vec",
+]
+
+[[package]]
+name = "orx-pinned-vec"
+version = "2.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "10d7e4bbaaf315d1b3d4b574a005b09659c3a696ee87791f8d50115bf7a7efe7"
+
+[[package]]
+name = "orx-split-vec"
+version = "2.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "492b61b2cc2fdd3d06ebe34acdbe8670c21452f06b42d025136aaef994c5b4da"
+dependencies = [
+ "orx-pinned-vec",
+]
 
 [[package]]
 name = "overload"
