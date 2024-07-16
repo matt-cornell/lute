@@ -223,8 +223,7 @@ dependencies = [
 [[package]]
 name = "coordgen"
 version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af59563f78f813f7b476a34257137657133b9771ba00b88db8fecb47494d648b"
+source = "git+https://github.com/matt-cornell/coordgen-rs#a92320e78a2a2f66d87b8469309d054ed2d08534"
 dependencies = [
  "cmake",
 ]
