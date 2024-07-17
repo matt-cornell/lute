@@ -46,7 +46,7 @@ pub fn svg_atom_color(num: u8) -> &'static str {
     }
 }
 
-pub fn atom_radius(protons: u8) -> u8 {
+fn atom_radius(protons: u8) -> u8 {
     match protons {
         0 => 25,
         1 | 2 => 8,
@@ -58,6 +58,16 @@ pub fn atom_radius(protons: u8) -> u8 {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum FormatMode {
+    /// Normal mode, gives a diagram
+    Normal,
+    /// Legacy mode, draws atoms as circles
+    Legacy,
+    /// Legacy mode, with hydrogens explicitly drawn
+    LegacyH,
+}
+
 pub fn fmt_as_svg<G>(graph: G) -> SvgFormatter<G>
 where
     G: Data<NodeWeight = Atom, EdgeWeight = Bond>
@@ -66,7 +76,10 @@ where
         + IntoEdgeReferences
         + NodeCompactIndexable,
 {
-    SvgFormatter(graph)
+    SvgFormatter {
+        graph,
+        mode: FormatMode::Normal,
+    }
 }
 
 #[cfg(feature = "resvg")]
@@ -81,7 +94,10 @@ lazy_static::lazy_static! {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct SvgFormatter<G>(pub G);
+pub struct SvgFormatter<G> {
+    pub graph: G,
+    pub mode: FormatMode,
+}
 #[cfg(feature = "resvg")]
 impl<G> SvgFormatter<G>
 where
@@ -116,7 +132,7 @@ where
     #[allow(clippy::write_with_newline)]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut atoms = self
-            .0
+            .graph
             .node_references()
             .map(|a| {
                 if a.weight().protons == 0 {
@@ -127,23 +143,25 @@ where
             })
             .collect::<Vec<_>>();
         let mut edges = self
-            .0
+            .graph
             .edge_references()
             .map(|e| {
                 [
-                    self.0.to_index(e.source()) as u16,
-                    self.0.to_index(e.target()) as u16,
+                    self.graph.to_index(e.source()) as u16,
+                    self.graph.to_index(e.target()) as u16,
                     e.weight().bond_count().floor() as u16,
                 ]
             })
             .collect::<Vec<_>>();
-        for atom in self.0.node_references() {
-            let idx = self.0.to_index(atom.id());
+        for atom in self.graph.node_references() {
+            let idx = self.graph.to_index(atom.id());
             let data = atom.weight().data;
-            // for _ in 0..data.hydrogen() {
-            //     edges.push([idx as _, atoms.len() as _, 1]);
-            //     atoms.push(1);
-            // }
+            if self.mode == FormatMode::LegacyH {
+                for _ in 0..data.hydrogen() {
+                    edges.push([idx as _, atoms.len() as _, 1]);
+                    atoms.push(1);
+                }
+            }
             for _ in 0..data.unknown() {
                 edges.push([idx as _, atoms.len() as _, 1]);
                 atoms.push(85);
@@ -191,9 +209,9 @@ where
             .map(|(x, y)| ((x + add_x).floor() as i16, (y + add_y).floor() as i16))
             .collect::<Vec<_>>();
 
-        for edge in self.0.edge_references() {
-            let (x1, y1) = locs[self.0.to_index(edge.source())];
-            let (x2, y2) = locs[self.0.to_index(edge.target())];
+        for edge in self.graph.edge_references() {
+            let (x1, y1) = locs[self.graph.to_index(edge.source())];
+            let (x2, y2) = locs[self.graph.to_index(edge.target())];
             let (dx, dy) = (x2 - x1, y2 - y1);
             let (dx, dy) = (-dy as f64, dx as f64);
             let mag = (dx * dx + dy * dy).sqrt() / 3.0;
@@ -238,17 +256,19 @@ where
             out.push('\n')
         }
 
-        let mut idx = self.0.node_count();
+        let mut idx = self.graph.node_count();
 
-        for (atom, (x1, y1)) in self.0.node_references().zip(&locs) {
+        for (atom, (x1, y1)) in self.graph.node_references().zip(&locs) {
             let atom = atom.weight();
             let data = atom.data;
-            // for i in 0..data.hydrogen() {
-            //     let (x2, y2) = locs[idx + (i as usize)];
-            //     let r = atom_radius(1);
-            //     write!(f, "  <line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\"/>\n  <circle r=\"{r}\" cx=\"{x2}\" cy=\"{y2}\" fill=\"{}\" />\n  <text x=\"{x2}\" y=\"{y2}\" font-size=\"{r}\" text-anchor=\"middle\" alignment-baseline=\"middle\" fill=\"#444\">H</text>\n", SVG_SUPPRESSED_H)?;
-            // }
-            // idx += data.hydrogen() as usize;
+            if self.mode == FormatMode::LegacyH {
+                for i in 0..data.hydrogen() {
+                    let (x2, y2) = locs[idx + (i as usize)];
+                    let r = atom_radius(1);
+                    write!(f, "  <line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\"/>\n  <circle r=\"{r}\" cx=\"{x2}\" cy=\"{y2}\" fill=\"{}\" />\n  <text x=\"{x2}\" y=\"{y2}\" font-size=\"{r}\" text-anchor=\"middle\" alignment-baseline=\"middle\" fill=\"#444\">H</text>\n", SVG_SUPPRESSED_H)?;
+                }
+                idx += data.hydrogen() as usize;
+            }
             for i in 0..data.unknown() {
                 let (x2, y2) = locs[idx + (i as usize)];
                 let r = atom_radius(0);
@@ -257,11 +277,11 @@ where
             idx += data.unknown() as usize;
         }
 
-        if idx != self.0.node_count() {
+        if idx != self.graph.node_count() {
             out.push('\n');
         }
 
-        for (atom, (cx, cy)) in self.0.node_references().zip(&locs) {
+        for (atom, (cx, cy)) in self.graph.node_references().zip(&locs) {
             let atom = atom.weight();
             let r = atom_radius(atom.protons);
             write!(f, "  <circle r=\"{r}\" cx=\"{cx}\" cy=\"{cy}\" fill=\"{}\" />\n  <text x=\"{cx}\" y=\"{cy}\" font-size=\"{r}\" text-anchor=\"middle\" alignment-baseline=\"middle\" fill=\"#444\">{atom}</text>\n", svg_atom_color(atom.protons))?;
