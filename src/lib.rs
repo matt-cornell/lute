@@ -1,6 +1,5 @@
 #![allow(clippy::module_inception)]
 #![warn(clippy::infinite_loop)]
-#![cfg_attr(feature = "c-ffi", feature(allocator_api))]
 #![feature(get_many_mut, maybe_uninit_write_slice)]
 
 #[rustfmt::skip]
@@ -16,9 +15,6 @@ pub mod utils;
 
 #[cfg(feature = "rand")]
 pub mod rand;
-
-#[cfg(feature = "c-ffi")]
-pub mod ffi;
 
 pub mod prelude {
     pub use crate::arena::{Arena, Container, Molecule};

@@ -211,16 +211,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b6a852b24ab71dffc585bcb46eaf7959d175cb865a7152e35b348d1b2960422"
 
 [[package]]
-name = "concat-idents"
-version = "1.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f76990911f2267d837d9d0ad060aa63aaad170af40904b29461734c339030d4d"
-dependencies = [
- "quote",
- "syn 2.0.71",
-]
-
-[[package]]
 name = "coordgen"
 version = "0.2.2"
 source = "git+https://github.com/matt-cornell/coordgen-rs#2d9c8bb9419493ce5b745b69fb0e2f148d0ed43b"
@@ -433,7 +423,6 @@ dependencies = [
  "bstr",
  "c-enum",
  "clap",
- "concat-idents",
  "coordgen",
  "fmtastic",
  "gcd",
