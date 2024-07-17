@@ -75,20 +75,6 @@ impl FormatMode {
     }
 }
 
-pub fn fmt_as_svg<G>(graph: G) -> SvgFormatter<G>
-where
-    G: Data<NodeWeight = Atom, EdgeWeight = Bond>
-        + GraphProp<EdgeType = Undirected>
-        + IntoNodeReferences
-        + IntoEdgeReferences
-        + NodeCompactIndexable,
-{
-    SvgFormatter {
-        graph,
-        mode: FormatMode::Normal,
-    }
-}
-
 #[cfg(feature = "resvg")]
 lazy_static::lazy_static! {
     static ref OPTS: usvg::Options = usvg::Options {font_family: "DejaVu Sans Mono".to_string(), ..Default::default()};
