@@ -248,7 +248,7 @@ where
             //     let r = atom_radius(1);
             //     write!(f, "  <line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\"/>\n  <circle r=\"{r}\" cx=\"{x2}\" cy=\"{y2}\" fill=\"{}\" />\n  <text x=\"{x2}\" y=\"{y2}\" font-size=\"{r}\" text-anchor=\"middle\" alignment-baseline=\"middle\" fill=\"#444\">H</text>\n", SVG_SUPPRESSED_H)?;
             // }
-            idx += data.hydrogen() as usize;
+            // idx += data.hydrogen() as usize;
             for i in 0..data.unknown() {
                 let (x2, y2) = locs[idx + (i as usize)];
                 let r = atom_radius(0);

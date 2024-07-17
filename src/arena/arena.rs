@@ -555,9 +555,7 @@ impl<Ix: IndexType> Arena<Ix> {
         found.extend(ConnectedGraphIter::new(&filtered).iter(mol).map(|bits| {
             let graph = BitFiltered::<_, usize, ATOM_BIT_STORAGE, true>::new(&filtered, bits);
             let (ix, map) = self.insert_mol_atomic(&graph, true);
-            let out = (0..map.len())
-                .map(|i| graph.filter.index(map[i]).unwrap())
-                .collect();
+            let out = map.iter().map(|i| graph.filter.nth(*i).unwrap()).collect();
             (ix.index(), out)
         }));
         debug!(count = found.len() - ext_start, "unmatched sections split");
