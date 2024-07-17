@@ -1,5 +1,7 @@
 use crate::atom_info::*;
 use crate::core::*;
+use crate::prelude::DataValueMap;
+use fmtastic::*;
 use petgraph::visit::*;
 use petgraph::Undirected;
 use std::fmt::{self, Debug, Display};
@@ -9,7 +11,7 @@ use resvg::*;
 
 pub const SVG_SUPPRESSED_R: &str = "#407F00";
 pub const SVG_SUPPRESSED_H: &str = "#577478";
-pub const SVG_BOND_COLOR: &str = "#444";
+pub const SVG_BOND_COLOR: &str = "#777";
 
 pub fn svg_atom_color(num: u8) -> &'static str {
     match num {
@@ -18,7 +20,7 @@ pub fn svg_atom_color(num: u8) -> &'static str {
         3 => "#9400D3",
         4 => "#8B008B",
         5 => "#CC7000",
-        6 => "#0F0F0F",
+        6 => "#606060",
         7 => "#00BFFF",
         8 => "#CC0000",
         9 => "#00C000",
@@ -67,6 +69,11 @@ pub enum FormatMode {
     /// Legacy mode, with hydrogens explicitly drawn
     LegacyH,
 }
+impl FormatMode {
+    pub const fn is_legacy(&self) -> bool {
+        matches!(self, Self::Legacy | Self::LegacyH)
+    }
+}
 
 pub fn fmt_as_svg<G>(graph: G) -> SvgFormatter<G>
 where
@@ -98,12 +105,21 @@ pub struct SvgFormatter<G> {
     pub graph: G,
     pub mode: FormatMode,
 }
+impl<G> SvgFormatter<G> {
+    pub fn new(graph: G) -> Self {
+        Self {
+            graph,
+            mode: FormatMode::Normal,
+        }
+    }
+}
 #[cfg(feature = "resvg")]
 impl<G> SvgFormatter<G>
 where
-    G: Data<NodeWeight = Atom, EdgeWeight = Bond>
+    G: DataValueMap<NodeWeight = Atom, EdgeWeight = Bond>
         + IntoNodeReferences
         + IntoEdgeReferences
+        + IntoEdges
         + NodeCompactIndexable,
 {
     pub fn render_to_bytes(&self, bytes: &mut [u8], w: u32, h: u32) {
@@ -124,9 +140,10 @@ where
 #[cfg(feature = "coordgen")]
 impl<G> Display for SvgFormatter<G>
 where
-    G: Data<NodeWeight = Atom, EdgeWeight = Bond>
+    G: DataValueMap<NodeWeight = Atom, EdgeWeight = Bond>
         + IntoNodeReferences
         + IntoEdgeReferences
+        + IntoEdges
         + NodeCompactIndexable,
 {
     #[allow(clippy::write_with_newline)]
@@ -169,30 +186,31 @@ where
         }
         let locs = coordgen::gen_coords(&atoms, &edges).unwrap();
         let mut out = String::new();
-        let min_x = locs
-            .iter()
-            .zip(&atoms)
-            .map(|(p, &a)| p.0 - atom_radius(a) as f32)
-            .min_by(f32::total_cmp)
-            .unwrap_or(0.0);
-        let min_y = locs
-            .iter()
-            .zip(&atoms)
-            .map(|(p, &a)| p.1 - atom_radius(a) as f32)
-            .min_by(f32::total_cmp)
-            .unwrap_or(0.0);
-        let max_x = locs
-            .iter()
-            .zip(&atoms)
-            .map(|(p, &a)| p.0 + atom_radius(a) as f32)
-            .max_by(f32::total_cmp)
-            .unwrap_or(0.0);
-        let max_y = locs
-            .iter()
-            .zip(&atoms)
-            .map(|(p, &a)| p.1 + atom_radius(a) as f32)
-            .max_by(f32::total_cmp)
-            .unwrap_or(0.0);
+        let (min_x, min_y, max_x, max_y) = if atoms.is_empty() {
+            (0.0, 0.0, 0.0, 0.0)
+        } else {
+            locs.iter().zip(&atoms).fold(
+                (
+                    f32::INFINITY,
+                    f32::INFINITY,
+                    f32::NEG_INFINITY,
+                    f32::NEG_INFINITY,
+                ),
+                |(ix, iy, ax, ay), (l, a)| {
+                    let r = if self.mode.is_legacy() {
+                        atom_radius(*a) as f32
+                    } else {
+                        0.0
+                    };
+                    (
+                        ix.min(l.0 - r),
+                        iy.min(l.1 - r),
+                        ax.max(l.0 + r),
+                        ay.max(l.1 + r),
+                    )
+                },
+            )
+        };
         let diff_x = max_x - min_x + 40.0;
         let diff_y = max_y - min_y + 40.0;
         let max_axis = std::cmp::max_by(diff_x, diff_y, f32::total_cmp);
@@ -204,18 +222,31 @@ where
         } else {
             add_y += (diff_x - diff_y) / 2.0;
         }
-        let locs = locs
-            .iter()
-            .map(|(x, y)| ((x + add_x).floor() as i16, (y + add_y).floor() as i16))
-            .collect::<Vec<_>>();
 
         for edge in self.graph.edge_references() {
-            let (x1, y1) = locs[self.graph.to_index(edge.source())];
-            let (x2, y2) = locs[self.graph.to_index(edge.target())];
-            let (dx, dy) = (x2 - x1, y2 - y1);
-            let (dx, dy) = (-dy as f64, dx as f64);
-            let mag = (dx * dx + dy * dy).sqrt() / 3.0;
-            let (dx, dy) = ((dx / mag) as i16, (dy / mag) as i16);
+            let ix1 = self.graph.to_index(edge.source());
+            let ix2 = self.graph.to_index(edge.target());
+            let (mut x1, mut y1) = locs[ix1];
+            let (mut x2, mut y2) = locs[ix2];
+            let (mut dx, mut dy) = (x2 - x1, y2 - y1);
+            let mag = (dx * dx + dy * dy).sqrt();
+            x1 += add_x;
+            y1 += add_y;
+            x2 += add_x;
+            y2 += add_y;
+            dx /= mag;
+            dy /= mag;
+            if self.mode == FormatMode::Normal {
+                if atoms[ix1] != 6 || self.graph.node_weight(edge.source()).unwrap().isotope != 0 {
+                    x1 += dx * 12.0;
+                    y1 += dy * 12.0;
+                }
+                if atoms[ix2] != 6 || self.graph.node_weight(edge.target()).unwrap().isotope != 0 {
+                    x2 -= dx * 12.0;
+                    y2 -= dy * 12.0;
+                }
+            }
+            let (dx, dy) = (-dy * 2.75, dx * 2.75);
             match *edge.weight() {
                 Bond::Non => {},
                 Bond::Single | Bond::Left | Bond::Right => write!(f, "  <line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\"/>\n")?,
@@ -227,21 +258,21 @@ where
                     x2 + dx, y2 + dy)?,
                 Bond::Triple => write!(f,
                     "  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n",
-                    x1 - 2 * dx, y1 - 2 * dy,
-                    x2 - 2 * dx, y2 - 2 * dy,
-                    x1 + 2 * dx, y1 + 2 * dy,
-                    x2 + 2 * dx, y2 + 2 * dy,
+                    x1 - 2.0 * dx, y1 - 2.0 * dy,
+                    x2 - 2.0 * dx, y2 - 2.0 * dy,
+                    x1 + 2.0 * dx, y1 + 2.0 * dy,
+                    x2 + 2.0 * dx, y2 + 2.0 * dy,
                     x1, y1, x2, y2)?,
                 Bond::Quad => write!(f,
                     "  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n",
-                    x1 - 3 * dx, y1 - 3 * dy,
-                    x2 - 3 * dx, y2 - 3 * dy,
+                    x1 - 3.0 * dx, y1 - 3.0 * dy,
+                    x2 - 3.0 * dx, y2 - 3.0 * dy,
                     x1 - dx, y1 - dy,
                     x2 - dx, y2 - dy,
                     x1 + dx, y1 + dy,
                     x2 + dx, y2 + dy,
-                    x1 + 3 * dx, y1 + 3 * dy,
-                    x2 + 3 * dx, y2 + 3 * dy)?,
+                    x1 + 3.0 * dx, y1 + 3.0 * dy,
+                    x2 + 3.0 * dx, y2 + 3.0 * dy)?,
                 Bond::Aromatic => write!(f,
                     "  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\"  stroke-dasharray=\"10,10\"/>\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n",
                     x1 - dx, y1 - dy,
@@ -258,19 +289,25 @@ where
 
         let mut idx = self.graph.node_count();
 
-        for (atom, (x1, y1)) in self.graph.node_references().zip(&locs) {
+        for (atom, &(mut x1, mut y1)) in self.graph.node_references().zip(&locs) {
             let atom = atom.weight();
             let data = atom.data;
+            x1 += add_x;
+            y1 += add_y;
             if self.mode == FormatMode::LegacyH {
                 for i in 0..data.hydrogen() {
-                    let (x2, y2) = locs[idx + (i as usize)];
+                    let (mut x2, mut y2) = locs[idx + (i as usize)];
+                    x2 += add_x;
+                    y2 += add_y;
                     let r = atom_radius(1);
                     write!(f, "  <line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\"/>\n  <circle r=\"{r}\" cx=\"{x2}\" cy=\"{y2}\" fill=\"{}\" />\n  <text x=\"{x2}\" y=\"{y2}\" font-size=\"{r}\" text-anchor=\"middle\" alignment-baseline=\"middle\" fill=\"#444\">H</text>\n", SVG_SUPPRESSED_H)?;
                 }
                 idx += data.hydrogen() as usize;
             }
             for i in 0..data.unknown() {
-                let (x2, y2) = locs[idx + (i as usize)];
+                let (mut x2, mut y2) = locs[idx + (i as usize)];
+                x2 += add_x;
+                y2 += add_y;
                 let r = atom_radius(0);
                 write!(f, "  <line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\"/>\n  <circle r=\"{r}\" cx=\"{x2}\" cy=\"{y2}\" fill=\"{}\" />\n  <text x=\"{x2}\" y=\"{y2}\" font-size=\"{r}\" text-anchor=\"middle\" alignment-baseline=\"middle\" fill=\"#444\">R</text>\n", SVG_SUPPRESSED_R)?;
             }
@@ -281,10 +318,129 @@ where
             out.push('\n');
         }
 
-        for (atom, (cx, cy)) in self.graph.node_references().zip(&locs) {
-            let atom = atom.weight();
-            let r = atom_radius(atom.protons);
-            write!(f, "  <circle r=\"{r}\" cx=\"{cx}\" cy=\"{cy}\" fill=\"{}\" />\n  <text x=\"{cx}\" y=\"{cy}\" font-size=\"{r}\" text-anchor=\"middle\" alignment-baseline=\"middle\" fill=\"#444\">{atom}</text>\n", svg_atom_color(atom.protons))?;
+        for (aref, &(mut cx, mut cy)) in self.graph.node_references().zip(&locs) {
+            let atom = aref.weight();
+            cx += add_x;
+            cy += add_y;
+            if self.mode.is_legacy() {
+                let r = atom_radius(atom.protons);
+                write!(f, "  <circle r=\"{r}\" cx=\"{cx}\" cy=\"{cy}\" fill=\"{}\" />\n  <text x=\"{cx}\" y=\"{cy}\" font-size=\"{r}\" text-anchor=\"middle\" alignment-baseline=\"middle\" fill=\"#444\">{atom}</text>\n", svg_atom_color(atom.protons))?;
+            } else {
+                let left = [8, 9, 16, 17, 34, 35, 52, 53, 84, 85].contains(&atom.protons);
+                let color = svg_atom_color(atom.protons);
+                let mut tx = cx;
+                let w = ATOM_DATA[atom.protons as usize].sym.len()
+                    + match atom.data.hydrogen() {
+                        0 => 0,
+                        n => n.ilog10() as usize + 1,
+                    }
+                    + match atom.isotope {
+                        0 => 0,
+                        n => n.ilog10() as usize + 1,
+                    };
+                tx -= w as f32 * 5.0;
+                if let Some((n, (mut dx, mut dy))) = self
+                    .graph
+                    .neighbors(aref.id())
+                    .map(|i| (1usize, locs[self.graph.to_index(i)]))
+                    .reduce(|(a, (ax, ay)), (b, (bx, by))| (a + b, (ax + bx, ay + by)))
+                {
+                    dx /= n as f32;
+                    dy /= n as f32;
+                    dx -= cx - add_x;
+                    dy -= cy - add_y;
+                    let mag = (dx * dx + dy * dy).sqrt();
+                    dx /= mag;
+                    dy /= mag;
+                    if atom.protons != 6 || atom.isotope != 0 {
+                        write!(f, "  <text x=\"{tx}\" y=\"{cy}\" font-size=\"15\" alignment-baseline=\"middle\" fill=\"{color}\">")?;
+                        if dx > 0.0 && left {
+                            match atom.data.hydrogen() {
+                                0 => {}
+                                1 => f.write_str("H")?,
+                                n => write!(f, "H{}", Subscript(n))?,
+                            }
+                        }
+                        if atom.protons == 0 {
+                            f.write_str(match atom.isotope {
+                                0xFFFE => "A",
+                                0xFFFC => "Q",
+                                0x0100 => "X",
+                                0x042B => "M",
+                                _ => "*",
+                            })?;
+                        } else {
+                            if atom.isotope != 0 {
+                                write!(f, "{}", Superscript(atom.isotope))?;
+                            }
+                            f.write_str(ATOM_DATA[atom.protons as usize].sym)?;
+                        }
+                        if dx < 0.0 || !left {
+                            match atom.data.hydrogen() {
+                                0 => {}
+                                1 => f.write_str("H")?,
+                                n => write!(f, "H{}", Subscript(n))?,
+                            }
+                        }
+                        if atom.protons != 6 {
+                            match atom.charge {
+                                0 => {}
+                                1 => f.write_str("⁺")?,
+                                -1 => f.write_str("⁻")?,
+                                _ => write!(f, "{:+}", Superscript(atom.charge))?,
+                            }
+                        }
+                        f.write_str("</text>\n")?;
+                    }
+                    if atom.protons == 6 && atom.charge != 0 {
+                        write!(f, "  <text x=\"{}\" y=\"{}\" font-size=\"15\" alignment-baseline=\"middle\" fill=\"{color}\">", cx - dx, cy - dy)?;
+                        match atom.charge {
+                            0 => {}
+                            1 => f.write_str("⁺")?,
+                            -1 => f.write_str("⁻")?,
+                            _ => write!(f, "{:+}", Superscript(atom.charge))?,
+                        }
+                        f.write_str("</text>\n")?;
+                    }
+                } else {
+                    write!(f, "  <text x=\"{tx}\" y=\"{cy}\" font-size=\"15\" alignment-baseline=\"middle\" fill=\"{color}\">")?;
+                    if left {
+                        match atom.data.hydrogen() {
+                            0 => {}
+                            1 => f.write_str("H")?,
+                            n => write!(f, "H{}", Subscript(n))?,
+                        }
+                    }
+                    if atom.protons == 0 {
+                        f.write_str(match atom.isotope {
+                            0xFFFE => "A",
+                            0xFFFC => "Q",
+                            0x0100 => "X",
+                            0x042B => "M",
+                            _ => "*",
+                        })?;
+                    } else {
+                        if atom.isotope != 0 {
+                            write!(f, "{}", Superscript(atom.isotope))?;
+                        }
+                        f.write_str(ATOM_DATA[atom.protons as usize].sym)?;
+                    }
+                    if !left {
+                        match atom.data.hydrogen() {
+                            0 => {}
+                            1 => f.write_str("H")?,
+                            n => write!(f, "H{}", Subscript(n))?,
+                        }
+                    }
+                    match atom.charge {
+                        0 => {}
+                        1 => f.write_str("⁺")?,
+                        -1 => f.write_str("⁻")?,
+                        _ => write!(f, "{:+}", Superscript(atom.charge))?,
+                    }
+                    f.write_str("</text>\n")?;
+                }
+            }
         }
 
         f.write_str("</svg>")
