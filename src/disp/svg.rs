@@ -301,12 +301,14 @@ where
                         rdx = -rdx;
                         rdy = -rdy;
                     }
+                    rdx *= 1.5;
+                    rdy *= 1.5;
                     write!(f,
                         "  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\"  stroke-dasharray=\"10,10\"/>\n  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\" />\n",
                         x1 - rdx, y1 - rdy,
                         x2 - rdx, y2 - rdy,
-                        x1 + rdx, y1 + rdy,
-                        x2 + rdx, y2 + rdy
+                        x1, y1,
+                        x2, y2
                     )?
                 },
                 _ => panic!("invalid bond!")
