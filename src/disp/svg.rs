@@ -356,15 +356,17 @@ where
                 let left = [8, 9, 16, 17, 34, 35, 52, 53, 84, 85].contains(&atom.protons);
                 let color = svg_atom_color(atom.protons);
                 let mut tx = cx;
+                let is_protium = atom.protons == 1 && atom.isotope == 0;
                 let w = ATOM_DATA[atom.protons as usize].sym.len()
-                    + match atom.data.hydrogen() {
+                    + match atom.data.hydrogen() + is_protium as u8 {
                         0 => 0,
                         n => n.ilog10() as usize + 1,
                     }
                     + match atom.isotope {
                         0 => 0,
                         n => n.ilog10() as usize + 1,
-                    };
+                    }
+                    - is_protium as usize;
                 tx -= w as f32 * 5.0;
                 if let Some((n, (mut dx, mut dy))) = self
                     .graph
@@ -382,7 +384,7 @@ where
                     if atom.protons != 6 || atom.isotope != 0 {
                         write!(f, "  <text x=\"{tx}\" y=\"{cy}\" font-size=\"15\" alignment-baseline=\"middle\" fill=\"{color}\">")?;
                         if dx > 0.0 && left {
-                            match atom.data.hydrogen() {
+                            match atom.data.hydrogen() + is_protium as u8 {
                                 0 => {}
                                 1 => f.write_str("H")?,
                                 n => write!(f, "H{}", Subscript(n))?,
@@ -400,10 +402,12 @@ where
                             if atom.isotope != 0 {
                                 write!(f, "{}", Superscript(atom.isotope))?;
                             }
-                            f.write_str(ATOM_DATA[atom.protons as usize].sym)?;
+                            if !is_protium {
+                                f.write_str(ATOM_DATA[atom.protons as usize].sym)?;
+                            }
                         }
                         if dx < 0.0 || !left {
-                            match atom.data.hydrogen() {
+                            match atom.data.hydrogen() + is_protium as u8 {
                                 0 => {}
                                 1 => f.write_str("H")?,
                                 n => write!(f, "H{}", Subscript(n))?,
@@ -450,10 +454,12 @@ where
                         if atom.isotope != 0 {
                             write!(f, "{}", Superscript(atom.isotope))?;
                         }
-                        f.write_str(ATOM_DATA[atom.protons as usize].sym)?;
+                        if !is_protium {
+                            f.write_str(ATOM_DATA[atom.protons as usize].sym)?;
+                        }
                     }
                     if !left {
-                        match atom.data.hydrogen() {
+                        match atom.data.hydrogen() + is_protium as u8 {
                             0 => {}
                             1 => f.write_str("H")?,
                             n => write!(f, "H{}", Subscript(n))?,
