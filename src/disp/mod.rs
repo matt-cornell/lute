@@ -4,4 +4,4 @@ pub mod svg;
 
 pub use dot::fmt_as_dot;
 #[cfg(feature = "coordgen")]
-pub use svg::fmt_as_svg;
+pub use svg::SvgFormatter;

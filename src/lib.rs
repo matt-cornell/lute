@@ -1,6 +1,6 @@
 #![allow(clippy::module_inception)]
 #![warn(clippy::infinite_loop)]
-#![feature(get_many_mut, maybe_uninit_write_slice)]
+#![feature(cmp_minmax, get_many_mut, maybe_uninit_write_slice)]
 
 #[rustfmt::skip]
 pub mod atom_info;
@@ -21,7 +21,7 @@ pub mod prelude {
     pub use crate::core::{Atom, Bond, Chirality};
     pub use crate::disp::fmt_as_dot;
     #[cfg(feature = "coordgen")]
-    pub use crate::disp::fmt_as_svg;
+    pub use crate::disp::SvgFormatter;
     pub use crate::empirical::EmpiricalFormula;
     pub use crate::graph::misc::DataValueMap;
     pub use crate::molecule::Molecule as MolTrait;
