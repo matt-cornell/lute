@@ -290,14 +290,10 @@ where
                         if [id1, id2].contains(&e.target()) {
                             continue;
                         }
-                        let (sid, tid) = (self.graph.to_index(e.source()), self.graph.to_index(e.target()));
-                        let (x1, y1) = locs[sid];
-                        let (x2, y2) = locs[tid];
-                        let mut ndx = x2 - x1;
-                        let mut ndy = y2 - y1;
-                        let mag = (ndx * ndx + ndy * ndy).sqrt();
-                        ndx /= mag;
-                        ndy /= mag;
+                        let (x1, y1) = locs[self.graph.to_index(e.source())];
+                        let (x2, y2) = locs[self.graph.to_index(e.target())];
+                        let ndx = x2 - x1;
+                        let ndy = y2 - y1;
                         let dot = dx * ndy - dy * ndx;
                         flip += dot;
                     }
