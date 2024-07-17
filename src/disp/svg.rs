@@ -308,8 +308,17 @@ where
                 let (mut x2, mut y2) = locs[idx + (i as usize)];
                 x2 += add_x;
                 y2 += add_y;
-                let r = atom_radius(0);
-                write!(f, "  <line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\"/>\n  <circle r=\"{r}\" cx=\"{x2}\" cy=\"{y2}\" fill=\"{}\" />\n  <text x=\"{x2}\" y=\"{y2}\" font-size=\"{r}\" text-anchor=\"middle\" alignment-baseline=\"middle\" fill=\"#444\">R</text>\n", SVG_SUPPRESSED_R)?;
+                if self.mode.is_legacy() {
+                    let r = atom_radius(0);
+                    write!(f, "  <line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\"/>\n  <circle r=\"{r}\" cx=\"{x2}\" cy=\"{y2}\" fill=\"{}\" />\n  <text x=\"{x2}\" y=\"{y2}\" font-size=\"{r}\" text-anchor=\"middle\" alignment-baseline=\"middle\" fill=\"#444\">R</text>\n", SVG_SUPPRESSED_R)?;
+                } else {
+                    let dx = x2 - x1;
+                    let dy = y2 - y1;
+                    let mag = (dx * dx + dy * dy).sqrt();
+                    let x3 = x2 - dx / mag * 12.0;
+                    let y3 = y2 - dy / mag * 12.0;
+                    write!(f, "  <line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x3}\" y2=\"{y3}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\"/>\n  <text x=\"{x2}\" y=\"{y2}\" font-size=\"20\" text-anchor=\"middle\" alignment-baseline=\"middle\" fill=\"{SVG_SUPPRESSED_R}\">R</text>\n")?;
+                }
             }
             idx += data.unknown() as usize;
         }
