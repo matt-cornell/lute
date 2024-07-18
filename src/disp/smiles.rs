@@ -1,5 +1,7 @@
 use crate::atom_info::ATOM_DATA;
 use crate::core::*;
+use crate::graph::misc::DataValueMap;
+use crate::molecule::CipPriority;
 use ahash::AHashMap;
 use petgraph::visit::*;
 use std::fmt::Write;
@@ -52,7 +54,11 @@ impl Default for SmilesConfig {
 #[tracing::instrument(level = "trace", skip(graph))]
 pub fn generate_smiles<G>(graph: G, cfg: SmilesConfig) -> String
 where
-    G: Data<NodeWeight = Atom, EdgeWeight = Bond> + IntoNodeReferences + IntoEdges + NodeCount,
+    G: DataValueMap<NodeWeight = Atom, EdgeWeight = Bond>
+        + IntoNodeReferences
+        + IntoEdges
+        + NodeCount
+        + Visitable,
     G::NodeId: Hash + Eq + std::fmt::Debug,
 {
     if graph.node_count() == 0 {
@@ -265,12 +271,13 @@ where
                                 .sum::<f32>() as isize
                             + atom.charge as isize;
                         let ex_bonds = match atom.protons {
+                            1 => Some(1),
                             x @ 6..=9 => Some((10 - (x as i8) + atom.charge) as isize),
                             x @ 14..=17 => Some((18 - (x as i8) + atom.charge) as isize),
                             35 | 53 => Some(1),
                             _ => None,
                         };
-                        let needs_h = ex_bonds != Some(bond_count)
+                        let mut needs_h = ex_bonds != Some(bond_count)
                             && ex_bonds
                                 .map_or(true, |e| e > bond_count - atom.data.hydrogen() as isize);
                         let force = needs_h
@@ -280,6 +287,43 @@ where
                             match out.pop() {
                                 None | Some(':') => {}
                                 Some(c) => out.push(c),
+                            }
+                        }
+                        let out_idx = queue.len();
+                        {
+                            queue.extend(
+                                graph
+                                    .edges(node)
+                                    .filter(|e| prev.map(|p| p.0) != Some(e.target()))
+                                    .map(|e| {
+                                        let w = *e.weight();
+                                        let weight = if aromatic && w == Bond::Aromatic {
+                                            Bond::Single
+                                        } else {
+                                            w
+                                        };
+                                        (Some(e.target()), Some((node, edge)), weight, true)
+                                    }),
+                            );
+                            if cfg.canon && out_idx > 0 {
+                                queue[out_idx..]
+                                    .sort_by_cached_key(|i| usize::MAX - lookup[&i.0.unwrap()]);
+                                for i in out_idx..queue.len() {
+                                    if visited.contains_key(&queue[i].0.unwrap()) {
+                                        let elem = queue.remove(i);
+                                        queue.push(elem);
+                                    }
+                                }
+                                let last = queue.len() - 1;
+                                for (n, i) in queue[out_idx..].iter().enumerate() {
+                                    if i.2 != Bond::Single {
+                                        queue.swap(last, out_idx + n);
+                                        break;
+                                    }
+                                }
+                            }
+                            if let Some(i) = queue.get_mut(out_idx) {
+                                i.3 = false;
                             }
                         }
                         'print_atom: {
@@ -363,6 +407,37 @@ where
                                     out.as_bytes_mut()[idx].make_ascii_lowercase();
                                 }
                             }
+                            if cfg.isomers && atom.data.chirality().is_chiral() {
+                                let mut neighs = Vec::new();
+                                if let Some((p, _)) = prev {
+                                    neighs
+                                        .push((CipPriority::on_branch(graph, p, node), usize::MAX));
+                                }
+                                neighs.extend(queue[out_idx..].iter().enumerate().filter_map(
+                                    |(i, &(n, p, _, _))| {
+                                        Some((CipPriority::on_branch(graph, n?, p?.0), i))
+                                    },
+                                ));
+                                neighs.sort_unstable();
+                                if let Some(x) = neighs.iter().position(|x| x.1 == usize::MAX) {
+                                    let l = neighs.len();
+                                    neighs.rotate_left((x + 1) % l);
+                                    neighs.pop();
+                                    if atom.data.chirality() == Chirality::R {
+                                        neighs.reverse();
+                                    }
+                                    if neighs.is_sorted_by_key(|x| x.1) {
+                                        out.push('@');
+                                        needs_h = true;
+                                    } else {
+                                        // neighs.rotate_left(1);
+                                        if neighs.is_sorted_by_key(|x| usize::MAX - x.1) {
+                                            out.push_str("@@");
+                                            needs_h = true;
+                                        }
+                                    }
+                                }
+                            }
                             if needs_h {
                                 out.push('H');
                                 let h = atom.data.hydrogen();
@@ -381,40 +456,6 @@ where
                             out.push(']');
                         }
                         out.extend(std::iter::repeat('&').take(atom.data.unknown() as usize));
-                        let idx = queue.len();
-                        queue.extend(
-                            graph
-                                .edges(node)
-                                .filter(|e| prev.map(|p| p.0) != Some(e.target()))
-                                .map(|e| {
-                                    let w = *e.weight();
-                                    let weight = if aromatic && w == Bond::Aromatic {
-                                        Bond::Single
-                                    } else {
-                                        w
-                                    };
-                                    (Some(e.target()), Some((node, edge)), weight, true)
-                                }),
-                        );
-                        if cfg.canon {
-                            queue[idx..].sort_by_cached_key(|i| usize::MAX - lookup[&i.0.unwrap()]);
-                            for i in idx..queue.len() {
-                                if visited.contains_key(&queue[i].0.unwrap()) {
-                                    let elem = queue.remove(i);
-                                    queue.push(elem);
-                                }
-                            }
-                            let last = queue.len() - 1;
-                            for (n, i) in queue[idx..].iter().enumerate() {
-                                if i.2 != Bond::Single {
-                                    queue.swap(last, idx + n);
-                                    break;
-                                }
-                            }
-                        }
-                        if let Some(i) = queue.get_mut(idx) {
-                            i.3 = false;
-                        }
                         visited.insert(
                             node,
                             (out.len(), prev.into_iter().map(|i| i.0).collect::<Vec<_>>()),
