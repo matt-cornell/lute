@@ -189,6 +189,9 @@ where
         let _guard = tracing::debug_span!("traversing graph", canon = cfg.canon).entered();
         loop {
             if let Some((node, prev, edge, branch)) = queue.pop() {
+                if cfg.isomers && matches!(edge, Bond::DoubleE | Bond::DoubleZ) {
+                    tracing::warn!("E/Z stereochemistry found, but this isn't supported yet!");
+                }
                 if let Some(node) = node {
                     if let Some(&(idx, ref prevs)) = visited.get(&node) {
                         if prevs.contains(&prev.unwrap().0) {
