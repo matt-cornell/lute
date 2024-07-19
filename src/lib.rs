@@ -1,7 +1,6 @@
 #![allow(clippy::module_inception)]
 #![warn(clippy::infinite_loop)]
-#![cfg_attr(feature = "c-ffi", feature(allocator_api))]
-#![feature(get_many_mut, is_sorted, maybe_uninit_write_slice)]
+#![feature(cmp_minmax, get_many_mut, is_sorted, maybe_uninit_write_slice)]
 
 #[rustfmt::skip]
 pub mod atom_info;
@@ -17,16 +16,13 @@ pub mod utils;
 #[cfg(feature = "rand")]
 pub mod rand;
 
-#[cfg(feature = "c-ffi")]
-pub mod ffi;
-
 pub mod prelude {
     pub use crate::arena::{Arena, Container, Molecule};
     pub use crate::core::{Atom, Bond, Chirality};
     pub use crate::disp::fmt_as_dot;
-    #[cfg(feature = "mol-svg")]
-    pub use crate::disp::fmt_as_svg;
     pub use crate::disp::smiles::*;
+    #[cfg(feature = "coordgen")]
+    pub use crate::disp::SvgFormatter;
     pub use crate::empirical::EmpiricalFormula;
     pub use crate::graph::misc::DataValueMap;
     pub use crate::molecule::Molecule as MolTrait;

@@ -1,11 +1,11 @@
 pub mod dot;
-#[cfg(feature = "mol-svg")]
+#[cfg(feature = "coordgen")]
 pub mod svg;
 
 pub mod smiles;
 
 pub use dot::fmt_as_dot;
-#[cfg(feature = "mol-svg")]
-pub use svg::fmt_as_svg;
+#[cfg(feature = "coordgen")]
+pub use svg::SvgFormatter;
 
 pub use smiles::generate_smiles;

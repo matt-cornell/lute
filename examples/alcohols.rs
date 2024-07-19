@@ -41,10 +41,10 @@ fn main() {
         ),
         OutputType::Dot => write_output(cli.out.as_deref(), fmt_as_dot(mol)),
         OutputType::DDot => write_output(cli.out.as_deref(), AsDisp(Dot::new(mol))),
-        #[cfg(feature = "mol-svg")]
-        OutputType::Svg => write_output(cli.out.as_deref(), fmt_as_svg(mol)),
-        #[cfg(all(feature = "mol-svg", feature = "resvg"))]
-        OutputType::Png => match fmt_as_svg(mol).render(None).encode_png() {
+        #[cfg(feature = "coordgen")]
+        OutputType::Svg => write_output(cli.out.as_deref(), SvgFormatter::new(mol)),
+        #[cfg(all(feature = "coordgen", feature = "resvg"))]
+        OutputType::Png => match SvgFormatter::new(mol).render(None).encode_png() {
             Ok(b) => write_bytes(cli.out.as_deref(), &b),
             Err(err) => tracing::error!("{err}"),
         },
