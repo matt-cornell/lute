@@ -1,6 +1,10 @@
 use num_traits::*;
+use petgraph::graph::IndexType;
+use petgraph::visit::VisitMap;
 use smallvec::SmallVec;
 use std::fmt::{self, Binary, Debug, Formatter};
+
+use crate::arena::molecule::NodeIndex;
 
 #[derive(Default, Clone, PartialEq, Eq)]
 pub struct BitSet<T, const N: usize> {
@@ -170,5 +174,14 @@ impl<T: Binary, const N: usize> Debug for BitSet<T, N> {
             l.entry(&format_args!("{i:0>0$b}", std::mem::size_of::<T>() * 8));
         }
         l.finish()
+    }
+}
+
+impl<Ix: IndexType, T: PrimInt, const N: usize> VisitMap<NodeIndex<Ix>> for BitSet<T, N> {
+    fn visit(&mut self, a: NodeIndex<Ix>) -> bool {
+        self.set(a.0.index(), true)
+    }
+    fn is_visited(&self, a: &NodeIndex<Ix>) -> bool {
+        self.get(a.0.index())
     }
 }

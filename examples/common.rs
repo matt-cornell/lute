@@ -16,6 +16,8 @@ impl<T: Debug> Display for AsDisp<T> {
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum OutputType {
     None,
+    FastSmiles,
+    CanonSmiles,
     Dot,
     DDot,
     #[cfg(feature = "coordgen")]
@@ -27,6 +29,8 @@ impl Display for OutputType {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::None => f.write_str("none"),
+            Self::FastSmiles => f.write_str("fast-smiles"),
+            Self::CanonSmiles => f.write_str("canon-smiles"),
             Self::Dot => f.write_str("dot"),
             Self::DDot => f.write_str("d-dot"),
             #[cfg(feature = "coordgen")]

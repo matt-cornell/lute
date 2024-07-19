@@ -31,6 +31,14 @@ fn main() {
 
     match cli.fmt {
         OutputType::None => {}
+        OutputType::FastSmiles => write_output(
+            cli.out.as_deref(),
+            generate_smiles(mol, SmilesConfig::fast_roundtrip()) + "\n",
+        ),
+        OutputType::CanonSmiles => write_output(
+            cli.out.as_deref(),
+            generate_smiles(mol, SmilesConfig::new()) + "\n",
+        ),
         OutputType::Dot => write_output(cli.out.as_deref(), fmt_as_dot(mol)),
         OutputType::DDot => write_output(cli.out.as_deref(), AsDisp(Dot::new(mol))),
         #[cfg(feature = "coordgen")]

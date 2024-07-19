@@ -183,3 +183,14 @@ impl<G: DataValueMap> DataValueMap for GraphCompactor<G> {
         self.graph.edge_weight(id)
     }
 }
+
+impl<G: Visitable> Visitable for GraphCompactor<G> {
+    type Map = G::Map;
+
+    fn reset_map(&self, map: &mut Self::Map) {
+        self.graph.reset_map(map)
+    }
+    fn visit_map(&self) -> Self::Map {
+        self.graph.visit_map()
+    }
+}

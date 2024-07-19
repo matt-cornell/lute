@@ -1,3 +1,5 @@
+use petgraph::visit::{IntoNodeReferences, NodeRef};
+
 use crate::prelude::*;
 
 #[test]
@@ -26,4 +28,15 @@ fn glucose() {
         &mut Atom::matches,
         &mut PartialEq::eq
     ));
+    let chirals = isomer
+        .node_references()
+        .filter_map(|r| {
+            r.weight()
+                .data
+                .chirality()
+                .is_chiral()
+                .then_some(r.id().index())
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(chirals, &[1, 2, 4, 9, 11, 12]);
 }

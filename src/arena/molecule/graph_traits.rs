@@ -1,3 +1,5 @@
+use crate::utils::bitset::BitSet;
+
 use super::*;
 use petgraph::{visit::*, Direction};
 use std::iter::Map;
@@ -118,6 +120,16 @@ impl<Ix: IndexType + Ord, R: ArenaAccessor<Ix = Ix> + Copy> GetAdjacencyMatrix f
         let (s, t) = if a < b { (a, b) } else { (b, a) };
         let i = if t == 0 { 0 } else { t * (t - 1) / 2 } + s;
         matrix.get(i)
+    }
+}
+impl<Ix: IndexType + Ord, R> Visitable for Molecule<Ix, R> {
+    type Map = BitSet<usize, 1>;
+
+    fn reset_map(&self, map: &mut Self::Map) {
+        map.clear();
+    }
+    fn visit_map(&self) -> Self::Map {
+        BitSet::new()
     }
 }
 

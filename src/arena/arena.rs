@@ -102,7 +102,7 @@ impl<Ix: IndexType> Arena<Ix> {
     }
 
     /// Check if `mol` contains `group`
-    #[instrument(level = "debug", skip(self))]
+    #[instrument(level = "trace", skip(self))]
     pub fn contains_group(&self, mol: Ix, group: Ix) -> bool {
         if mol.index() < group.index() {
             return false; // quirk of insertion order
