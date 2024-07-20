@@ -407,6 +407,7 @@ version = "0.2.0"
 dependencies = [
  "ahash",
  "atoi",
+ "bitflags 2.6.0",
  "bstr",
  "c-enum",
  "clap",

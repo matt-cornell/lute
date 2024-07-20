@@ -9,6 +9,7 @@ autoexamples = false
 [dependencies]
 ahash = "0.8.11"
 atoi = "2.0.0"
+bitflags = "2.6.0"
 bstr = { version = "1.9.1", default-features = false, features = ["std"] }
 c-enum = "0.2.3"
 coordgen = { version = "0.2.2", git = "https://github.com/matt-cornell/coordgen-rs", optional = true } # make it work on windows

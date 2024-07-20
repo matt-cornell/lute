@@ -21,7 +21,7 @@ fn bond2str(bond: Bond) -> &'static str {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SmilesConfig {
     pub isomers: bool,
     pub isotopes: bool,

@@ -20,6 +20,7 @@ pub mod prelude {
     pub use crate::arena::{Arena, Container, Molecule};
     pub use crate::core::{Atom, Bond, Chirality};
     pub use crate::disp::fmt_as_dot;
+    pub use crate::disp::iupac::*;
     pub use crate::disp::smiles::*;
     #[cfg(feature = "coordgen")]
     pub use crate::disp::SvgFormatter;

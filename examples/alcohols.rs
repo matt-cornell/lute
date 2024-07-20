@@ -31,6 +31,14 @@ fn main() {
 
     match cli.fmt {
         OutputType::None => {}
+        OutputType::Common => write_output(
+            cli.out.as_deref(),
+            iupac_name(mol, IupacConfig::COMMON_NAME) + "\n",
+        ),
+        OutputType::Iupac => write_output(
+            cli.out.as_deref(),
+            iupac_name(mol, IupacConfig::PREFERRED) + "\n",
+        ),
         OutputType::FastSmiles => write_output(
             cli.out.as_deref(),
             generate_smiles(mol, SmilesConfig::fast_roundtrip()) + "\n",
