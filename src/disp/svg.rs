@@ -8,6 +8,10 @@ use std::fmt::{self, Debug, Display};
 
 #[cfg(feature = "resvg")]
 use resvg::*;
+#[cfg(feature = "resvg")]
+use std::sync::Arc;
+#[cfg(feature = "resvg")]
+use usvg::fontdb::*;
 
 pub const SVG_SUPPRESSED_R: &str = "#407F00";
 pub const SVG_SUPPRESSED_H: &str = "#577478";
@@ -77,12 +81,10 @@ impl FormatMode {
 
 #[cfg(feature = "resvg")]
 lazy_static::lazy_static! {
-    static ref OPTS: usvg::Options = usvg::Options {font_family: "DejaVu Sans Mono".to_string(), ..Default::default()};
-    static ref FONTS: usvg::fontdb::Database = {
-        use usvg::fontdb::*;
+    static ref OPTS: usvg::Options<'static> = {
         let mut db = Database::new();
-        db.load_font_source(Source::Binary(std::sync::Arc::new(include_bytes!("../../data/DejaVuSansMono.ttf"))));
-        db
+        db.load_font_source(Source::Binary(Arc::new(include_bytes!("../../data/DejaVuSansMono.ttf"))));
+        usvg::Options {font_family: "DejaVu Sans Mono".to_string(), fontdb: Arc::new(db), ..Default::default()}
     };
 }
 
@@ -111,13 +113,13 @@ where
 {
     pub fn render_to_bytes(&self, bytes: &mut [u8], w: u32, h: u32) {
         let s = self.to_string();
-        let tree = usvg::Tree::from_str(&s, &OPTS, &FONTS).unwrap();
+        let tree = usvg::Tree::from_str(&s, &OPTS).unwrap();
         let mut pm = tiny_skia::PixmapMut::from_bytes(bytes, w, h).unwrap();
         resvg::render(&tree, Default::default(), &mut pm);
     }
     pub fn render(&self, size: Option<(u32, u32)>) -> tiny_skia::Pixmap {
         let s = self.to_string();
-        let tree = usvg::Tree::from_str(&s, &OPTS, &FONTS).unwrap();
+        let tree = usvg::Tree::from_str(&s, &OPTS).unwrap();
         let (w, h) = size.unwrap_or_else(|| tree.size().to_int_size().dimensions());
         let mut pm = tiny_skia::Pixmap::new(w, h).unwrap();
         resvg::render(&tree, Default::default(), &mut pm.as_mut());

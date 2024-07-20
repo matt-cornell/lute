@@ -12,24 +12,24 @@ atoi = "2.0.0"
 bstr = { version = "1.9.1", default-features = false, features = ["std"] }
 c-enum = "0.2.3"
 coordgen = { version = "0.2.2", git = "https://github.com/matt-cornell/coordgen-rs", optional = true } # make it work on windows
-fmtastic = "0.2.0"
+fmtastic = "0.2.1"
 gcd = { version = "2.3.0", optional = true }
-itertools = "0.12.1"
-lazy_static = { version = "1.4.0", optional = true }
-lock_api = { version = "0.4.11", features = ["nightly"] }
+itertools = "0.13.0"
+lazy_static = { version = "1.5.0", optional = true }
+lock_api = { version = "0.4.12", features = ["nightly"] }
 modular-bitfield = "0.11.2"
-num-traits = "0.2.18"
-petgraph = "0.6.4"
+num-traits = "0.2.19"
+petgraph = "0.6.5"
 primal = "0.3.3"
 rand = { version = "0.8.5", optional = true, features = ["nightly"] }
-resvg = { version = "0.40.0", optional = true, default-features = false, features = ["text", "system-fonts", "png"] }
+resvg = { version = "0.42.0", optional = true, default-features = false, features = ["text"] }
 small-map = { version = "0.1.3", default-features = false, features = ["ahash"] }
-smallvec = "2.0.0-alpha.5"
-thiserror = "1.0.58"
+smallvec = "2.0.0-alpha.6"
+thiserror = "1.0.63"
 tracing = "0.1.40"
 
 [dev-dependencies]
-clap = { version = "4.5.4", features = ["derive"] }
+clap = { version = "4.5.9", features = ["derive"] }
 tracing-flame = "0.2.0"
 tracing-subscriber = "0.3.18"
 
