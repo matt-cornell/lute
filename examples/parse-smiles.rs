@@ -33,14 +33,14 @@ fn main() {
                 let mol = arena.molecule(idx);
                 match cli.fmt {
                     OutputType::None => {}
-                    OutputType::Common => write_output(
-                        cli.out.as_deref(),
-                        iupac_name(mol, IupacConfig::COMMON_NAME) + "\n",
-                    ),
-                    OutputType::Iupac => write_output(
-                        cli.out.as_deref(),
-                        iupac_name(mol, IupacConfig::PREFERRED) + "\n",
-                    ),
+                    OutputType::Common => match iupac_name(mol, IupacConfig::COMMON_NAME) {
+                        Ok(n) => write_output(cli.out.as_deref(), n + "\n"),
+                        Err(e) => tracing::error!("{e:?}"),
+                    },
+                    OutputType::Iupac => match iupac_name(mol, IupacConfig::PREFERRED) {
+                        Ok(n) => write_output(cli.out.as_deref(), n + "\n"),
+                        Err(e) => tracing::error!("{e:?}"),
+                    },
                     OutputType::FastSmiles => write_output(
                         cli.out.as_deref(),
                         generate_smiles(mol, SmilesConfig::fast_roundtrip()) + "\n",
@@ -62,14 +62,14 @@ fn main() {
             } else {
                 match cli.fmt {
                     OutputType::None => {}
-                    OutputType::Common => write_output(
-                        cli.out.as_deref(),
-                        iupac_name(&graph, IupacConfig::COMMON_NAME) + "\n",
-                    ),
-                    OutputType::Iupac => write_output(
-                        cli.out.as_deref(),
-                        iupac_name(&graph, IupacConfig::PREFERRED) + "\n",
-                    ),
+                    OutputType::Common => match iupac_name(&graph, IupacConfig::COMMON_NAME) {
+                        Ok(n) => write_output(cli.out.as_deref(), n + "\n"),
+                        Err(e) => tracing::error!("{e:?}"),
+                    },
+                    OutputType::Iupac => match iupac_name(&graph, IupacConfig::PREFERRED) {
+                        Ok(n) => write_output(cli.out.as_deref(), n + "\n"),
+                        Err(e) => tracing::error!("{e:?}"),
+                    },
                     OutputType::FastSmiles => write_output(
                         cli.out.as_deref(),
                         generate_smiles(&graph, SmilesConfig::fast_roundtrip()) + "\n",
