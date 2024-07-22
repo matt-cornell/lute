@@ -1,6 +1,13 @@
 #![allow(clippy::module_inception)]
 #![warn(clippy::infinite_loop)]
-#![feature(cmp_minmax, get_many_mut, is_sorted, maybe_uninit_write_slice)]
+#![feature(
+    cmp_minmax,
+    get_many_mut,
+    is_sorted,
+    maybe_uninit_array_assume_init,
+    maybe_uninit_uninit_array,
+    maybe_uninit_write_slice
+)]
 
 #[rustfmt::skip]
 pub mod atom_info;

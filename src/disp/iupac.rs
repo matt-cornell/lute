@@ -1,6 +1,8 @@
+use std::mem::MaybeUninit;
+
 use crate::core::*;
 use crate::graph::misc::DataValueMap;
-use crate::graph::{BitFiltered, ConnectedGraphIter};
+use crate::graph::{BitFiltered, ConnectedGraphIter, CycleBasis};
 use petgraph::visit::*;
 use smallvec::SmallVec;
 
@@ -63,7 +65,7 @@ impl Halogen {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 enum Feature<N> {
     Alcohol {
         o: N,
@@ -165,6 +167,7 @@ enum Feature<N> {
         o: N,
         ring: [N; 6],
     },
+    Cycle(SmallVec<N, 6>),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -203,7 +206,7 @@ pub fn iupac_name<
         .iter(graph)
         .map(|filter| {
             features.clear();
-            let graph = BitFiltered::<G, usize, 1, false>::new(graph, filter);
+            let graph = BitFiltered::<G, usize, 1, true>::new(graph, filter);
             for n in graph.node_references() {
                 let atom = *n.weight();
                 match atom.protons {
@@ -595,6 +598,63 @@ pub fn iupac_name<
                         }
                     }
                     _ => {}
+                }
+            }
+            {
+                let mut cycles = CycleBasis::new_struct(&graph);
+                features.reserve(cycles.len());
+                let mut atoms = SmallVec::<_, 6>::new();
+                while cycles.step().is_some() {
+                    atoms.clear();
+                    atoms.extend(cycles.current().iter().map(|&i| graph.from_index(i)));
+                    // keeping this match for eventual heterocycle checks
+                    match cycles.current().len() {
+                        6 => {
+                            let benzene = {
+                                let mut aromatic = true;
+                                let mut kekule = true;
+                                atoms.iter().all(|&i| {
+                                    if graph.node_weight(i).unwrap().protons != 6 {
+                                        return false;
+                                    }
+                                    let mut it = graph.edges(i).filter_map(|e| {
+                                        atoms.contains(&e.target()).then(|| *e.weight())
+                                    });
+                                    let ex = match it.next() {
+                                        Some(Bond::Single) if kekule => {
+                                            aromatic = false;
+                                            Bond::Double
+                                        }
+                                        Some(Bond::Double) if kekule => {
+                                            aromatic = false;
+                                            Bond::Single
+                                        }
+                                        Some(Bond::Aromatic) if aromatic => {
+                                            kekule = false;
+                                            Bond::Aromatic
+                                        }
+                                        _ => return false,
+                                    };
+                                    it.next() == Some(ex)
+                                })
+                            };
+                            if benzene {
+                                if graph.node_count() == 6 {
+                                    return Ok(("benzene".to_string(), 0));
+                                }
+                                let mut ats = MaybeUninit::uninit_array();
+                                MaybeUninit::copy_from_slice(&mut ats, &atoms);
+                                features.push(Feature::Phenyl(unsafe {
+                                    MaybeUninit::array_assume_init(ats)
+                                }));
+                            } else {
+                                features.push(Feature::Cycle(std::mem::take(&mut atoms)));
+                            }
+                        }
+                        _ => {
+                            features.push(Feature::Cycle(std::mem::take(&mut atoms)));
+                        }
+                    }
                 }
             }
             todo!()
