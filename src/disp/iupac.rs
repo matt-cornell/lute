@@ -31,6 +31,110 @@ bitflags::bitflags! {
     }
 }
 
+/// Kind of a count
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum NumKind {
+    /// Count of a group (*di*chloride)
+    Count {
+        /// If false, mono gives an empty output
+        necessary: bool,
+    },
+    /// Length of a chain (*eth*ane)
+    Length,
+    /// Alternate length (*form*aldehyde)
+    AltLength,
+}
+
+/// Generate the name for a number. Returns true if NumKind::AltLength was given, and an alternate name was given.
+fn num_name(n: usize, out: &mut String, kind: NumKind, vowel_end: bool) -> bool {
+    assert!(n < 10000, "only chains less than 10000 long are supported!");
+    if n < 10 {
+        match kind {
+            NumKind::Count { necessary } => {
+                let names = [
+                    "",
+                    if !necessary { "" } else { "mon" },
+                    "di",
+                    "tri",
+                    "tetr",
+                    "pent",
+                    "hex",
+                    "hept",
+                    "oct",
+                    "non",
+                ];
+                out.push_str(names[n]);
+                out.push_str(names[n]);
+                if vowel_end && n > 3 {
+                    out.push('a');
+                }
+            }
+            NumKind::Length => {
+                let names = [
+                    "", "meth", "eth", "prop", "but", "pent", "hex", "hept", "oct", "non",
+                ];
+                out.push_str(names[n]);
+                if vowel_end && n > 3 {
+                    out.push('a');
+                }
+            }
+            NumKind::AltLength => {
+                let names = [
+                    "", "form", "acet", "propion", "butyr", "valer", "capron", "enanthal", "oct",
+                    "non",
+                ];
+                out.push_str(names[n]);
+                return n < 8;
+            }
+        };
+        return false;
+    }
+    let last_two = n % 100;
+    const DIGITS: [&str; 10] = [
+        "", "hen", "do", "tri", "tetra", "penta", "hexa", "hepta", "octa", "nona",
+    ];
+    match last_two / 10 {
+        0 | 1 => {
+            out.push_str(DIGITS[last_two]);
+            if last_two >= 10 {
+                out.push_str("dec");
+            }
+        }
+        2 => {
+            let last = last_two % 10;
+            if last == 0 {
+                out.push_str("icos");
+            } else {
+                out.push_str(DIGITS[last]);
+                out.push_str("cos");
+            }
+        }
+        3 => {
+            let last = last_two % 10;
+            out.push_str(DIGITS[last]);
+            out.push_str("triacont");
+        }
+        n => {
+            let last = last_two % 10;
+            out.push_str(DIGITS[last]);
+            out.push_str(DIGITS[n]);
+            out.push_str("cont");
+        }
+    }
+    out.push_str(
+        [
+            "", "hect", "dict", "trict", "tetract", "pentact", "hexact", "octact", "nonact",
+        ][n / 100 % 10],
+    );
+    out.push_str(
+        [
+            "", "kili", "dili", "trili", "tetrali", "pentali", "hexali", "octali", "nonali",
+        ][n / 100 % 10],
+    );
+    false
+}
+
+/// A halogen
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(u8)]
 enum Halogen {
@@ -65,6 +169,7 @@ impl Halogen {
     }
 }
 
+/// A functional group or other notable feature
 #[derive(Debug, Clone, PartialEq)]
 enum Feature<N> {
     Alcohol {
@@ -170,14 +275,20 @@ enum Feature<N> {
     Cycle(SmallVec<N, 6>),
 }
 
+/// Substitution kind of an oxygen (for oxyhalides)
 #[derive(Debug, Clone, Copy)]
 enum SubKind {
+    /// Substituted onto another part of a molecule (methyl perchlorate)
     Mol,
+    /// Conjugate base (perchlorate anion)
     Base,
+    /// Radical (perchlorate radical)
     R,
+    /// Acid (perchloric acid)
     H,
 }
 
+/// Something's wrong with the molecule passed into `iupac_name`
 #[derive(Debug, Clone, Copy)]
 pub enum InvalidMolecule<N> {
     InvalidValence {
@@ -192,6 +303,7 @@ pub enum InvalidMolecule<N> {
     },
 }
 
+/// Try to generate the IUPAC name for a molecule
 pub fn iupac_name<
     G: DataValueMap<NodeWeight = Atom, EdgeWeight = Bond>
         + IntoNodeReferences
