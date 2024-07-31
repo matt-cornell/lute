@@ -177,6 +177,23 @@ impl<T: Binary, const N: usize> Debug for BitSet<T, N> {
     }
 }
 
+impl<T: PrimInt + Zero, const N: usize> Extend<usize> for BitSet<T, N> {
+    fn extend<I: IntoIterator<Item = usize>>(&mut self, it: I) {
+        for i in it {
+            self.set(i, true);
+        }
+    }
+}
+impl<T: PrimInt + Zero, const N: usize> FromIterator<usize> for BitSet<T, N> {
+    fn from_iter<I: IntoIterator<Item = usize>>(it: I) -> Self {
+        let mut out = Self::new();
+        for i in it {
+            out.set(i, true);
+        }
+        out
+    }
+}
+
 impl<Ix: IndexType, T: PrimInt, const N: usize> VisitMap<NodeIndex<Ix>> for BitSet<T, N> {
     fn visit(&mut self, a: NodeIndex<Ix>) -> bool {
         self.set(a.0.index(), true)

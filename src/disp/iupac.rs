@@ -1,10 +1,18 @@
-use std::mem::MaybeUninit;
+#![allow(dead_code, unused_variables)]
 
 use crate::core::*;
 use crate::graph::misc::DataValueMap;
-use crate::graph::{BitFiltered, ConnectedGraphIter, CycleBasis};
+use crate::graph::CycleBasis;
+use crate::utils::bitset::BitSet;
+use arrayvec::ArrayString;
+use itertools::Itertools;
 use petgraph::visit::*;
-use smallvec::SmallVec;
+use smallvec::{smallvec_inline, SmallVec};
+use std::cell::Cell;
+use std::fmt::Write;
+use thiserror::Error;
+
+const MAX_NUM_LEN: usize = 28;
 
 bitflags::bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -45,8 +53,88 @@ enum NumKind {
     AltLength,
 }
 
+/// A halogen
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[repr(u8)]
+enum Halogen {
+    Hal,
+    At,
+    Br,
+    Cl,
+    F,
+    I,
+}
+impl Halogen {
+    pub fn from_u8(p: u8) -> Self {
+        match p {
+            0 => Self::Hal,
+            9 => Self::F,
+            17 => Self::Cl,
+            35 => Self::Br,
+            53 => Self::I,
+            85 => Self::At,
+            _ => unreachable!(),
+        }
+    }
+    pub fn fragment(self) -> &'static str {
+        match self {
+            Self::Hal => "hal",
+            Self::At => "astat",
+            Self::Br => "brom",
+            Self::Cl => "chlor",
+            Self::F => "fluor",
+            Self::I => "iod",
+        }
+    }
+}
+
+/// Substitution kind of an oxygen (for oxyhalides)
+#[derive(Debug, Clone, Copy)]
+enum SubKind {
+    /// Substituted onto another part of a molecule (methyl perchlorate)
+    Mol,
+    /// Conjugate base (perchlorate anion)
+    Base,
+    /// Radical (perchlorate radical)
+    R,
+    /// Acid (perchloric acid)
+    H,
+}
+
+/// Something's wrong with the molecule passed into `iupac_name`
+#[derive(Debug, Clone, Error)]
+pub enum InvalidMolecule<N> {
+    #[error("Invalid valence on atom: expected one of {expected:?}, found {num}")]
+    InvalidValence {
+        atom: N,
+        num: isize,
+        expected: &'static [u8],
+    },
+    #[error("Invalid charge on atom: expected one of {expected:?}, found {charge:+}")]
+    InvalidCharge {
+        atom: N,
+        charge: i8,
+        expected: &'static [i8],
+    },
+    #[error("Too many of {radical} ({num}), IUPAC doesn't specify how to name more than 10,000")]
+    TooManyOfSub { radical: String, num: usize },
+    #[error("Unimplemented feature: {0}")]
+    Unimplemented(&'static str),
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct RingScore {
+    atoms: usize,
+    hetero_n: usize,
+    hetero_o: usize,
+    hetero_s: usize,
+    hetero_other: usize,
+    bond_score: usize,
+}
+
 /// Generate the name for a number. Returns true if NumKind::AltLength was given, and an alternate name was given.
-fn num_name(n: usize, out: &mut String, kind: NumKind, vowel_end: bool) -> bool {
+fn num_name(n: usize, kind: NumKind, vowel_end: bool) -> (ArrayString<MAX_NUM_LEN>, bool) {
+    let mut out = ArrayString::new();
     assert!(n < 10000, "only chains less than 10000 long are supported!");
     if n < 10 {
         match kind {
@@ -84,10 +172,10 @@ fn num_name(n: usize, out: &mut String, kind: NumKind, vowel_end: bool) -> bool 
                     "non",
                 ];
                 out.push_str(names[n]);
-                return n < 8;
+                return (out, n < 8);
             }
         };
-        return false;
+        return (out, false);
     }
     let last_two = n % 100;
     const DIGITS: [&str; 10] = [
@@ -123,666 +211,294 @@ fn num_name(n: usize, out: &mut String, kind: NumKind, vowel_end: bool) -> bool 
     }
     out.push_str(
         [
-            "", "hect", "dict", "trict", "tetract", "pentact", "hexact", "octact", "nonact",
+            "", "hect", "dict", "trict", "tetract", "pentact", "hexact", "heptact", "octact",
+            "nonact",
         ][n / 100 % 10],
     );
     out.push_str(
         [
-            "", "kili", "dili", "trili", "tetrali", "pentali", "hexali", "octali", "nonali",
-        ][n / 100 % 10],
+            "", "kili", "dili", "trili", "tetrali", "pentali", "hexali", "heptali", "octali",
+            "nonali",
+        ][n / 1000],
     );
-    false
+    (out, false)
 }
 
-/// A halogen
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-#[repr(u8)]
-enum Halogen {
-    Hal,
-    At,
-    Br,
-    Cl,
-    F,
-    I,
+fn name_radical<G: DataValueMap<NodeWeight = Atom, EdgeWeight = Bond> + IntoEdges>(
+    graph: G,
+    bits: &mut BitSet<usize, 2>,
+    out: &mut String,
+    from: Option<[G::NodeId; 2]>,
+) -> Result<usize, InvalidMolecule<G::NodeId>> {
+    Err(InvalidMolecule::Unimplemented("radical naming"))
 }
-impl Halogen {
-    pub fn from_u8(p: u8) -> Self {
-        match p {
-            0 => Self::Hal,
-            9 => Self::F,
-            17 => Self::Cl,
-            35 => Self::Br,
-            53 => Self::I,
-            85 => Self::At,
-            _ => unreachable!(),
+
+fn score_ring<G: DataValueMap<NodeWeight = Atom, EdgeWeight = Bond> + IntoEdges>(
+    graph: G,
+    nodes: &[(usize, G::NodeId)],
+) -> RingScore {
+    match nodes {
+        [] => Default::default(),
+        [(_, n)] => {
+            let a = graph.node_weight(*n).unwrap();
+            RingScore {
+                atoms: 1,
+                hetero_n: (a.protons == 7) as _,
+                hetero_o: (a.protons == 8) as _,
+                hetero_s: (a.protons == 16) as _,
+                hetero_other: ![6, 7, 8, 16].contains(&a.protons) as _,
+                bond_score: 0,
+            }
+        }
+        &[(_, n1), (_, n2)] => {
+            let a1 = graph.node_weight(n1).unwrap();
+            let a2 = graph.node_weight(n2).unwrap();
+            RingScore {
+                atoms: 2,
+                hetero_n: (a1.protons == 7) as usize + (a2.protons == 7) as usize,
+                hetero_o: (a1.protons == 8) as usize + (a2.protons == 8) as usize,
+                hetero_s: (a1.protons == 16) as usize + (a2.protons == 16) as usize,
+                hetero_other: ![6, 7, 8, 16].contains(&a1.protons) as usize
+                    + ![6, 7, 8, 16].contains(&a2.protons) as usize,
+                bond_score: graph
+                    .edges(n1)
+                    .find(|e| e.target() == n2)
+                    .unwrap()
+                    .weight()
+                    .bond_count()
+                    .ceil() as _,
+            }
+        }
+        _ => {
+            let mut bond_score = 0.0f32;
+            let mut hetero_n = 0;
+            let mut hetero_o = 0;
+            let mut hetero_s = 0;
+            let mut hetero_other = 0;
+            for (&(_, n1), &(_, n2)) in nodes.iter().circular_tuple_windows() {
+                bond_score += graph
+                    .edges(n1)
+                    .find(|e| e.target() == n2)
+                    .unwrap()
+                    .weight()
+                    .bond_count();
+                match graph.node_weight(n1).unwrap().protons {
+                    6 => {}
+                    7 => hetero_n += 1,
+                    8 => hetero_o += 1,
+                    16 => hetero_s += 1,
+                    _ => hetero_other += 1,
+                }
+            }
+            RingScore {
+                atoms: nodes.len(),
+                bond_score: bond_score.ceil() as _,
+                hetero_n,
+                hetero_o,
+                hetero_s,
+                hetero_other,
+            }
         }
     }
-    pub fn fragment(self) -> &'static str {
-        match self {
-            Self::Hal => "hal",
-            Self::At => "astat",
-            Self::Br => "brom",
-            Self::Cl => "chlor",
-            Self::F => "fluor",
-            Self::I => "iod",
-        }
-    }
 }
 
-/// A functional group or other notable feature
-#[derive(Debug, Clone, PartialEq)]
-enum Feature<N> {
-    Alcohol {
-        o: N,
-        base: bool,
-    },
-    Ether(N),
-    Ketone {
-        c: N,
-        o: N,
-    },
-    Thiol {
-        s: N,
-        base: bool,
-    },
-    Thioether(N),
-    Thioketone {
-        c: N,
-        s: N,
-    },
-    CarbAcid {
-        c: N,
-        os: [N; 2],
-        base: bool,
-    },
-    Ester {
-        c: N,
-        eth_o: N,
-        ket_o: N,
-    },
-    Thioester {
-        c: N,
-        s: N,
-        o: N,
-    },
-    Amine(N, i8),
-    Amide {
-        n: N,
-        c: N,
-        o: N,
-    },
-    Imine {
-        c: N,
-        n: N,
-    },
-    Imide {
-        n: N,
-        c1: N,
-        o1: N,
-        c2: N,
-        o2: N,
-    },
-    Halide {
-        hal: Halogen,
-        c: N,
-        x: N,
-    },
-    HypoHalide {
-        hal: Halogen,
-        c: N,
-        o: N,
-        x: N,
-    },
-    DioxyHalide {
-        hal: Halogen,
-        c: N,
-        o: N,
-        x: N,
-        os: N,
-    },
-    TrioxyHalide {
-        hal: Halogen,
-        c: N,
-        o: N,
-        x: N,
-        os: [N; 2],
-    },
-    PeroxyHalide {
-        hal: Halogen,
-        c: N,
-        o: N,
-        x: N,
-        os: [N; 3],
-    },
-    AcylHalide {
-        hal: Halogen,
-        c: N,
-        x: N,
-        o: N,
-    },
-    Sulfate {
-        s: N,
-        o: N,
-        os: [N; 2],
-    },
-    Phenyl([N; 6]),
-    Benzyl(N, [N; 6]),
-    Benzoyl {
-        c: N,
-        o: N,
-        ring: [N; 6],
-    },
-    Cycle(SmallVec<N, 6>),
+fn name_ring_system<G: DataValueMap<NodeWeight = Atom, EdgeWeight = Bond> + IntoEdges>(
+    graph: G,
+    sys: &[Vec<(usize, G::NodeId)>],
+    out: &mut String,
+) -> Result<(), InvalidMolecule<G::NodeId>> {
+    Err(InvalidMolecule::Unimplemented("ring naming"))
 }
 
-/// Substitution kind of an oxygen (for oxyhalides)
-#[derive(Debug, Clone, Copy)]
-enum SubKind {
-    /// Substituted onto another part of a molecule (methyl perchlorate)
-    Mol,
-    /// Conjugate base (perchlorate anion)
-    Base,
-    /// Radical (perchlorate radical)
-    R,
-    /// Acid (perchloric acid)
-    H,
-}
-
-/// Something's wrong with the molecule passed into `iupac_name`
-#[derive(Debug, Clone, Copy)]
-pub enum InvalidMolecule<N> {
-    InvalidValence {
-        atom: N,
-        num: isize,
-        expected: &'static [u8],
-    },
-    InvalidCharge {
-        atom: N,
-        charge: i8,
-        expected: &'static [i8],
-    },
+fn number_ring_system<G: DataValueMap<NodeWeight = Atom, EdgeWeight = Bond> + IntoEdges>(
+    graph: G,
+    sys: &mut [Vec<(usize, G::NodeId)>],
+) -> Result<[bool; 2], InvalidMolecule<G::NodeId>> {
+    Err(InvalidMolecule::Unimplemented("Ring numbering"))
 }
 
 /// Try to generate the IUPAC name for a molecule
 pub fn iupac_name<
     G: DataValueMap<NodeWeight = Atom, EdgeWeight = Bond>
         + IntoNodeReferences
-        + NodeIndexable
+        + NodeCompactIndexable
         + IntoEdges,
 >(
     graph: G,
     cfg: IupacConfig,
 ) -> Result<String, InvalidMolecule<G::NodeId>> {
-    let mut features = Vec::new();
-    let mut frags: SmallVec<_, 3> = ConnectedGraphIter::new(graph)
-        .iter(graph)
-        .map(|filter| {
-            features.clear();
-            let graph = BitFiltered::<G, usize, 1, true>::new(graph, filter);
-            for n in graph.node_references() {
-                let atom = *n.weight();
-                match atom.protons {
-                    7 => {}
-                    8 => {
-                        if atom.data.other() == 0 {
-                            let total =
-                                (atom.data.hydrogen() + atom.data.single() + atom.data.unknown())
-                                    as i8
-                                    - atom.charge;
-                            if total != 2 {
-                                return Err(InvalidMolecule::InvalidValence {
-                                    atom: n.id(),
-                                    num: total as isize,
-                                    expected: &[2],
-                                });
-                            }
-                            match atom.data.hydrogen() {
-                                0 => match atom.charge {
-                                    0 => {
-                                        if atom.data.unknown() == 2 {
-                                            return Ok(("ether".to_string(), 0));
-                                        } else {
-                                            features.push(Feature::Ether(n.id()));
-                                        }
-                                    }
-                                    -1 => {
-                                        if atom.data.unknown() == 1 {
-                                            return Ok(("oxide".to_string(), -1));
-                                        } else {
-                                            features.push(Feature::Alcohol {
-                                                o: n.id(),
-                                                base: true,
-                                            })
-                                        }
-                                    }
-                                    _ => {}
-                                },
-                                1 => match atom.charge {
-                                    0 => {
-                                        if atom.data.unknown() == 1 {
-                                            return Ok(("hydroxyl".to_string(), -1));
-                                        } else {
-                                            features.push(Feature::Alcohol {
-                                                o: n.id(),
-                                                base: false,
-                                            })
-                                        }
-                                    }
-                                    _ => {}
-                                },
-                                2 => {
-                                    if atom.charge == 0 {
-                                        return Ok(("water".to_string(), 0));
-                                    }
-                                }
-                                3 => {
-                                    if atom.charge == 1 {
-                                        return Ok(("hydronium".to_string(), 1));
-                                    }
-                                }
-                                _ => {}
-                            }
-                        } else if atom.data.other() == 1
-                            && atom.data.unknown() == 0
-                            && atom.data.single() == 0
-                            && atom.data.hydrogen() == 0
-                        {
-                            let Some(ed) = graph.edges(n.id()).next() else {
-                                continue;
-                            };
-                            let neighbor = graph.node_weight(ed.target()).unwrap();
-                            if neighbor.protons == 6 {
-                                if neighbor.data.other() == 1
-                                    && neighbor.data.unknown() == 0
-                                    && neighbor.data.single() == 0
-                                    && neighbor.data.hydrogen() == 0
-                                {
-                                    return Ok(("carbon monoxide".to_string(), 0));
-                                } else if *ed.weight() == Bond::Double {
-                                    features.push(Feature::Ketone {
-                                        c: ed.target(),
-                                        o: n.id(),
-                                    });
-                                }
-                            }
-                        }
-                    }
-                    16 => {
-                        if atom.data.other() == 0 {
-                            let total =
-                                (atom.data.hydrogen() + atom.data.single() + atom.data.unknown())
-                                    as i8
-                                    - atom.charge;
-                            if total != 2 {
-                                return Err(InvalidMolecule::InvalidValence {
-                                    atom: n.id(),
-                                    num: total as isize,
-                                    expected: &[2],
-                                });
-                            }
-                            match atom.data.hydrogen() {
-                                0 => match atom.charge {
-                                    0 => {
-                                        if atom.data.unknown() == 2 {
-                                            return Ok(("thioether".to_string(), 0));
-                                        } else {
-                                            features.push(Feature::Thioether(n.id()));
-                                        }
-                                    }
-                                    -1 => {
-                                        if atom.data.unknown() == 1 {
-                                            return Ok(("sulfide".to_string(), -1));
-                                        } else {
-                                            features.push(Feature::Thiol {
-                                                s: n.id(),
-                                                base: true,
-                                            })
-                                        }
-                                    }
-                                    _ => {}
-                                },
-                                1 => match atom.charge {
-                                    0 => {
-                                        if atom.data.unknown() == 1 {
-                                            return Ok(("thiol".to_string(), -1));
-                                        } else {
-                                            features.push(Feature::Thiol {
-                                                s: n.id(),
-                                                base: false,
-                                            })
-                                        }
-                                    }
-                                    _ => {}
-                                },
-                                2 => {
-                                    if atom.charge == 0 {
-                                        return Ok((
-                                            if cfg.contains(IupacConfig::HYDRO_ACIDS) {
-                                                "hydrosulfuric acid"
-                                            } else {
-                                                "hydrogen sulfide"
-                                            }
-                                            .to_string(),
-                                            0,
-                                        ));
-                                    }
-                                }
-                                3 => {
-                                    if atom.charge == 1 {
-                                        return Ok(("sulfonium".to_string(), 1));
-                                    }
-                                }
-                                _ => {}
-                            }
-                        } else if atom.data.other() == 1
-                            && atom.data.unknown() == 0
-                            && atom.data.single() == 0
-                            && atom.data.hydrogen() == 0
-                        {
-                            let Some(ed) = graph.edges(n.id()).next() else {
-                                continue;
-                            };
-                            let neighbor = graph.node_weight(ed.target()).unwrap();
-                            if neighbor.protons == 6 {
-                                if neighbor.data.other() == 1
-                                    && neighbor.data.unknown() == 0
-                                    && neighbor.data.single() == 0
-                                    && neighbor.data.hydrogen() == 0
-                                {
-                                    return Ok(("sulfur monoxide".to_string(), 0));
-                                } else if *ed.weight() == Bond::Double {
-                                    features.push(Feature::Thioketone {
-                                        c: ed.target(),
-                                        s: n.id(),
-                                    });
-                                }
-                            }
-                        }
-                    }
-                    p @ (0 | 9 | 17 | 35 | 53 | 85) if p != 0 || atom.isotope == 0x0100 => {
-                        let hal = Halogen::from_u8(p);
-                        let frag = hal.fragment();
-                        if atom.data.other() == 0 {
-                            match (
-                                atom.data.single(),
-                                atom.data.hydrogen(),
-                                atom.data.unknown(),
-                            ) {
-                                (1, 0, 0) => {
-                                    let n1 = graph.neighbors(n.id()).next().unwrap();
-                                    let a = graph.node_weight(n1).unwrap();
-                                    if a.protons == 8 {
-                                        if a.data.other() != 0 {
-                                            let valence = graph
-                                                .edges(n1)
-                                                .map(|i| i.weight().bond_count())
-                                                .sum::<f32>()
-                                                as isize
-                                                - a.charge as isize;
-                                            if valence == 2 {
-                                                return Err(InvalidMolecule::InvalidCharge {
-                                                    atom: n1,
-                                                    charge: a.charge,
-                                                    expected: &[0, -1],
-                                                });
-                                            } else {
-                                                return Err(InvalidMolecule::InvalidValence {
-                                                    atom: n1,
-                                                    num: valence,
-                                                    expected: &[2],
-                                                });
-                                            }
-                                        }
-                                        match (a.data.single(), a.data.hydrogen(), a.data.unknown())
-                                        {
-                                            (2, 0, 0) => {
-                                                let n2 = graph
-                                                    .neighbors(n1)
-                                                    .find(|&n2| n2 != n.id())
-                                                    .unwrap();
-                                                features.push(Feature::HypoHalide {
-                                                    hal,
-                                                    c: n2,
-                                                    o: n1,
-                                                    x: n.id(),
-                                                });
-                                            }
-                                            (1, 1, 0) => {
-                                                return Ok((format!("hypo{frag}ous acid"), 0));
-                                            }
-                                            (1, 0, u @ (0 | 1)) => {
-                                                let valence = u as i8 - atom.charge;
-                                                if valence == 1 {
-                                                    return Ok((
-                                                        format!("hypo{frag}ite"),
-                                                        atom.charge as _,
-                                                    ));
-                                                } else {
-                                                    return Err(InvalidMolecule::InvalidValence {
-                                                        atom: n.id(),
-                                                        num: valence as _,
-                                                        expected: &[1],
-                                                    });
-                                                }
-                                            }
-                                            (a, b, c) => {
-                                                let valence = (a + b + c) as i8 - atom.charge;
-                                                if valence == 2 {
-                                                    return Err(InvalidMolecule::InvalidCharge {
-                                                        atom: n.id(),
-                                                        charge: atom.charge,
-                                                        expected: &[0, -1],
-                                                    });
-                                                } else {
-                                                    return Err(InvalidMolecule::InvalidValence {
-                                                        atom: n.id(),
-                                                        num: valence as _,
-                                                        expected: &[1],
-                                                    });
-                                                }
-                                            }
-                                        }
-                                    } else {
-                                        features.push(Feature::Halide {
-                                            hal,
-                                            c: n1,
-                                            x: n.id(),
-                                        });
-                                    }
-                                    continue;
-                                }
-                                (0, 1, 0) => {
-                                    if cfg.contains(IupacConfig::HYDRO_ACIDS) {
-                                        return Ok((format!("hyrdro{frag}ic acid"), 0));
-                                    } else {
-                                        return Ok((format!("hydrogen {frag}ide"), 0));
-                                    }
-                                }
-                                (0, 0, u @ (0 | 1)) => {
-                                    let valence = u as i8 - atom.charge;
-                                    if valence == 1 {
-                                        return Ok((format!("{frag}ide"), atom.charge as _));
-                                    } else {
-                                        return Err(InvalidMolecule::InvalidValence {
-                                            atom: n.id(),
-                                            num: valence as _,
-                                            expected: &[1],
-                                        });
-                                    }
-                                }
-                                (a, b, c) => {
-                                    let valence = (a + b + c) as i8 - atom.charge;
-                                    if valence == 2 {
-                                        return Err(InvalidMolecule::InvalidCharge {
-                                            atom: n.id(),
-                                            charge: atom.charge,
-                                            expected: &[0, -1],
-                                        });
-                                    } else {
-                                        return Err(InvalidMolecule::InvalidValence {
-                                            atom: n.id(),
-                                            num: valence as _,
-                                            expected: &[1],
-                                        });
-                                    }
-                                }
-                            }
-                        } else if atom.data.single() == 1
-                            && atom.data.hydrogen() == 0
-                            && atom.data.unknown() == 0
-                            && atom.data.other() <= 3
-                        {
-                            let check = 'check: {
-                                let mut kind = None;
-                                for edge in graph.edges(n.id()) {
-                                    let other = graph.node_weight(edge.target()).unwrap();
-                                    if other.protons != 8 {
-                                        break 'check None;
-                                    }
-                                    match *edge.weight() {
-                                        Bond::Double => {}
-                                        Bond::Single if kind.is_none() => {
-                                            let o = edge.target();
-                                            match (
-                                                other.data.hydrogen(),
-                                                other.data.single(),
-                                                other.data.unknown(),
-                                                other.charge,
-                                            ) {
-                                                (1, 1, 0, 0) => kind = Some((SubKind::H, o)),
-                                                (0, 2, 0, 0) => kind = Some((SubKind::Mol, o)),
-                                                (0, 1, 1, 0) => kind = Some((SubKind::R, o)),
-                                                (0, 1, 0, -1) => kind = Some((SubKind::Base, o)),
-                                                _ => {}
-                                            }
-                                        }
-                                        _ => break 'check None,
-                                    }
-                                }
-                                kind
-                            };
-                            if let Some((kind, o)) = check {
-                                let neighbor =
-                                    || graph.neighbors(o).find(|&i| i != n.id()).unwrap();
-                                let mut os = graph.edges(n.id()).filter_map(|e| {
-                                    (*e.weight() == Bond::Double).then_some(e.target())
-                                });
-                                match (atom.data.other(), kind) {
-                                    (1, SubKind::H) => return Ok((format!("{frag}ous acid"), 0)),
-                                    (1, SubKind::R) => return Ok((format!("{frag}ite"), 0)),
-                                    (1, SubKind::Base) => return Ok((format!("{frag}ite"), -1)),
-                                    (1, SubKind::Mol) => {
-                                        features.push(Feature::DioxyHalide {
-                                            hal,
-                                            c: neighbor(),
-                                            o,
-                                            x: n.id(),
-                                            os: os.next().unwrap(),
-                                        });
-                                    }
-                                    (2, SubKind::H) => return Ok((format!("{frag}ic acid"), 0)),
-                                    (2, SubKind::R) => return Ok((format!("{frag}ate"), 0)),
-                                    (2, SubKind::Base) => return Ok((format!("{frag}ate"), -1)),
-                                    (2, SubKind::Mol) => {
-                                        features.push(Feature::TrioxyHalide {
-                                            hal,
-                                            c: neighbor(),
-                                            o,
-                                            x: n.id(),
-                                            os: os.collect::<Vec<_>>().try_into().ok().unwrap(),
-                                        });
-                                    }
-                                    (3, SubKind::H) => return Ok((format!("per{frag}ic acid"), 0)),
-                                    (3, SubKind::R) => return Ok((format!("per{frag}ate"), 0)),
-                                    (3, SubKind::Base) => return Ok((format!("per{frag}ate"), -1)),
-                                    (3, SubKind::Mol) => {
-                                        features.push(Feature::PeroxyHalide {
-                                            hal,
-                                            c: neighbor(),
-                                            o,
-                                            x: n.id(),
-                                            os: os.collect::<Vec<_>>().try_into().ok().unwrap(),
-                                        });
-                                    }
-                                    _ => unreachable!(),
-                                }
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            {
-                let mut cycles = CycleBasis::new_struct(&graph);
-                features.reserve(cycles.len());
-                let mut atoms = SmallVec::<_, 6>::new();
-                while cycles.step().is_some() {
-                    atoms.clear();
-                    atoms.extend(cycles.current().iter().map(|&i| graph.from_index(i)));
-                    // keeping this match for eventual heterocycle checks
-                    match cycles.current().len() {
-                        6 => {
-                            let benzene = {
-                                let mut aromatic = true;
-                                let mut kekule = true;
-                                atoms.iter().all(|&i| {
-                                    if graph.node_weight(i).unwrap().protons != 6 {
-                                        return false;
-                                    }
-                                    let mut it = graph.edges(i).filter_map(|e| {
-                                        atoms.contains(&e.target()).then(|| *e.weight())
-                                    });
-                                    let ex = match it.next() {
-                                        Some(Bond::Single) if kekule => {
-                                            aromatic = false;
-                                            Bond::Double
-                                        }
-                                        Some(Bond::Double) if kekule => {
-                                            aromatic = false;
-                                            Bond::Single
-                                        }
-                                        Some(Bond::Aromatic) if aromatic => {
-                                            kekule = false;
-                                            Bond::Aromatic
-                                        }
-                                        _ => return false,
-                                    };
-                                    it.next() == Some(ex)
-                                })
-                            };
-                            if benzene {
-                                if graph.node_count() == 6 {
-                                    return Ok(("benzene".to_string(), 0));
-                                }
-                                let mut ats = MaybeUninit::uninit_array();
-                                MaybeUninit::copy_from_slice(&mut ats, &atoms);
-                                features.push(Feature::Phenyl(unsafe {
-                                    MaybeUninit::array_assume_init(ats)
-                                }));
-                            } else {
-                                features.push(Feature::Cycle(std::mem::take(&mut atoms)));
-                            }
-                        }
-                        _ => {
-                            features.push(Feature::Cycle(std::mem::take(&mut atoms)));
-                        }
-                    }
-                }
-            }
-            todo!()
+    let mut cycles = CycleBasis::new_struct(graph)
+        .map(|i| {
+            let ring =
+                i.1.into_iter()
+                    .map(|n| (0, graph.from_index(n)))
+                    .collect::<Vec<_>>();
+            (score_ring(graph, &ring), smallvec_inline![ring])
         })
-        .collect::<Result<_, _>>()?;
-    frags.sort_by_key(|x| i32::MAX - x.1);
-    if let Some(((out, _), rest)) = frags.split_first_mut() {
-        for chunk in rest.chunks(8) {
-            out.reserve(chunk.iter().map(|i| i.0.len()).sum::<usize>() + chunk.len());
-            for (n, _) in chunk {
-                out.push(' ');
-                out.push_str(n);
+        .collect::<Vec<_>>();
+    {
+        let mut i = 0;
+        let mut atoms = BitSet::<usize, 1>::new();
+        let mut bonds = BitSet::<usize, 1>::new();
+        while i < cycles.len() {
+            let mut common_atoms = 0;
+            let mut common_het_n = 0;
+            let mut common_het_o = 0;
+            let mut common_het_s = 0;
+            let mut common_het_other = 0;
+            let mut common_bonds = 0.0;
+            atoms.clear();
+            bonds.clear();
+            let mut j = 0;
+            while j < i {
+                let cy1 = &cycles[i].1[0];
+                for cy2 in &cycles[j].1 {
+                    for (n, (&(_, n1), &(_, n2))) in cy1.iter().circular_tuple_windows().enumerate()
+                    {
+                        if let Some(idx) = cy2.iter().position(|&n| n.1 == n1) {
+                            common_atoms += 1;
+                            if !atoms.set(n, true) {
+                                match graph.node_weight(n1).unwrap().protons {
+                                    6 => {}
+                                    7 => common_het_n += 1,
+                                    8 => common_het_o += 1,
+                                    16 => common_het_s += 1,
+                                    _ => common_het_other += 1,
+                                }
+                            }
+                            let l = cy2.len();
+                            if cy2[(idx + 1) % l].1 == n2
+                                || cy2[(idx + l - 1) % l].1 == n2 && !bonds.set(n, true)
+                            {
+                                common_bonds += graph
+                                    .edges(n1)
+                                    .find(|n| n.target() == n2)
+                                    .unwrap()
+                                    .weight()
+                                    .bond_count();
+                            }
+                        }
+                    }
+                }
+                if common_atoms > 0 {
+                    let (
+                        RingScore {
+                            atoms,
+                            hetero_n,
+                            hetero_o,
+                            hetero_s,
+                            hetero_other,
+                            bond_score,
+                        },
+                        ring,
+                    ) = cycles.remove(j);
+                    i -= 1;
+                    let (score, rings) = &mut cycles[i];
+                    score.atoms += atoms;
+                    score.hetero_n += hetero_n;
+                    score.hetero_o += hetero_o;
+                    score.hetero_s += hetero_s;
+                    score.hetero_other += hetero_other;
+                    score.bond_score += bond_score;
+                    rings.extend(ring);
+                } else {
+                    j += 1;
+                }
             }
+            let score = &mut cycles[i].0;
+            score.atoms -= common_atoms;
+            score.hetero_n -= common_het_n;
+            score.hetero_o -= common_het_o;
+            score.hetero_s -= common_het_s;
+            score.hetero_other -= common_het_other;
+            score.bond_score -= common_bonds.ceil() as usize;
+            i += 1;
         }
-        Ok(std::mem::take(out))
-    } else {
-        Ok(String::new())
     }
+    cycles.sort_by_key(|c| c.0);
+    let mut frags = SmallVec::<String, 1>::new();
+    let mut subs_buf = SmallVec::<_, 2>::new();
+    let mut string_reuse = Vec::new();
+    let mut unvisited = graph
+        .node_identifiers()
+        .map(|i| graph.to_index(i))
+        .collect::<BitSet<usize, 2>>();
+
+    while !unvisited.all_zero() {
+        if let Some((_, mut base)) = cycles.pop() {
+            let [can_rot, can_flip] = number_ring_system(graph, &mut base)?;
+            for ring in &base {
+                for &(num, node) in ring {
+                    for ed in graph.edges(node) {
+                        let new = ed.target();
+                        if ring.iter().any(|n| n.1 == new)
+                            || base.iter().any(|r| r.iter().any(|n| n.1 == new))
+                        {
+                            continue;
+                        }
+                        let mut s: String = string_reuse.pop().unwrap_or_default();
+                        s.clear();
+                        let priority =
+                            name_radical(graph, &mut unvisited, &mut s, Some([new, node]))?;
+                        subs_buf.push((priority, smallvec_inline![num], s, Cell::new(None)));
+                    }
+                }
+            }
+            if can_rot || can_flip {
+                // TODO: rotate and flip rings for optimal numbering
+            }
+            subs_buf.sort_unstable_by(|a, b| a.1.cmp(&b.1));
+            subs_buf.dedup_by(|a, b| {
+                a.2 == b.2 && {
+                    string_reuse.push(std::mem::take(&mut a.2));
+                    b.1.extend_from_slice(&a.1);
+                    true
+                }
+            });
+            subs_buf.sort_unstable_by(|a, b| {
+                let an = a.3.get().unwrap_or_else(|| {
+                    let name =
+                        num_name(a.1.len(), NumKind::Count { necessary: false }, false).0;
+                    a.3.set(Some(name));
+                    name
+                });
+                let bn = b.3.get().unwrap_or_else(|| {
+                    let name =
+                        num_name(b.1.len(), NumKind::Count { necessary: false }, false).0;
+                    b.3.set(Some(name));
+                    name
+                });
+                an.cmp(&bn).then_with(|| a.2.cmp(&b.2))
+            });
+            let mut out = string_reuse.pop().unwrap_or_default();
+            out.clear();
+            for (_, mut subs, name, prefix) in subs_buf.drain(..) {
+                if !cfg.contains(IupacConfig::NO_NUMBERS) {
+                    if out.is_empty() {
+                        out.push('-');
+                    }
+                    subs.sort_unstable();
+                    let mut first = true;
+                    for i in subs {
+                        if first {
+                            first = false;
+                        } else {
+                            out.push(',');
+                        }
+                        let _ = write!(out, "{i}");
+                    }
+                }
+                out.push_str(&prefix.get().unwrap());
+                out.push_str(&name);
+                string_reuse.push(name);
+            }
+            name_ring_system(graph, &base, &mut out)?;
+            frags.push(out);
+        } else {
+            let mut out = string_reuse.pop().unwrap_or_default();
+            out.clear();
+            name_radical(graph, &mut unvisited, &mut out, None)?;
+        }
+    }
+    Ok("".to_string())
 }
