@@ -224,19 +224,22 @@ fn num_name(n: usize, kind: NumKind, vowel_end: bool) -> (ArrayString<MAX_NUM_LE
     (out, false)
 }
 
-fn name_radical<G: DataValueMap<NodeWeight = Atom, EdgeWeight = Bond> + IntoEdges>(
+fn name_radical<G>(
     graph: G,
     bits: &mut BitSet<usize, 2>,
     out: &mut String,
     from: Option<[G::NodeId; 2]>,
-) -> Result<usize, InvalidMolecule<G::NodeId>> {
+) -> Result<usize, InvalidMolecule<G::NodeId>>
+where
+    G: DataValueMap<NodeWeight = Atom, EdgeWeight = Bond> + IntoEdges,
+{
     Err(InvalidMolecule::Unimplemented("radical naming"))
 }
 
-fn score_ring<G: DataValueMap<NodeWeight = Atom, EdgeWeight = Bond> + IntoEdges>(
-    graph: G,
-    nodes: &[(usize, G::NodeId)],
-) -> RingScore {
+fn score_ring<G>(graph: G, nodes: &[(usize, G::NodeId)]) -> RingScore
+where
+    G: DataValueMap<NodeWeight = Atom, EdgeWeight = Bond> + IntoEdges,
+{
     match nodes {
         [] => Default::default(),
         [(_, n)] => {
@@ -302,31 +305,35 @@ fn score_ring<G: DataValueMap<NodeWeight = Atom, EdgeWeight = Bond> + IntoEdges>
     }
 }
 
-fn name_ring_system<G: DataValueMap<NodeWeight = Atom, EdgeWeight = Bond> + IntoEdges>(
+fn name_ring_system<G>(
     graph: G,
     sys: &[Vec<(usize, G::NodeId)>],
     out: &mut String,
-) -> Result<(), InvalidMolecule<G::NodeId>> {
+) -> Result<(), InvalidMolecule<G::NodeId>>
+where
+    G: DataValueMap<NodeWeight = Atom, EdgeWeight = Bond> + IntoEdges,
+{
     Err(InvalidMolecule::Unimplemented("ring naming"))
 }
 
-fn number_ring_system<G: DataValueMap<NodeWeight = Atom, EdgeWeight = Bond> + IntoEdges>(
+fn number_ring_system<G>(
     graph: G,
     sys: &mut [Vec<(usize, G::NodeId)>],
-) -> Result<[bool; 2], InvalidMolecule<G::NodeId>> {
+) -> Result<[bool; 2], InvalidMolecule<G::NodeId>>
+where
+    G: DataValueMap<NodeWeight = Atom, EdgeWeight = Bond> + IntoEdges,
+{
     Err(InvalidMolecule::Unimplemented("Ring numbering"))
 }
 
 /// Try to generate the IUPAC name for a molecule
-pub fn iupac_name<
+pub fn iupac_name<G>(graph: G, cfg: IupacConfig) -> Result<String, InvalidMolecule<G::NodeId>>
+where
     G: DataValueMap<NodeWeight = Atom, EdgeWeight = Bond>
         + IntoNodeReferences
         + NodeCompactIndexable
         + IntoEdges,
->(
-    graph: G,
-    cfg: IupacConfig,
-) -> Result<String, InvalidMolecule<G::NodeId>> {
+{
     let mut cycles = CycleBasis::new_struct(graph)
         .map(|i| {
             let ring =
@@ -457,14 +464,12 @@ pub fn iupac_name<
             });
             subs_buf.sort_unstable_by(|a, b| {
                 let an = a.3.get().unwrap_or_else(|| {
-                    let name =
-                        num_name(a.1.len(), NumKind::Count { necessary: false }, false).0;
+                    let name = num_name(a.1.len(), NumKind::Count { necessary: false }, false).0;
                     a.3.set(Some(name));
                     name
                 });
                 let bn = b.3.get().unwrap_or_else(|| {
-                    let name =
-                        num_name(b.1.len(), NumKind::Count { necessary: false }, false).0;
+                    let name = num_name(b.1.len(), NumKind::Count { necessary: false }, false).0;
                     b.3.set(Some(name));
                     name
                 });
