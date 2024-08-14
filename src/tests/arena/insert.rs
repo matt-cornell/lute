@@ -1,8 +1,10 @@
 use super::*;
 
+mod order;
+
 #[test]
 fn double_insert() {
-    super::trace_capture!();
+    trace_capture!();
     let mut arena = Arena::<u32>::new();
     let benzene = smiles!("c1ccccc1");
     let m1 = arena.insert_mol(&benzene);
@@ -49,7 +51,7 @@ fn isomorphism() {
 
 #[test]
 fn alcohols() {
-    super::trace_capture!();
+    trace_capture!();
     let mut arena = arena!(
         of u32:
         smiles!("O&"),     // alcohol
