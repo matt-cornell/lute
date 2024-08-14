@@ -1,3 +1,5 @@
+mod macros;
+
 mod algo;
 mod arena;
 mod empirical;
