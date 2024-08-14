@@ -1,4 +1,4 @@
-#![allow(dead_code, unused_variables)]
+#![allow(dead_code, unused_variables, clippy::ptr_arg)] // TODO for all of this
 
 use crate::core::*;
 use crate::graph::misc::DataValueMap;
@@ -316,14 +316,21 @@ where
     Err(InvalidMolecule::Unimplemented("ring naming"))
 }
 
+#[allow(clippy::type_complexity)] // just let me have this
 fn number_ring_system<G>(
     graph: G,
     sys: &mut [Vec<(usize, G::NodeId)>],
+    subs: &mut [(
+        usize,
+        SmallVec<usize, 1>,
+        String,
+        Cell<Option<ArrayString<MAX_NUM_LEN>>>,
+    )],
 ) -> Result<[bool; 2], InvalidMolecule<G::NodeId>>
 where
     G: DataValueMap<NodeWeight = Atom, EdgeWeight = Bond> + IntoEdges,
 {
-    Err(InvalidMolecule::Unimplemented("Ring numbering"))
+    Err(InvalidMolecule::Unimplemented("ring numbering"))
 }
 
 /// Try to generate the IUPAC name for a molecule
@@ -421,19 +428,53 @@ where
             score.bond_score -= common_bonds.ceil() as usize;
             i += 1;
         }
+        for (score, sys) in &mut cycles {
+            atoms.clear();
+            let mut i = 0;
+            for cy in sys {
+                for (n, a) in cy {
+                    if atoms.set(graph.to_index(*a), true) {
+                        *n = usize::MAX;
+                    } else {
+                        *n = i;
+                        i += 1;
+                    }
+                }
+            }
+            debug_assert_eq!(score.atoms, i);
+        }
     }
     cycles.sort_by_key(|c| c.0);
     let mut frags = SmallVec::<String, 1>::new();
     let mut subs_buf = SmallVec::<_, 2>::new();
-    let mut string_reuse = Vec::new();
+    let mut string_reuse = Vec::<String>::new();
     let mut unvisited = graph
         .node_identifiers()
         .map(|i| graph.to_index(i))
         .collect::<BitSet<usize, 2>>();
-
+    let mut last_idx = if cycles.is_empty() { 0 } else { cycles.len() };
     while !unvisited.all_zero() {
-        if let Some((_, mut base)) = cycles.pop() {
-            let [can_rot, can_flip] = number_ring_system(graph, &mut base)?;
+        if last_idx == 0 {
+            let mut out = string_reuse.pop().unwrap_or_default();
+            out.clear();
+            name_radical(graph, &mut unvisited, &mut out, None)?;
+        } else {
+            let mut base = {
+                last_idx -= 1;
+                let last = cycles[last_idx].0;
+                let dups = cycles[..last_idx]
+                    .iter()
+                    .rev()
+                    .position(|n| n.0 == last)
+                    .unwrap_or(0);
+                if dups == 0 {
+                    cycles.remove(last_idx).1
+                } else {
+                    last_idx -= dups;
+                    continue;
+                }
+            };
+            let mut i = 0;
             for ring in &base {
                 for &(num, node) in ring {
                     for ed in graph.edges(node) {
@@ -450,10 +491,9 @@ where
                         subs_buf.push((priority, smallvec_inline![num], s, Cell::new(None)));
                     }
                 }
+                i += ring.len();
             }
-            if can_rot || can_flip {
-                // TODO: rotate and flip rings for optimal numbering
-            }
+            number_ring_system(graph, &mut base, &mut subs_buf)?;
             subs_buf.sort_unstable_by(|a, b| a.1.cmp(&b.1));
             subs_buf.dedup_by(|a, b| {
                 a.2 == b.2 && {
@@ -499,10 +539,6 @@ where
             }
             name_ring_system(graph, &base, &mut out)?;
             frags.push(out);
-        } else {
-            let mut out = string_reuse.pop().unwrap_or_default();
-            out.clear();
-            name_radical(graph, &mut unvisited, &mut out, None)?;
         }
     }
     Ok("".to_string())
