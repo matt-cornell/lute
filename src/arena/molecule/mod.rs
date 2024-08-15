@@ -128,7 +128,6 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
         let mut idx = idx.0.index();
         let arena = self.arena.get_arena();
         (idx < arena.parts.get(self.index.index())?.1.index()).then_some(())?;
-
         let mut ix = self.index;
         loop {
             trace!(mol_idx = ix.index(), atom_idx = idx, "searching for atom");
@@ -148,7 +147,7 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
                     let mut found = false;
                     for p in &b.frags {
                         let s = arena.parts[p.index()].1.index();
-                        if idx > s {
+                        if idx >= s {
                             idx -= s;
                         } else {
                             ix = *p;
