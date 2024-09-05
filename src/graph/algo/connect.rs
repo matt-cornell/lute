@@ -3,6 +3,7 @@ use num_traits::PrimInt;
 use petgraph::visit::*;
 use smallvec::{smallvec, SmallVec};
 use std::fmt::{self, Binary, Debug, Formatter};
+use std::num::NonZeroUsize;
 
 /// Iterate over connected graphs in a graph, returning their bits.
 #[derive(Clone)]
@@ -34,7 +35,7 @@ impl<T: PrimInt, const N: usize> ConnectedGraphIter<T, N, fn(usize) -> usize> {
         }
     }
 }
-impl<T: PrimInt, const N: usize, F: FnMut(usize) -> usize> ConnectedGraphIter<T, N, F> {
+impl<T: PrimInt + std::fmt::Binary, const N: usize, F: FnMut(usize) -> usize> ConnectedGraphIter<T, N, F> {
     pub fn with_cvt<G: IntoNodeIdentifiers + NodeIndexable>(graph: G, cvt: F) -> Self {
         let mut full = BitSet::new();
         let mut max = 0;
@@ -47,13 +48,15 @@ impl<T: PrimInt, const N: usize, F: FnMut(usize) -> usize> ConnectedGraphIter<T,
         }
         Self { full, cvt }
     }
-    pub fn step<G: IntoNeighbors + NodeIndexable, U: PrimInt, const O: usize>(&mut self, graph: G, out: &mut BitSet<U, O>) -> bool {
+    pub fn step<G: IntoNeighbors + NodeIndexable, U: PrimInt, const O: usize>(&mut self, graph: G, out: &mut BitSet<U, O>) -> Option<NonZeroUsize> {
         let start = self.full.nth(0);
-        let Some(start) = start else { return false };
+        let Some(start) = start else { return None };
         let start = graph.from_index(start);
         out.clear();
         let mut stack: SmallVec<G::NodeId, 8> = smallvec![start];
+        let mut count = 0;
         while let Some(id) = stack.pop() {
+            count += 1;
             let idx = graph.to_index(id);
             self.full.set(idx, false);
             let cvt = (self.cvt)(idx);
@@ -63,7 +66,7 @@ impl<T: PrimInt, const N: usize, F: FnMut(usize) -> usize> ConnectedGraphIter<T,
                 self.full.get(idx)
             }))
         }
-        true
+        NonZeroUsize::new(count)
     }
 }
 

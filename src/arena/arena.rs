@@ -35,7 +35,7 @@ macro_rules! arena {
 const ATOM_BIT_STORAGE: usize = 2;
 const MODDED_GRAPH_LEN: usize = 4;
 type Graph<Ix> = StableGraph<Atom, Bond, Undirected, Ix>;
-type BSType = crate::utils::bitset::BitSet<usize, ATOM_BIT_STORAGE>;
+type BSType = crate::utils::bitset::BitSet<u16, ATOM_BIT_STORAGE>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(C)]
@@ -156,7 +156,8 @@ impl<Ix: IndexType> Arena<Ix> {
         &mut self,
         mol: G,
         isms_from: usize,
-        bits: Option<&mut BSType>,
+        bits: Option<(&mut BSType, usize)>,
+        depth: usize,
     ) -> (Ix, Vec<usize>)
     where
         G: Data<NodeWeight = Atom, EdgeWeight = Bond>
@@ -168,11 +169,19 @@ impl<Ix: IndexType> Arena<Ix> {
             + IntoNodeReferences,
         G::NodeId: Hash + Eq,
     {
+        let node_count = if let Some((_, count)) = &bits { *count } else { mol.node_count() };
+        trace!(?bits, depth, "entering impl");
+        struct OnExit(usize);
+        impl Drop for OnExit {
+            fn drop(&mut self) {
+                trace!(depth = self.0, "exiting impl");
+            }
+        }
+        let _guard = OnExit(depth);
         let max = <Ix as IndexType>::max().index();
         assert!(
-            mol.node_count() < max,
-            "molecule has too many atoms: {}, max is {max}",
-            mol.node_count()
+            node_count < max,
+            "molecule has too many atoms: {node_count}, max is {max}"
         );
         let mut scratch = Vec::new();
         let mut frags = {
@@ -185,7 +194,7 @@ impl<Ix: IndexType> Arena<Ix> {
                         MolRepr::Broken(b) => &b.frags,
                         MolRepr::Modify(m) => std::slice::from_ref(&m.base),
                     };
-                    (frag.1.index() <= mol.node_count()).then_some((n + isms_from, children))
+                    (frag.1.index() <= node_count).then_some((n + isms_from, children))
                 })
                 .partition::<Vec<_>, _>(|v| v.1.is_empty());
             let mut frags = VecDeque::from(frags);
@@ -217,7 +226,8 @@ impl<Ix: IndexType> Arena<Ix> {
             debug!(?frags, "topo-sorted fragments");
             frags
         };
-        let mut matched = vec![(IndexType::max(), usize::MAX); mol.node_count()];
+        // vec of (index in frags, index in parts)
+        let mut matched = vec![(IndexType::max(), usize::MAX); mol.node_count()]; // this may be inefficient for matching small fragments
         let seen_buf = UnsafeCell::new(BSType::new());
         let pred_buf = UnsafeCell::new(SmallVec::new());
         let mut prune_buf = Vec::new();
@@ -228,7 +238,7 @@ impl<Ix: IndexType> Arena<Ix> {
             let filtered = NodeFilter::new(mol, |n| {
                 let idx = mol.to_index(n);
                 if let Some(b) = &bits {
-                    if !b.get(idx) {
+                    if !b.0.get(idx) {
                         return false;
                     }
                 }
@@ -250,9 +260,9 @@ impl<Ix: IndexType> Arena<Ix> {
             let mut bmatch = PartialEq::eq;
             let mut found_any = false;
             for mut ism in isomorphisms_iter(&frag, &&compacted, &mut amatch, &mut bmatch, false) {
-                println!("found ism");
                 found_any = true;
                 prune_buf.clear();
+                prune_buf.reserve(ism.len());
                 for to in &mut ism {
                     let new = mol.to_index(compacted.node_map[*to]);
                     *to = new;
@@ -280,7 +290,7 @@ impl<Ix: IndexType> Arena<Ix> {
             for n in mol.node_references() {
                 let mi = mol.to_index(n.id());
                 if let Some(b) = &bits {
-                    if !b.get(mi) {
+                    if !b.0.get(mi) {
                         continue;
                     }
                 }
@@ -297,7 +307,7 @@ impl<Ix: IndexType> Arena<Ix> {
                 self.graph.add_edge(a, b, *e.weight());
             }
             mapping.sort_unstable_by(|a, b| a.0.cmp(&b.0));
-            let (new_bits, new_map) = mapping.into_iter().map(|x| (x.0.index(), x.1)).unzip();
+            let (new_bits, new_map) = mapping.into_iter().filter_map(|x| (x.0 != IndexType::max()).then_some((x.0.index(), x.1))).unzip();
             let idx = self.push_frag((MolRepr::Atomic(new_bits), Ix::new(count)));
             return (idx, new_map);
         } else if found.len() == 1 {
@@ -307,17 +317,69 @@ impl<Ix: IndexType> Arena<Ix> {
             }
         }
         let old_start = self.parts.len();
-        let filtered = NodeFilter::new(mol, |n| matched[mol.to_index(n)].0 == IndexType::max());
-        let mut cgi = bits.as_ref().map_or_else(
-            || ConnectedGraphIter::new(&filtered),
-            |b| ConnectedGraphIter::from_full((**b).clone()),
-        );
-        let mut default = BSType::new(); // no alloc
-        let bits = bits.unwrap_or(&mut default);
-        while cgi.step(&filtered, bits) {
-            found.insert(self.insert_mol_impl(mol, old_start, Some(bits)));
+        let gen_mapping = bits.is_some();
+        {
+            let matched = Cell::from_mut(&mut *matched).as_slice_of_cells();
+            let filtered = NodeFilter::new(mol, |n| matched[mol.to_index(n)].get().0 == IndexType::max());
+            let mut cgi = bits.as_ref().map_or_else(
+                || ConnectedGraphIter::new(&filtered),
+                |b| ConnectedGraphIter::from_full(b.0.clone()),
+            );
+            let mut bits = BSType::new();
+            let mut ism_buf = Vec::new();
+            let mut last_was_empty = false;
+            while let Some(count) = cgi.step(&filtered, &mut bits) {
+                assert!(!last_was_empty);
+                if cgi.full.all_zero() {
+                    last_was_empty = true;
+                }
+                let (i, ism) = self.insert_mol_impl(mol, old_start, Some((&mut bits, count.get())), depth + 1);
+                ism_buf.clone_from(&ism);
+                let idx = found.insert((i, ism));
+                for ni in ism_buf.drain(..) {
+                    matched[ni].set((i, idx));
+                }
+            }
         }
-        todo!()
+        found.compact(|_, from, to| {
+            for (_, i) in &mut matched {
+                if *i == from {
+                    *i = to;
+                }
+            }
+            true
+        });
+        let mut bonds = SmallVec::with_capacity(found.len().saturating_sub(1));
+        for e in mol.edge_references() {
+            let mut ami = mol.to_index(e.source());
+            let mut bmi = mol.to_index(e.target());
+            if let Some((bits, _)) = &bits {
+                if !bits.get(ami) || !bits.get(bmi) {
+                    continue;
+                }
+            }
+            let mut an = matched[ami].1;
+            let mut bn = matched[bmi].1;
+            if an == bn {
+                continue;
+            }
+            if an > bn {
+                std::mem::swap(&mut an, &mut bn);
+                std::mem::swap(&mut ami, &mut bmi);
+            }
+            let ai = found[an].1.iter().position(|&to| to == ami).unwrap();
+            let bi = found[bn].1.iter().position(|&to| to == bmi).unwrap();
+            bonds.push(InterFragBond {
+                an: Ix::new(an),
+                bn: Ix::new(bn),
+                ai: Ix::new(ai),
+                bi: Ix::new(bi),
+            });
+        }
+        let mut out_map = if gen_mapping { found.iter().flat_map(|i| &i.1.1).copied().collect() } else { Vec::new() };
+        let frags = found.into_iter().map(|f| f.1.0).collect();
+        let idx = self.push_frag((MolRepr::Broken(BrokenMol { frags, bonds }), Ix::new(node_count)));
+        (idx, out_map)
     }
     #[inline(always)]
     #[instrument(skip(self, mol), fields(size = mol.node_count()))]
@@ -332,6 +394,6 @@ impl<Ix: IndexType> Arena<Ix> {
             + IntoNodeReferences,
         G::NodeId: Hash + Eq,
     {
-        self.insert_mol_impl(mol, 0, None).0
+        self.insert_mol_impl(mol, 0, None, 0).0
     }
 }
