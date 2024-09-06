@@ -58,15 +58,20 @@ fn alcohols() {
         smiles!("CCO"),    // ethanol
         smiles!("CC(C)O"), // isopropanol
     );
+    tracing::info!("arena created");
     let orig = arena.parts.clone();
 
     let alcohol = arena.insert_mol(&smiles!("O&"));
+    tracing::info!("alcohol inserted");
     assert_eq!(alcohol, 0);
     assert_eq!(orig.len(), arena.parts.len(), "arena length changed");
     assert!(orig == arena.parts, "arena changed");
 
     let isp_idx = arena.insert_mol(&smiles!("CC(C)O"));
+    tracing::info!("isopropanol inserted");
     let isp = arena.molecule(isp_idx);
+
+    println!("{:#?}", arena.parts);
 
     // if these aren't equal, the output is just ugly
     assert_eq!(orig.len(), arena.parts.len(), "arena length changed");
