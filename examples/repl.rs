@@ -310,7 +310,16 @@ fn dump(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, ReplError
         let _guard = tracing::subscriber::set_default(ctx.trace.clone());
         let _timer = ctx.timings.then(Timer::new);
         let path = args.get_one::<PathBuf>("out");
-        match args.get_one::<DumpType>("type").unwrap() {
+        if *args.get_one("graph").unwrap_or(&false) {
+            println!("{:#?}", ctx.arena.graph());
+        }
+        if *args.get_one("frags").unwrap_or(&false) {
+            println!("{:#?}", ctx.arena.expose_parts());
+        }
+        let Some(dump_ty) = args.get_one::<DumpType>("type") else {
+            return Ok(Some(String::new()));
+        };
+        match dump_ty {
             ty @ (DumpType::CanonSmiles | DumpType::FastSmiles) => {
                 let cfg = if *ty == DumpType::FastSmiles {
                     SmilesConfig::fast_roundtrip()
@@ -498,8 +507,24 @@ fn main() {
             Command::new("dump")
                 .about("Show the output of inputs, or the whole graph if no ids are given")
                 .arg(
+                    Arg::new("graph")
+                        .short('g')
+                        .long("graph")
+                        .action(ArgAction::SetTrue)
+                        .conflicts_with_all(["type", "out"])
+                        .help("Dump the arena graph")
+                )
+                .arg(
+                    Arg::new("frags")
+                        .short('f')
+                        .long("frags")
+                        .action(ArgAction::SetTrue)
+                        .conflicts_with_all(["type", "out"])
+                        .help("Dump the arena fragments")
+                )
+                .arg(
                     Arg::new("type")
-                        .required(true)
+                        .required_unless_present_any(["graph", "frags"])
                         .value_parser(clap::value_parser!(DumpType))
                         .help("Output format to dump as"),
                 )
