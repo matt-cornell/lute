@@ -332,12 +332,20 @@ where
                     let r = atom_radius(0);
                     write!(f, "  <line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\"/>\n  <circle r=\"{r}\" cx=\"{x2}\" cy=\"{y2}\" fill=\"{}\" />\n  <text x=\"{x2}\" y=\"{y2}\" font-size=\"{r}\" text-anchor=\"middle\" alignment-baseline=\"middle\" fill=\"#444\">R</text>\n", SVG_SUPPRESSED_R)?;
                 } else {
-                    let dx = x2 - x1;
-                    let dy = y2 - y1;
-                    let mag = (dx * dx + dy * dy).sqrt();
-                    let x3 = x2 - dx / mag * 12.0;
-                    let y3 = y2 - dy / mag * 12.0;
-                    write!(f, "  <line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x3}\" y2=\"{y3}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\"/>\n  <text x=\"{x2}\" y=\"{y2}\" font-size=\"20\" text-anchor=\"middle\" alignment-baseline=\"middle\" fill=\"{SVG_SUPPRESSED_R}\">R</text>\n")?;
+                    let mut dx = x2 - x1;
+                    let mut dy = y2 - y1;
+                    let mul = (dx * dx + dy * dy).sqrt().recip() * 12.0;
+                    dx *= mul;
+                    dy *= mul;
+                    let x3 = x2 - dx;
+                    let y3 = y2 - dy;
+                    let mut x0 = x1;
+                    let mut y0 = y1;
+                    if atom.protons != 6 || atom.isotope != 0 {
+                        x0 += dx;
+                        y0 += dy;
+                    }
+                    write!(f, "  <line x1=\"{x0}\" y1=\"{y0}\" x2=\"{x3}\" y2=\"{y3}\" style=\"stroke:{SVG_BOND_COLOR};stroke-width:2\"/>\n  <text x=\"{x2}\" y=\"{y2}\" font-size=\"20\" text-anchor=\"middle\" alignment-baseline=\"middle\" fill=\"{SVG_SUPPRESSED_R}\">R</text>\n")?;
                 }
             }
             idx += data.unknown() as usize;
@@ -435,7 +443,7 @@ where
                         }
                         f.write_str("</text>\n")?;
                     }
-                } else {
+                } else if atom.protons != 6 || atom.isotope != 0 {
                     write!(f, "  <text x=\"{tx}\" y=\"{cy}\" font-size=\"15\" alignment-baseline=\"middle\" fill=\"{color}\">")?;
                     if left {
                         match atom.data.hydrogen() {
