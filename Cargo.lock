@@ -631,7 +631,6 @@ dependencies = [
  "rand",
  "reedline-repl-rs",
  "resvg",
- "shlex",
  "small-map",
  "smallvec 2.0.0-alpha.7",
  "thiserror",

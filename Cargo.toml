@@ -11,6 +11,7 @@ ahash = "0.8.11"
 atoi = "2.0.0"
 bstr = { version = "1.9.1", default-features = false, features = ["std"] }
 c-enum = "0.2.3"
+clap = { version = "4.5.9", optional = true, features = ["derive"] }
 coordgen = { version = "0.2.2", git = "https://github.com/matt-cornell/coordgen-rs", optional = true } # make it work on windows
 fmtastic = "0.2.1"
 gcd = { version = "2.3.0", optional = true }
@@ -22,6 +23,7 @@ num-traits = "0.2.19"
 petgraph = "0.6.5"
 primal = "0.3.3"
 rand = { version = "0.8.5", optional = true, features = ["nightly"] }
+reedline-repl-rs = { version = "1.2.1", optional = true, features = ["shlex"] }
 resvg = { version = "0.42.0", optional = true, default-features = false, features = [
     "text",
 ] }
@@ -31,25 +33,28 @@ small-map = { version = "0.1.3", default-features = false, features = [
 smallvec = "2.0.0-alpha.6"
 thiserror = "1.0.63"
 tracing = "0.1.40"
+tracing-flame = { version = "0.2.0", optional = true }
+tracing-subscriber = { version = "0.3.18", optional = true }
 
 [dev-dependencies]
-clap = { version = "4.5.9", features = ["derive"] }
-reedline-repl-rs = { version = "1.2.1", features = ["shlex"] }
-shlex = "1.3.0"
-tracing-flame = "0.2.0"
 tracing-subscriber = "0.3.18"
 
 [[example]]
 name = "parse-smiles"
+required-features = ["examples-feats"]
 
 [[example]]
 name = "arena-test"
+required-features = ["examples-feats"]
 
 [[example]]
 name = "alcohols"
+required-features = ["examples-feats"]
 
-[[example]]
+[[bin]]
 name = "repl"
+path = "src/bin/repl.rs"
+required-features = ["repl-feats"]
 
 [features]
 default = ["coordgen", "rand", "resvg"]
@@ -57,3 +62,6 @@ default = ["coordgen", "rand", "resvg"]
 coordgen = ["dep:coordgen"]
 resvg = ["dep:resvg", "dep:lazy_static"]
 rand = ["dep:rand", "dep:gcd"]
+
+examples-feats = ["dep:clap", "dep:tracing-flame", "dep:tracing-subscriber"]
+repl-feats = ["dep:clap", "dep:reedline-repl-rs", "dep:tracing-subscriber"]
