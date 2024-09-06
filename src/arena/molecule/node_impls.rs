@@ -116,6 +116,7 @@ impl<Ix> NodeReference<Ix> {
     where
         Ix: IndexType,
     {
+        println!("mi: {}, ni: {}", mol_idx.index(), node_idx.0.index());
         Self {
             node_idx,
             atom: arena
