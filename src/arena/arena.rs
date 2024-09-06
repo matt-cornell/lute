@@ -33,7 +33,6 @@ macro_rules! arena {
 }
 
 const ATOM_BIT_STORAGE: usize = 2;
-const MODDED_GRAPH_LEN: usize = 4;
 type Graph<Ix> = StableGraph<Atom, Bond, Undirected, Ix>;
 type BSType = crate::utils::bitset::BitSet<u16, ATOM_BIT_STORAGE>;
 
@@ -261,6 +260,7 @@ impl<Ix: IndexType> Arena<Ix> {
             let mut found_any = false;
             for mut ism in isomorphisms_iter(&frag, &&compacted, &mut amatch, &mut bmatch, false) {
                 found_any = true;
+                trace!(frag = i.index(), ?ism, "found fragment");
                 prune_buf.clear();
                 prune_buf.reserve(ism.len());
                 for to in &mut ism {
@@ -285,6 +285,7 @@ impl<Ix: IndexType> Arena<Ix> {
             }
         }
         if found.is_empty() {
+            debug!("no fragments found, inserting molecule");
             let mut mapping = vec![(IndexType::max(), 0); mol.node_count()];
             let mut count = 0;
             for n in mol.node_references() {
@@ -294,7 +295,11 @@ impl<Ix: IndexType> Arena<Ix> {
                         continue;
                     }
                 }
-                let gi = self.graph.add_node(*n.weight());
+                let mut a = *n.weight();
+                if let Some((bits, _)) = &bits {
+                    a.add_rs(mol.neighbors(n.id()).filter(|&ne| !bits.get(mol.to_index(ne))).count().try_into().unwrap()).unwrap();
+                }
+                let gi = self.graph.add_node(a);
                 mapping[mi] = (gi, mi);
                 count += 1;
             }
@@ -327,12 +332,8 @@ impl<Ix: IndexType> Arena<Ix> {
             );
             let mut bits = BSType::new();
             let mut ism_buf = Vec::new();
-            let mut last_was_empty = false;
             while let Some(count) = cgi.step(&filtered, &mut bits) {
-                assert!(!last_was_empty);
-                if cgi.full.all_zero() {
-                    last_was_empty = true;
-                }
+                trace!(size = count.get(), "inserting fragment");
                 let (i, ism) = self.insert_mol_impl(mol, old_start, Some((&mut bits, count.get())), depth + 1);
                 ism_buf.clone_from(&ism);
                 let idx = found.insert((i, ism));
@@ -376,7 +377,7 @@ impl<Ix: IndexType> Arena<Ix> {
                 bi: Ix::new(bi),
             });
         }
-        let mut out_map = if gen_mapping { found.iter().flat_map(|i| &i.1.1).copied().collect() } else { Vec::new() };
+        let out_map = if gen_mapping { found.iter().flat_map(|i| &i.1.1).copied().collect() } else { Vec::new() };
         let frags = found.into_iter().map(|f| f.1.0).collect();
         let idx = self.push_frag((MolRepr::Broken(BrokenMol { frags, bonds }), Ix::new(node_count)));
         (idx, out_map)
