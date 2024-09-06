@@ -321,7 +321,7 @@ where
         &'a self,
         atom: AtomId<'a, Self>,
         center: AtomId<'a, Self>,
-    ) -> CipPriority<&Self>
+    ) -> CipPriority<&'a Self>
     where
         Self: Visitable + Sized,
     {

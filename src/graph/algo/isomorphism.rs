@@ -1,3 +1,4 @@
+#![allow(clippy::too_long_first_doc_paragraph)]
 //! Taken from `petgraph`! It's been modified to only work for undirected graphs (which saves some space) and not require `EdgeCount`
 
 use crate::graph::misc::DataValueMap;
