@@ -214,12 +214,7 @@ impl Drop for Timer {
 
 type SubscriberType = tracing_subscriber::layer::Layered<
     Targets,
-    fmt::Subscriber<
-        DefaultFields,
-        Format<Full>,
-        LevelFilter,
-        fn() -> std::io::Stderr,
-    >,
+    fmt::Subscriber<DefaultFields, Format<Full>, LevelFilter, fn() -> std::io::Stderr>,
 >;
 
 struct Context {
@@ -501,7 +496,13 @@ fn query(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, ReplErro
                             if indent {
                                 out.push_str("  ");
                             }
-                            let _ = write!(out, "{}--{}: {}", n2.source().0, n2.target().0, n2.weight());
+                            let _ = write!(
+                                out,
+                                "{}--{}: {}",
+                                n2.source().0,
+                                n2.target().0,
+                                n2.weight()
+                            );
                         }
                     }
                 } else {
@@ -512,7 +513,13 @@ fn query(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, ReplErro
                         let _ = write!(out, "{}:", n.0);
                         for n2 in mol.edges(n) {
                             out.push('\n');
-                            let _ = write!(out, "  {}--{}: {}", n2.source().0, n2.target().0, n2.weight());
+                            let _ = write!(
+                                out,
+                                "  {}--{}: {}",
+                                n2.source().0,
+                                n2.target().0,
+                                n2.weight()
+                            );
                         }
                     }
                 }
