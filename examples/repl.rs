@@ -3,48 +3,27 @@ use lute::graph::*;
 use lute::prelude::*;
 use petgraph::prelude::*;
 use reedline_repl_rs::{self as rlr, Repl};
-use rlr::clap::{self, Arg, ArgAction, ArgMatches, Command};
+use rlr::clap::{self, Arg, ArgAction, ArgMatches, Command, ValueEnum};
 use std::env;
 use std::ffi::OsStr;
-use std::fmt::{self, Display, Formatter, Write};
+use std::fmt::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 use thiserror::Error;
 use tracing_subscriber::filter::{LevelFilter, ParseError, Targets};
-use tracing_subscriber::fmt::format::*;
+use tracing_subscriber::fmt::{self, format::*};
 use tracing_subscriber::prelude::*;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, ValueEnum)]
 enum DumpType {
     FastSmiles,
+    #[value(alias = "smiles")]
     CanonSmiles,
     #[cfg(feature = "coordgen")]
     Svg,
     #[cfg(all(feature = "coordgen", feature = "resvg"))]
     Png,
-}
-impl clap::ValueEnum for DumpType {
-    #[allow(unreachable_code)]
-    fn value_variants<'a>() -> &'a [Self] {
-        #[cfg(feature = "coordgen")]
-        {
-            #[cfg(feature = "resvg")]
-            return &[Self::FastSmiles, Self::CanonSmiles, Self::Svg, Self::Png];
-            return &[Self::FastSmiles, Self::CanonSmiles, Self::Svg];
-        }
-        &[Self::FastSmiles, Self::CanonSmiles]
-    }
-    fn to_possible_value(&self) -> Option<PossibleValue> {
-        match self {
-            Self::FastSmiles => Some(PossibleValue::new("fast-smiles")),
-            Self::CanonSmiles => Some(PossibleValue::new("canon-smiles").alias("smiles")),
-            #[cfg(feature = "coordgen")]
-            Self::Svg => Some(PossibleValue::new("svg")),
-            #[cfg(all(feature = "coordgen", feature = "resvg"))]
-            Self::Png => Some(PossibleValue::new("png")),
-        }
-    }
 }
 
 #[derive(Debug, Error)]
@@ -62,24 +41,13 @@ enum ReplError {
     },
     #[error("Attempted to generate a PNG of a molecule without an output path")]
     PngToStdout,
-    #[error("{}", PanicPrinter(.0))]
+    #[error("Focus nodes specified on a query that doesn't support it")]
+    FocusNodesOnQuery,
+    #[error("Caught a panic")]
     Panic(Box<dyn std::any::Any + Send + 'static>),
     /// other stuff I don't wanna name
     #[error(transparent)]
     Other(#[from] Box<dyn std::error::Error + Send + Sync>),
-}
-
-struct PanicPrinter<'a>(&'a (dyn std::any::Any + Send + 'static));
-impl Display for PanicPrinter<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        if let Some(msg) = self.0.downcast_ref::<&str>() {
-            write!(f, "Panicked with message {msg}")
-        } else if let Some(msg) = self.0.downcast_ref::<String>() {
-            write!(f, "Panicked with message {msg}")
-        } else {
-            write!(f, "Panicked with a payload of type {:?}", self.0.type_id())
-        }
-    }
 }
 
 fn catch_panics<T, F: FnOnce() -> Result<T, ReplError>>(f: F) -> Result<T, ReplError> {
@@ -88,6 +56,14 @@ fn catch_panics<T, F: FnOnce() -> Result<T, ReplError>>(f: F) -> Result<T, ReplE
         Ok(res) => res,
         Err(panic) => Err(ReplError::Panic(panic)),
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, ValueEnum)]
+enum QueryType {
+    AllNodes,
+    AllEdges,
+    Neighbors,
+    NeighborEdges,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -238,7 +214,7 @@ impl Drop for Timer {
 
 type SubscriberType = tracing_subscriber::layer::Layered<
     Targets,
-    tracing_subscriber::fmt::Subscriber<
+    fmt::Subscriber<
         DefaultFields,
         Format<Full>,
         LevelFilter,
@@ -254,7 +230,7 @@ struct Context {
 }
 
 fn default_subscriber() -> SubscriberType {
-    tracing_subscriber::fmt::fmt()
+    fmt::fmt()
         .with_writer(std::io::stderr as _)
         .finish()
         .with(Targets::new())
@@ -262,7 +238,7 @@ fn default_subscriber() -> SubscriberType {
 
 fn make_subscriber(filter: &str) -> Result<SubscriberType, ParseError> {
     use std::str::FromStr;
-    Ok(tracing_subscriber::fmt::fmt()
+    Ok(fmt::fmt()
         .with_writer(std::io::stderr as _)
         .finish()
         .with(Targets::from_str(filter)?))
@@ -436,6 +412,116 @@ fn index(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, ReplErro
     })
 }
 
+fn query(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, ReplError> {
+    catch_panics(|| {
+        use petgraph::visit::*;
+        let _guard = tracing::subscriber::set_default(ctx.trace.clone());
+        let _timer = ctx.timings.then(Timer::new);
+        let mol = ctx.arena.molecule(*args.get_one("mol").unwrap());
+        let focus = args.get_many::<u32>("focus");
+        match args.get_one("query").unwrap() {
+            QueryType::AllNodes => {
+                if focus.is_some() {
+                    Err(ReplError::FocusNodesOnQuery)
+                } else {
+                    let mut out = String::new();
+                    for n in mol.node_references() {
+                        if !out.is_empty() {
+                            out.push('\n');
+                        }
+                        let _ = write!(out, "{}: {:#?}", n.id().0, n.weight());
+                    }
+                    Ok(Some(out))
+                }
+            }
+            QueryType::AllEdges => {
+                if focus.is_some() {
+                    Err(ReplError::FocusNodesOnQuery)
+                } else {
+                    let mut out = String::new();
+                    for n in mol.edge_references() {
+                        if !out.is_empty() {
+                            out.push('\n');
+                        }
+                        let _ = write!(out, "{}--{}: {}", n.source().0, n.target().0, n.weight());
+                    }
+                    Ok(Some(out))
+                }
+            }
+            QueryType::Neighbors => {
+                let mut out = String::new();
+                if let Some(focus) = focus {
+                    let indent = focus.len() != 1;
+                    for &n in focus {
+                        if indent {
+                            if !out.is_empty() {
+                                out.push('\n');
+                            }
+                            let _ = write!(out, "{n}:");
+                        }
+                        for n2 in mol.neighbors(n.into()) {
+                            if !out.is_empty() {
+                                out.push('\n');
+                            }
+                            if indent {
+                                out.push_str("  ");
+                            }
+                            let _ = write!(out, "{}", n2.0);
+                        }
+                    }
+                } else {
+                    for n in mol.node_identifiers() {
+                        if !out.is_empty() {
+                            out.push('\n');
+                        }
+                        let _ = write!(out, "{}:", n.0);
+                        for n2 in mol.neighbors(n) {
+                            out.push('\n');
+                            let _ = write!(out, "  {}", n2.0);
+                        }
+                    }
+                }
+                Ok(Some(out))
+            }
+            QueryType::NeighborEdges => {
+                let mut out = String::new();
+                if let Some(focus) = focus {
+                    let indent = focus.len() != 1;
+                    for &n in focus {
+                        if indent {
+                            if !out.is_empty() {
+                                out.push('\n');
+                            }
+                            let _ = write!(out, "{n}:");
+                        }
+                        for n2 in mol.edges(n.into()) {
+                            if !out.is_empty() {
+                                out.push('\n');
+                            }
+                            if indent {
+                                out.push_str("  ");
+                            }
+                            let _ = write!(out, "{}--{}: {}", n2.source().0, n2.target().0, n2.weight());
+                        }
+                    }
+                } else {
+                    for n in mol.node_identifiers() {
+                        if !out.is_empty() {
+                            out.push('\n');
+                        }
+                        let _ = write!(out, "{}:", n.0);
+                        for n2 in mol.edges(n) {
+                            out.push('\n');
+                            let _ = write!(out, "  {}--{}: {}", n2.source().0, n2.target().0, n2.weight());
+                        }
+                    }
+                }
+                Ok(Some(out))
+            }
+        }
+    })
+}
+
 fn adjust_settings(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, ReplError> {
     catch_panics(|| {
         use std::fmt::Write;
@@ -512,7 +598,7 @@ fn main() {
                         .long("graph")
                         .action(ArgAction::SetTrue)
                         .conflicts_with_all(["type", "out"])
-                        .help("Dump the arena graph")
+                        .help("Dump the arena graph"),
                 )
                 .arg(
                     Arg::new("frags")
@@ -520,7 +606,7 @@ fn main() {
                         .long("frags")
                         .action(ArgAction::SetTrue)
                         .conflicts_with_all(["type", "out"])
-                        .help("Dump the arena fragments")
+                        .help("Dump the arena fragments"),
                 )
                 .arg(
                     Arg::new("type")
@@ -561,6 +647,27 @@ fn main() {
                         .value_parser(clap::builder::ValueParser::new(IndexParser)),
                 ),
             index,
+        )
+        .with_command(
+            Command::new("query")
+                .about("Query an iterable on a molecule")
+                .arg(
+                    Arg::new("mol")
+                        .required(true)
+                        .value_parser(clap::value_parser!(u32)),
+                )
+                .arg(
+                    Arg::new("query")
+                        .required(true)
+                        .value_parser(clap::value_parser!(QueryType)),
+                )
+                .arg(
+                    Arg::new("focus")
+                        .required(false)
+                        .action(ArgAction::Append)
+                        .value_parser(clap::value_parser!(u32)),
+                ),
+            query,
         )
         .with_command(
             Command::new("set").about("Adjust REPL settings").arg(
