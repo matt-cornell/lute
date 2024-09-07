@@ -35,7 +35,7 @@ impl<T: PrimInt, const N: usize> ConnectedGraphIter<T, N, fn(usize) -> usize> {
         }
     }
 }
-impl<T: PrimInt + std::fmt::Binary, const N: usize, F: FnMut(usize) -> usize> ConnectedGraphIter<T, N, F> {
+impl<T: PrimInt, const N: usize, F: FnMut(usize) -> usize> ConnectedGraphIter<T, N, F> {
     pub fn with_cvt<G: IntoNodeIdentifiers + NodeIndexable>(graph: G, cvt: F) -> Self {
         let mut full = BitSet::new();
         let mut max = 0;
@@ -48,7 +48,11 @@ impl<T: PrimInt + std::fmt::Binary, const N: usize, F: FnMut(usize) -> usize> Co
         }
         Self { full, cvt }
     }
-    pub fn step<G: IntoNeighbors + NodeIndexable, U: PrimInt, const O: usize>(&mut self, graph: G, out: &mut BitSet<U, O>) -> Option<NonZeroUsize> {
+    pub fn step<G: IntoNeighbors + NodeIndexable, U: PrimInt, const O: usize>(
+        &mut self,
+        graph: G,
+        out: &mut BitSet<U, O>,
+    ) -> Option<NonZeroUsize> {
         let start = self.full.nth(0);
         let Some(start) = start else { return None };
         let start = graph.from_index(start);
@@ -78,12 +82,8 @@ impl<T: Binary, const N: usize, F> Debug for ConnectedGraphIter<T, N, F> {
     }
 }
 
-impl<
-        G: IntoNeighbors + NodeIndexable,
-        T: PrimInt,
-        const N: usize,
-        F: FnMut(usize) -> usize,
-    > Walker<G> for ConnectedGraphIter<T, N, F>
+impl<G: IntoNeighbors + NodeIndexable, T: PrimInt, const N: usize, F: FnMut(usize) -> usize>
+    Walker<G> for ConnectedGraphIter<T, N, F>
 {
     type Item = BitSet<T, N>;
     fn walk_next(&mut self, graph: G) -> Option<BitSet<T, N>> {

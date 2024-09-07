@@ -168,7 +168,11 @@ impl<Ix: IndexType> Arena<Ix> {
             + IntoNodeReferences,
         G::NodeId: Hash + Eq,
     {
-        let node_count = if let Some((_, count)) = &bits { *count } else { mol.node_count() };
+        let node_count = if let Some((_, count)) = &bits {
+            *count
+        } else {
+            mol.node_count()
+        };
         trace!(?bits, depth, "entering impl");
         struct OnExit(usize);
         impl Drop for OnExit {
@@ -297,7 +301,14 @@ impl<Ix: IndexType> Arena<Ix> {
                 }
                 let mut a = *n.weight();
                 if let Some((bits, _)) = &bits {
-                    a.add_rs(mol.neighbors(n.id()).filter(|&ne| !bits.get(mol.to_index(ne))).count().try_into().unwrap()).unwrap();
+                    a.add_rs(
+                        mol.neighbors(n.id())
+                            .filter(|&ne| !bits.get(mol.to_index(ne)))
+                            .count()
+                            .try_into()
+                            .unwrap(),
+                    )
+                    .unwrap();
                 }
                 let gi = self.graph.add_node(a);
                 mapping[mi] = (gi, mi);
@@ -312,7 +323,10 @@ impl<Ix: IndexType> Arena<Ix> {
                 self.graph.add_edge(a, b, *e.weight());
             }
             mapping.sort_unstable_by(|a, b| a.0.cmp(&b.0));
-            let (new_bits, new_map) = mapping.into_iter().filter_map(|x| (x.0 != IndexType::max()).then_some((x.0.index(), x.1))).unzip();
+            let (new_bits, new_map) = mapping
+                .into_iter()
+                .filter_map(|x| (x.0 != IndexType::max()).then_some((x.0.index(), x.1)))
+                .unzip();
             let idx = self.push_frag((MolRepr::Atomic(new_bits), Ix::new(count)));
             return (idx, new_map);
         } else if found.len() == 1 {
@@ -325,7 +339,9 @@ impl<Ix: IndexType> Arena<Ix> {
         let gen_mapping = bits.is_some();
         {
             let matched = Cell::from_mut(&mut *matched).as_slice_of_cells();
-            let filtered = NodeFilter::new(mol, |n| matched[mol.to_index(n)].get().0 == IndexType::max());
+            let filtered = NodeFilter::new(mol, |n| {
+                matched[mol.to_index(n)].get().0 == IndexType::max()
+            });
             let mut cgi = bits.as_ref().map_or_else(
                 || ConnectedGraphIter::new(&filtered),
                 |b| ConnectedGraphIter::from_full(b.0.clone()),
@@ -334,7 +350,8 @@ impl<Ix: IndexType> Arena<Ix> {
             let mut ism_buf = Vec::new();
             while let Some(count) = cgi.step(&filtered, &mut bits) {
                 trace!(size = count.get(), "inserting fragment");
-                let (i, ism) = self.insert_mol_impl(mol, old_start, Some((&mut bits, count.get())), depth + 1);
+                let (i, ism) =
+                    self.insert_mol_impl(mol, old_start, Some((&mut bits, count.get())), depth + 1);
                 ism_buf.clone_from(&ism);
                 let idx = found.insert((i, ism));
                 for ni in ism_buf.drain(..) {
@@ -377,9 +394,16 @@ impl<Ix: IndexType> Arena<Ix> {
                 bi: Ix::new(bi),
             });
         }
-        let out_map = if gen_mapping { found.iter().flat_map(|i| &i.1.1).copied().collect() } else { Vec::new() };
-        let frags = found.into_iter().map(|f| f.1.0).collect();
-        let idx = self.push_frag((MolRepr::Broken(BrokenMol { frags, bonds }), Ix::new(node_count)));
+        let out_map = if gen_mapping {
+            found.iter().flat_map(|i| &i.1 .1).copied().collect()
+        } else {
+            Vec::new()
+        };
+        let frags = found.into_iter().map(|f| f.1 .0).collect();
+        let idx = self.push_frag((
+            MolRepr::Broken(BrokenMol { frags, bonds }),
+            Ix::new(node_count),
+        ));
         (idx, out_map)
     }
     #[inline(always)]
