@@ -314,10 +314,11 @@ impl<Ix: IndexType> Arena<Ix> {
             }
             if !found_any {
                 prune_buf.clear();
+                prune_buf.push((i, false));
                 frags.retain(|&(n, p)| {
-                    prune_buf.iter().rev().any(|(i, _)| p.contains(i)) && {
+                    !prune_buf.iter().rev().any(|(i, _)| p.contains(i)) || {
                         prune_buf.push((Ix::new(n), false));
-                        true
+                        false
                     }
                 });
             }
