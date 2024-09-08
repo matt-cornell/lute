@@ -530,11 +530,47 @@ fn query(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, ReplErro
                 if focus.is_some() {
                     Err(ReplError::FocusNodesOnQuery)
                 } else {
-                    let set = mol.contained_groups().collect::<std::collections::HashSet<_>>();
+                    let set = mol
+                        .contained_groups()
+                        .collect::<std::collections::HashSet<_>>();
                     Ok(Some(format!("{set:?}")))
                 }
             }
         }
+    })
+}
+
+fn ism_check(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, ReplError> {
+    catch_panics(|| {
+        fn always_true<T>(_: &T, _: &T) -> bool {
+            true
+        }
+        let _guard = tracing::subscriber::set_default(ctx.trace.clone());
+        let _timer = ctx.timings.then(Timer::new);
+        let first = ctx.arena.molecule(*args.get_one("first").unwrap());
+        let second = ctx.arena.molecule(*args.get_one("second").unwrap());
+        let sub = *args.get_one("sub").unwrap_or(&false);
+        let weak = *args.get_one("match").unwrap_or(&false);
+        let smatch = *args.get_one("noeq").unwrap_or(&false);
+        let mut amatch = if smatch {
+            always_true
+        } else if weak {
+            Atom::matches
+        } else {
+            PartialEq::eq
+        };
+        let mut bmatch = if smatch { always_true } else { PartialEq::eq };
+        let mut out = String::new();
+        for ism in lute::graph::isomorphisms_iter(&first, &second, &mut amatch, &mut bmatch, sub) {
+            if !out.is_empty() {
+                out.push('\n');
+            }
+            let _ = write!(out, "{ism:?}");
+        }
+        if out.is_empty() {
+            out = "none found".to_string();
+        }
+        Ok(Some(out))
     })
 }
 
@@ -684,6 +720,45 @@ fn main() {
                         .value_parser(clap::value_parser!(u32)),
                 ),
             query,
+        )
+        .with_command(
+            Command::new("ism")
+                .about("Check if two graphs are isomorphic")
+                .arg(
+                    Arg::new("sub")
+                        .short('s')
+                        .long("sub")
+                        .long("subgraphs")
+                        .action(ArgAction::SetTrue)
+                        .help("Include subgraphs in the check"),
+                )
+                .arg(
+                    Arg::new("match")
+                        .short('m')
+                        .long("match")
+                        .long("matches")
+                        .action(ArgAction::SetTrue)
+                        .help("Use a weaker match rather than strict equality"),
+                )
+                .arg(
+                    Arg::new("noeq")
+                        .short('n')
+                        .long("noeq")
+                        .action(ArgAction::SetTrue)
+                        .conflicts_with("match")
+                        .help("Only do a structural match, with no checks for equality"),
+                )
+                .arg(
+                    Arg::new("first")
+                        .required(true)
+                        .value_parser(clap::value_parser!(u32)),
+                )
+                .arg(
+                    Arg::new("second")
+                        .required(true)
+                        .value_parser(clap::value_parser!(u32)),
+                ),
+            ism_check,
         )
         .with_command(
             Command::new("set").about("Adjust REPL settings").arg(

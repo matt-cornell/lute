@@ -285,7 +285,7 @@ impl<Ix, R> ContainedGroups<Ix, R> {
     pub fn new(group: Ix, arena: R) -> Self {
         Self {
             stack: vec![group],
-            arena
+            arena,
         }
     }
 }

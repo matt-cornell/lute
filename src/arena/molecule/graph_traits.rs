@@ -347,7 +347,8 @@ pub mod iter {
                             }
                             self.state = State::Uninit;
                         } else {
-                            let offsets = b.frags
+                            let offsets = b
+                                .frags
                                 .iter()
                                 .scan(self.offset.index(), |count, idx| {
                                     let old = *count;
