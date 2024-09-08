@@ -107,21 +107,26 @@ impl<Ix: IndexType + Ord, R: ArenaAccessor<Ix = Ix> + Copy> GetAdjacencyMatrix f
     fn adjacency_matrix(&self) -> Self::AdjMatrix {
         let mut out = Self::AdjMatrix::new();
         for e in self.edge_references() {
-            let s = e.source().0.index();
-            let t = e.target().0.index();
-            let i = if t == 0 { 0 } else { t * (t - 1) / 2 } + s;
+            let a = e.source().0.index();
+            let b = e.target().0.index();
+            if a == b {
+                continue;
+            }
+            let (s, t) = if a < b { (a, b) } else { (b, a) };
+            let i = t * (t - 1) / 2 + s;
             out.set(i, true);
         }
         out
     }
-    #[rustfmt::skip]
-    fn is_adjacent(&self, _matrix: &Self::AdjMatrix, a: Self::NodeId, b: Self::NodeId) -> bool {
-        return self.get_bond([a, b]).is_some(); // TODO: fix this implementation
-        // let a = a.0.index();
-        // let b = b.0.index();
-        // let (s, t) = if a < b { (a, b) } else { (b, a) };
-        // let i = if t == 0 { 0 } else { t * (t - 1) / 2 } + s;
-        // matrix.get(i)
+    fn is_adjacent(&self, matrix: &Self::AdjMatrix, a: Self::NodeId, b: Self::NodeId) -> bool {
+        if a == b {
+            return false;
+        }
+        let a = a.0.index();
+        let b = b.0.index();
+        let (s, t) = if a < b { (a, b) } else { (b, a) };
+        let i = t * (t - 1) / 2 + s;
+        matrix.get(i)
     }
 }
 impl<Ix: IndexType + Ord, R> Visitable for Molecule<Ix, R> {
