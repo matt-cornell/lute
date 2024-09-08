@@ -256,9 +256,9 @@ pub mod iter {
         orig_idx: Ix,
         mol_idx: Ix,
         atom_idx: Ix,
+        offset: Ix,
         arena: R,
         state: State<Ix>,
-        offset: Ix,
     }
     impl<Ix: IndexType + Ord, R> Edges<Ix, R> {
         pub fn new(mol_idx: Ix, atom_idx: Ix, arena: R) -> Self {
@@ -316,7 +316,7 @@ pub mod iter {
                         return None;
                     }
                     MolRepr::Broken(ref b) => {
-                        if let State::Broken(next) = &mut self.state {
+                        let next_frag = if let State::Broken(next) = &mut self.state {
                             if let Some(id) = next.pop() {
                                 return Some(EdgeReference::with_weight(
                                     self.orig_idx,
@@ -324,53 +324,67 @@ pub mod iter {
                                     Bond::Single,
                                 ));
                             }
-                        }
+                            true
+                        } else {
+                            false
+                        };
                         debug!("generating state for broken molecule");
-                        let mut ibs = ASmallMap::<8, _, SmallVec<_, 4>>::new();
-                        let mut idx = self.atom_idx.index();
-                        for i in &b.bonds {
-                            if let Some(s) = ibs.get_mut(&(i.an, i.ai)) {
-                                s.push((i.bn, i.bi));
-                            } else {
-                                ibs.insert((i.an, i.ai), smallvec![(i.bn, i.bi)]);
-                            }
-                            if let Some(s) = ibs.get_mut(&(i.bn, i.bi)) {
-                                s.push((i.an, i.ai));
-                            } else {
-                                ibs.insert((i.bn, i.bi), smallvec![(i.an, i.ai)]);
-                            }
-                        }
-                        let mut new_idx = None;
-                        let mut f = SmallVec::<usize, 4>::with_capacity(b.frags.len());
-                        let mut counter = 0;
-                        let mut up_idx = true;
-                        for p in &b.frags {
-                            let s = arena.parts[p.index()].1.index();
-                            f.push(counter);
-                            counter += s;
-                            if up_idx {
-                                if idx > s {
-                                    idx -= s;
+                        if next_frag {
+                            for &i in &b.frags {
+                                let size = arena.parts[i.index()].1.index();
+                                if let Some(new) = self.atom_idx.index().checked_sub(size) {
+                                    self.atom_idx = Ix::new(new);
+                                    self.offset = Ix::new(self.offset.index() + size);
                                 } else {
-                                    new_idx = Some(*p);
-                                    up_idx = false;
+                                    self.mol_idx = i;
+                                    break;
                                 }
                             }
+                            self.state = State::Uninit;
+                        } else {
+                            let offsets = b.frags
+                                .iter()
+                                .scan(self.offset.index(), |count, idx| {
+                                    let old = *count;
+                                    *count += arena.parts[idx.index()].1.index();
+                                    Some(old)
+                                })
+                                .collect::<SmallVec<_, 3>>();
+                            let mut n = 0;
+                            let mut i = self.atom_idx.index();
+                            for &f in &b.frags {
+                                if let Some(new) = i.checked_sub(arena.parts[f.index()].1.index()) {
+                                    n += 1;
+                                    i = new;
+                                }
+                            }
+                            let mut it = b.bonds.iter().filter_map(|ifb| {
+                                if ifb.an.index() == n && ifb.ai.index() == i {
+                                    return Some(Ix::new(offsets[ifb.bn.index()] + ifb.bi.index()));
+                                }
+                                if ifb.bn.index() == n && ifb.bi.index() == i {
+                                    return Some(Ix::new(offsets[ifb.an.index()] + ifb.ai.index()));
+                                }
+                                None
+                            });
+                            let ret = it.next();
+                            let cont = it.collect::<SmallVec<_, 4>>();
+                            if cont.is_empty() {
+                                self.mol_idx = b.frags[n];
+                                self.atom_idx = Ix::new(i);
+                                self.offset = Ix::new(offsets[n]);
+                                self.state = State::Uninit;
+                            } else {
+                                self.state = State::Broken(cont);
+                            }
+                            if let Some(ret) = ret {
+                                return Some(EdgeReference::with_weight(
+                                    self.orig_idx,
+                                    ret,
+                                    Bond::Single,
+                                ));
+                            }
                         }
-                        self.mol_idx = new_idx.unwrap_or(<Ix as IndexType>::max());
-                        self.atom_idx = Ix::new(idx);
-                        let next = ibs.get(&(self.mol_idx, self.atom_idx)).map_or_else(
-                            SmallVec::new,
-                            |v| {
-                                v.iter()
-                                    .map(|&(n, i)| {
-                                        let id = f[n.index()] + i.index();
-                                        Ix::new(id)
-                                    })
-                                    .collect()
-                            },
-                        );
-                        self.state = State::Broken(next);
                     }
                 }
             }
