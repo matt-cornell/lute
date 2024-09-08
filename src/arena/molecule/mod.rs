@@ -161,10 +161,14 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
                         }
                     }
                     let n = found?;
-                    cvt_singles += b.bonds.iter().filter(|ifb| {
-                        (ifb.an.index() == n && ifb.ai.index() == idx) ||
-                        (ifb.bn.index() == n && ifb.bi.index() == idx)
-                    }).count() as u8;
+                    cvt_singles += b
+                        .bonds
+                        .iter()
+                        .filter(|ifb| {
+                            (ifb.an.index() == n && ifb.ai.index() == idx)
+                                || (ifb.bn.index() == n && ifb.bi.index() == idx)
+                        })
+                        .count() as u8;
                 }
             }
         }

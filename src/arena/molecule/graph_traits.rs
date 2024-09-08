@@ -114,6 +114,7 @@ impl<Ix: IndexType + Ord, R: ArenaAccessor<Ix = Ix> + Copy> GetAdjacencyMatrix f
         }
         out
     }
+    #[rustfmt::skip]
     fn is_adjacent(&self, _matrix: &Self::AdjMatrix, a: Self::NodeId, b: Self::NodeId) -> bool {
         return self.get_bond([a, b]).is_some(); // TODO: fix this implementation
         // let a = a.0.index();
@@ -159,15 +160,15 @@ pub mod iter {
 
     #[derive(Clone)]
     pub struct EdgeReferences<Ix, R> {
-        stack: SmallVec<Ix, 3>,
+        stack: SmallVec<(Ix, Ix), 3>,
         // `StableGraph` doesn't have walkers, so we need to buffer our references
         buffer: SmallVec<EdgeReference<Ix>, 3>,
         arena: R,
     }
-    impl<Ix, R> EdgeReferences<Ix, R> {
+    impl<Ix: IndexType, R> EdgeReferences<Ix, R> {
         pub fn new(mol_idx: Ix, arena: R) -> Self {
             Self {
-                stack: smallvec![mol_idx],
+                stack: smallvec![(mol_idx, Ix::new(0))],
                 buffer: smallvec![],
                 arena,
             }
@@ -181,19 +182,20 @@ pub mod iter {
                 return Some(eref);
             }
             let arena = self.arena.get_arena();
-            while let Some(idx) = self.stack.pop() {
+            while let Some((idx, off)) = self.stack.pop() {
                 match arena.parts[idx.index()].0 {
-                    MolRepr::Modify(ModdedMol { base, .. }) => self.stack.push(base),
+                    MolRepr::Modify(ModdedMol { base, .. }) => self.stack.push((base, off)),
                     MolRepr::Broken(BrokenMol {
                         ref frags,
                         ref bonds,
                     }) => {
-                        self.stack.extend_from_slice(frags);
+                        self.stack.reserve(frags.len());
                         let offsets = frags
                             .iter()
-                            .scan(0, |count, idx| {
+                            .scan(off.index(), |count, idx| {
                                 let old = *count;
                                 *count += arena.parts[idx.index()].1.index();
+                                self.stack.push((*idx, Ix::new(old)));
                                 Some(old)
                             })
                             .collect::<SmallVec<_, 3>>();
@@ -206,18 +208,18 @@ pub mod iter {
                                 Bond::Single,
                             )
                         });
-                        let ret = it.next();
-                        self.buffer.extend(it);
-                        if ret.is_some() {
-                            return ret;
+                        if let Some(ret) = it.next() {
+                            self.buffer.extend(it);
+                            return Some(ret);
                         }
                     }
                     MolRepr::Atomic(ref b) => {
+                        let offset = off.index();
                         let mut it = arena.graph().edge_references().filter_map(|e| {
                             let s = b.index(e.source().index())?;
                             let t = b.index(e.target().index())?;
                             Some(EdgeReference::with_weight(
-                                (Ix::new(s), Ix::new(t)).into(),
+                                (Ix::new(s + offset), Ix::new(t + offset)).into(),
                                 *e.weight(),
                             ))
                         });
