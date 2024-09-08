@@ -133,7 +133,7 @@ impl<Ix: PartialOrd> EdgeReference<Ix> {
                 .get_bond(edge_idx)
                 .unwrap(),
             target_first: target < source,
-            edge_idx
+            edge_idx,
         }
     }
     pub fn with_weight(source: Ix, target: Ix, weight: Bond) -> Self {
