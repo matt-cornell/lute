@@ -229,8 +229,8 @@ impl<Ix: IndexType> Arena<Ix> {
             debug!(?frags, "topo-sorted fragments");
             frags
         };
-        // vec of (index in frags, index in parts)
-        let mut matched = vec![(IndexType::max(), usize::MAX); mol.node_count()]; // this may be inefficient for matching small fragments
+        // vec of (index in frags, index in parts, perfect match)
+        let mut matched = vec![(IndexType::max(), usize::MAX, false); mol.node_count()]; // this may be inefficient for matching small fragments
         let seen_buf = UnsafeCell::new(BSType::new());
         let pred_buf = UnsafeCell::new(SmallVec::new());
         let mut prune_buf = Vec::new();
@@ -262,31 +262,61 @@ impl<Ix: IndexType> Arena<Ix> {
             let mut amatch = Atom::matches;
             let mut bmatch = PartialEq::eq;
             let mut found_any = false;
-            for mut ism in isomorphisms_iter(&frag, &&compacted, &mut amatch, &mut bmatch, false) {
-                found_any = true;
+            'isms: for mut ism in
+                isomorphisms_iter(&frag, &&compacted, &mut amatch, &mut bmatch, false)
+            {
                 trace!(frag = i.index(), ?ism, "found fragment");
                 prune_buf.clear();
                 prune_buf.reserve(ism.len());
-                for to in &mut ism {
-                    let new = mol.to_index(compacted.node_map[*to]);
+                for (n, to) in ism.iter_mut().enumerate() {
+                    let to_id = compacted.node_map[*to];
+                    let new = mol.to_index(to_id);
+                    let mol_a = mol.node_weight(to_id).unwrap();
+                    let frag_a = self.molecule(i).get_atom(Ix::new(n)).unwrap();
+                    let matches = if matched[new].get().2 {
+                        if mol_a != frag_a {
+                            continue 'isms;
+                        }
+                        true
+                    } else {
+                        mol_a == frag_a
+                    };
                     *to = new;
-                    prune_buf.push(Ix::new(new));
+                    prune_buf.push((Ix::new(new), matches));
                 }
                 let idx = found.insert((i, ism));
-                for p in &prune_buf {
-                    let old_idx = matched[p.index()].replace((i, idx)).1;
+                for &(p, m) in &prune_buf {
+                    let old_idx = matched[p.index()].replace((i, idx, m)).1;
                     found.try_remove(old_idx);
                 }
+                found_any = true;
             }
             if !found_any {
                 prune_buf.clear();
                 frags.retain(|&(n, p)| {
-                    prune_buf.iter().rev().any(|i| p.contains(i)) && {
-                        prune_buf.push(Ix::new(n));
+                    prune_buf.iter().rev().any(|(i, _)| p.contains(i)) && {
+                        prune_buf.push((Ix::new(n), false));
                         true
                     }
                 });
             }
+        }
+        for (_, (i, ism)) in found.iter_mut() {
+            let patch: SmallVec<_, 4> = ism
+                .iter()
+                .enumerate()
+                .filter_map(|(from, &to)| {
+                    (!matched[to].2)
+                        .then(|| (Ix::new(from), mol.node_weight(mol.from_index(to)).unwrap()))
+                })
+                .collect();
+            if patch.is_empty() {
+                continue;
+            }
+            *i = self.push_frag((
+                MolRepr::Modify(ModdedMol { base: *i, patch }),
+                Ix::new(ism.len()),
+            ));
         }
         if found.is_empty() {
             debug!("no fragments found, inserting molecule");
@@ -355,12 +385,12 @@ impl<Ix: IndexType> Arena<Ix> {
                 ism_buf.clone_from(&ism);
                 let idx = found.insert((i, ism));
                 for ni in ism_buf.drain(..) {
-                    matched[ni].set((i, idx));
+                    matched[ni].set((i, idx, true));
                 }
             }
         }
         found.compact(|_, from, to| {
-            for (_, i) in &mut matched {
+            for (_, i, _) in &mut matched {
                 if *i == from {
                     *i = to;
                 }

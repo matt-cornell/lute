@@ -124,13 +124,17 @@ impl AtomData {
 }
 impl PartialEq for AtomData {
     fn eq(&self, other: &Self) -> bool {
-        self.chirality() == other.chirality() && self.is_compatible(*other)
+        self.chirality() == other.chirality() && self.hydrogen() == other.hydrogen() && self.unknown() == other.unknown() && self.single() == other.single() && self.other() == other.other()
     }
 }
 impl Eq for AtomData {}
 impl Hash for AtomData {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        state.write_u8(self.total_bonds());
+        state.write_u8(self.chirality() as u8);
+        state.write_u8(self.hydrogen());
+        state.write_u8(self.unknown());
+        state.write_u8(self.single());
+        state.write_u8(self.other());
     }
 }
 
