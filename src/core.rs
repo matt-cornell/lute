@@ -124,7 +124,11 @@ impl AtomData {
 }
 impl PartialEq for AtomData {
     fn eq(&self, other: &Self) -> bool {
-        self.chirality() == other.chirality() && self.hydrogen() == other.hydrogen() && self.unknown() == other.unknown() && self.single() == other.single() && self.other() == other.other()
+        self.chirality() == other.chirality()
+            && self.hydrogen() == other.hydrogen()
+            && self.unknown() == other.unknown()
+            && self.single() == other.single()
+            && self.other() == other.other()
     }
 }
 impl Eq for AtomData {}
@@ -214,6 +218,20 @@ impl Atom {
         } else {
             Err(TooManyBonds(TooMany::Other, b as _))
         }
+    }
+    /// Remove single bonds, replace them with unknowns
+    pub fn single_to_unknown(&mut self, b: u8) -> Result<(), TooManyBonds> {
+        let s = self.data.single();
+        if b > s {
+            return Err(TooManyBonds(TooMany::Single, 0));
+        }
+        let u = self.data.unknown() + b;
+        if u >= 16 {
+            return Err(TooManyBonds(TooMany::R, u as _));
+        }
+        self.data.set_single(s - b);
+        self.data.set_unknown(u);
+        Ok(())
     }
 
     #[inline(always)]

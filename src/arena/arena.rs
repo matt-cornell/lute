@@ -230,12 +230,27 @@ impl<Ix: IndexType> Arena<Ix> {
             frags
         };
         // vec of (index in frags, index in parts, perfect match)
-        let mut matched = vec![(IndexType::max(), usize::MAX, false); mol.node_count()]; // this may be inefficient for matching small fragments
+        let mut matched = vec![(IndexType::max(), usize::MAX, false, 0u8); mol.node_count()]; // this may be inefficient for matching small fragments
+        if let Some((bits, _)) = &bits {
+            for (n, (_, _, _, i)) in matched.iter_mut().enumerate() {
+                if !bits.get(n) {
+                    continue;
+                }
+                let ni = mol.from_index(n);
+                *i = mol
+                    .neighbors(ni)
+                    .filter(|&n2| !bits.get(mol.to_index(n2)))
+                    .count()
+                    .try_into()
+                    .expect("More than 255 pruned groups isn't possible!");
+            }
+        }
         let seen_buf = UnsafeCell::new(BSType::new());
         let pred_buf = UnsafeCell::new(SmallVec::new());
         let mut prune_buf = Vec::new();
         let mut found = Slab::new();
         while let Some((i, _)) = frags.pop_front() {
+            trace!(i, "checking for isomorphisms");
             let i = Ix::new(i);
             let matched = Cell::from_mut(&mut *matched).as_slice_of_cells();
             let filtered = NodeFilter::new(mol, |n| {
@@ -271,9 +286,13 @@ impl<Ix: IndexType> Arena<Ix> {
                 for (n, to) in ism.iter_mut().enumerate() {
                     let to_id = compacted.node_map[*to];
                     let new = mol.to_index(to_id);
-                    let mol_a = mol.node_weight(to_id).unwrap();
+                    let mut mol_a = mol.node_weight(to_id).unwrap();
+                    let mat = matched[new].get();
+                    mol_a
+                        .single_to_unknown(mat.3)
+                        .expect("Too many unknown groups would exist on this atom!");
                     let frag_a = self.molecule(i).get_atom(Ix::new(n)).unwrap();
-                    let matches = if matched[new].get().2 {
+                    let matches = if mat.2 {
                         if mol_a != frag_a {
                             continue 'isms;
                         }
@@ -286,7 +305,9 @@ impl<Ix: IndexType> Arena<Ix> {
                 }
                 let idx = found.insert((i, ism));
                 for &(p, m) in &prune_buf {
-                    let old_idx = matched[p.index()].replace((i, idx, m)).1;
+                    let c = &matched[p.index()];
+                    let u = c.get().3;
+                    let old_idx = c.replace((i, idx, m, u)).1;
                     found.try_remove(old_idx);
                 }
                 found_any = true;
@@ -301,13 +322,53 @@ impl<Ix: IndexType> Arena<Ix> {
                 });
             }
         }
-        for (_, (i, ism)) in found.iter_mut() {
+        for (_, (i, ism)) in &found {
+            let cmp = self.molecule(*i);
+            for (from, &to) in ism.iter().enumerate() {
+                let mi = mol.from_index(to);
+                let new = mol
+                    .neighbors(mi)
+                    .filter(|&n| !ism.contains(&mol.to_index(n)))
+                    .count()
+                    .try_into()
+                    .expect("More than 255 pruned groups isn't possible!");
+                matched[to].3 = new;
+                let mut mol_a = mol.node_weight(mi).unwrap();
+                let _ = mol_a.single_to_unknown(new);
+                let cmp_a = cmp.get_atom(Ix::new(from)).unwrap();
+                matched[to].2 = mol_a == cmp_a;
+            }
+        }
+        {
+            let matched = Cell::from_mut(&mut *matched).as_slice_of_cells();
+            for (n, c) in matched.iter().enumerate() {
+                if c.get().1 != usize::MAX {
+                    continue;
+                }
+                let pruned = mol
+                    .neighbors(mol.from_index(n))
+                    .filter(|&n2| {
+                        let i2 = mol.to_index(n2);
+                        matched[i2].get().1 != usize::MAX
+                            || bits.as_ref().map_or(false, |b| !b.0.get(i2))
+                    })
+                    .count()
+                    .try_into()
+                    .expect("More than 255 pruned groups isn't possible!");
+                c.set((IndexType::max(), usize::MAX, false, pruned))
+            }
+        }
+        for (_, (i, ism)) in &mut found {
             let patch: SmallVec<_, 4> = ism
                 .iter()
                 .enumerate()
                 .filter_map(|(from, &to)| {
-                    (!matched[to].2)
-                        .then(|| (Ix::new(from), mol.node_weight(mol.from_index(to)).unwrap()))
+                    let mat = matched[to];
+                    (!mat.2).then(|| {
+                        let mut atom = mol.node_weight(mol.from_index(to)).unwrap();
+                        let _ = atom.single_to_unknown(mat.3);
+                        (Ix::new(from), atom)
+                    })
                 })
                 .collect();
             if patch.is_empty() {
@@ -330,16 +391,7 @@ impl<Ix: IndexType> Arena<Ix> {
                     }
                 }
                 let mut a = *n.weight();
-                if let Some((bits, _)) = &bits {
-                    a.add_rs(
-                        mol.neighbors(n.id())
-                            .filter(|&ne| !bits.get(mol.to_index(ne)))
-                            .count()
-                            .try_into()
-                            .unwrap(),
-                    )
-                    .unwrap();
-                }
+                let _ = a.single_to_unknown(matched[mi].3);
                 let gi = self.graph.add_node(a);
                 mapping[mi] = (gi, mi);
                 count += 1;
@@ -385,14 +437,16 @@ impl<Ix: IndexType> Arena<Ix> {
                 ism_buf.clone_from(&ism);
                 let idx = found.insert((i, ism));
                 for ni in ism_buf.drain(..) {
-                    matched[ni].set((i, idx, true));
+                    let c = &matched[ni];
+                    let u = c.get().3;
+                    c.set((i, idx, true, u));
                 }
             }
         }
         found.compact(|_, from, to| {
-            for (_, i, _) in &mut matched {
-                if *i == from {
-                    *i = to;
+            for m in &mut matched {
+                if m.1 == from {
+                    m.1 = to;
                 }
             }
             true
