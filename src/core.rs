@@ -233,6 +233,20 @@ impl Atom {
         self.data.set_unknown(u);
         Ok(())
     }
+    /// Remove unknown bonds, replace them with singles
+    pub fn unknown_to_single(&mut self, b: u8) -> Result<(), TooManyBonds> {
+        let u = self.data.unknown();
+        if b > u {
+            return Err(TooManyBonds(TooMany::R, 0));
+        }
+        let s = self.data.single() + b;
+        if s >= 16 {
+            return Err(TooManyBonds(TooMany::Single, s as _));
+        }
+        self.data.set_single(s);
+        self.data.set_unknown(u - b);
+        Ok(())
+    }
 
     #[inline(always)]
     pub fn map_scratch<F: FnOnce(u8) -> u8>(&mut self, f: F) {
