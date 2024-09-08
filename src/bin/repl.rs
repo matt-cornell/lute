@@ -64,6 +64,7 @@ enum QueryType {
     AllEdges,
     Neighbors,
     NeighborEdges,
+    Contained,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -524,6 +525,14 @@ fn query(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, ReplErro
                     }
                 }
                 Ok(Some(out))
+            }
+            QueryType::Contained => {
+                if focus.is_some() {
+                    Err(ReplError::FocusNodesOnQuery)
+                } else {
+                    let set = mol.contained_groups().collect::<std::collections::HashSet<_>>();
+                    Ok(Some(format!("{set:?}")))
+                }
             }
         }
     })

@@ -250,6 +250,10 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
             }
         }
     }
+
+    pub fn contained_groups(&self) -> ContainedGroups<Ix, R> {
+        ContainedGroups::new(self.index, self.arena)
+    }
 }
 
 impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>, S: ArenaAccessor<Ix = Ix>> PartialEq<Molecule<Ix, S>>
@@ -268,5 +272,40 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> crate::graph::misc::DataValueMap
     }
     fn edge_weight(&self, idx: EdgeIndex<Ix>) -> Option<Bond> {
         self.get_bond(idx)
+    }
+}
+
+/// An iterator over the groups contained in a `Molecule`.
+#[derive(Debug, Clone)]
+pub struct ContainedGroups<Ix, R> {
+    stack: Vec<Ix>,
+    arena: R,
+}
+impl<Ix, R> ContainedGroups<Ix, R> {
+    pub fn new(group: Ix, arena: R) -> Self {
+        Self {
+            stack: vec![group],
+            arena
+        }
+    }
+}
+impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Iterator for ContainedGroups<Ix, R> {
+    type Item = Ix;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(next) = self.stack.pop() {
+            let arena = self.arena.get_arena();
+            match arena.parts[next.index()].0 {
+                MolRepr::Atomic(_) => {}
+                MolRepr::Modify(ModdedMol { base, .. }) => self.stack.push(base),
+                MolRepr::Broken(BrokenMol { ref frags, .. }) => self.stack.extend_from_slice(frags),
+            }
+            Some(next)
+        } else {
+            None
+        }
+    }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.stack.len(), None)
     }
 }
