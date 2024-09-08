@@ -79,3 +79,13 @@ fn alcohols() {
 
     assert!(isp.contains(alcohol));
 }
+
+/// Idfk what this test case is showing but it fails
+#[test]
+fn cursed_hydrazine() {
+    trace_capture!();
+    let mut arena = Arena::<u32>::new();
+    let hydrazine = arena.insert_mol(&smiles!("N&N&"));
+    let dimethylhydrazine = arena.insert_mol(&smiles!("CNNC"));
+    assert!(arena.contains_group(dimethylhydrazine, hydrazine));
+}
