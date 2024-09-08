@@ -201,10 +201,8 @@ pub mod iter {
                             .collect::<SmallVec<_, 3>>();
                         let mut it = bonds.iter().map(|b| {
                             EdgeReference::with_weight(
-                                EdgeIndex::new(
-                                    Ix::new(offsets[b.an.index()] + b.ai.index()),
-                                    Ix::new(offsets[b.bn.index()] + b.bi.index()),
-                                ),
+                                Ix::new(offsets[b.an.index()] + b.ai.index()),
+                                Ix::new(offsets[b.bn.index()] + b.bi.index()),
                                 Bond::Single,
                             )
                         });
@@ -219,7 +217,8 @@ pub mod iter {
                             let s = b.index(e.source().index())?;
                             let t = b.index(e.target().index())?;
                             Some(EdgeReference::with_weight(
-                                (Ix::new(s + offset), Ix::new(t + offset)).into(),
+                                Ix::new(s + offset),
+                                Ix::new(t + offset),
                                 *e.weight(),
                             ))
                         });
@@ -309,7 +308,8 @@ pub mod iter {
                             // get the correct offset index
                             let offset = idx + self.offset.index();
                             return Some(EdgeReference::with_weight(
-                                EdgeIndex::new(self.orig_idx, Ix::new(offset)),
+                                self.orig_idx,
+                                Ix::new(offset),
                                 arena.graph()[e],
                             ));
                         }
@@ -319,7 +319,8 @@ pub mod iter {
                         if let State::Broken(next) = &mut self.state {
                             if let Some(id) = next.pop() {
                                 return Some(EdgeReference::with_weight(
-                                    EdgeIndex::new(self.orig_idx, id),
+                                    self.orig_idx,
+                                    id,
                                     Bond::Single,
                                 ));
                             }
@@ -382,13 +383,7 @@ pub mod iter {
         type Item = NodeIndex<Ix>;
 
         fn next(&mut self) -> Option<Self::Item> {
-            self.0.next().map(|n| {
-                if n.source().0 == self.0.atom_idx {
-                    n.target()
-                } else {
-                    n.source()
-                }
-            })
+            self.0.next().map(|n| n.target())
         }
     }
 

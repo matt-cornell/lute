@@ -1,6 +1,5 @@
 use super::*;
 use petgraph::visit::{EdgeRef, NodeRef};
-use std::hash::{Hash, Hasher};
 
 /// Node indices are compact indices over the atoms in a molecule.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -13,14 +12,20 @@ impl<Ix> From<Ix> for NodeIndex<Ix> {
 
 /// Edge indices are tuple of the starting and ending nodes.
 /// Because the graph is undirected, these are always stored with the lower index first.
-#[derive(Debug, Clone, Copy)]
-pub struct EdgeIndex<Ix>(pub Ix, pub Ix);
-impl<Ix> EdgeIndex<Ix> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct EdgeIndex<Ix>(Ix, Ix);
+impl<Ix: PartialOrd> EdgeIndex<Ix> {
     /// Create a new `EdgeIndex`. This enforces that it's sorted.
     #[inline(always)]
     pub fn new(source: Ix, target: Ix) -> Self {
-        Self(source, target)
+        if target < source {
+            Self(target, source)
+        } else {
+            Self(source, target)
+        }
     }
+}
+impl<Ix> EdgeIndex<Ix> {
     pub fn rev(self) -> Self {
         Self(self.1, self.0)
     }
@@ -43,44 +48,6 @@ impl<Ix: Copy> EdgeIndex<Ix> {
     #[inline(always)]
     pub const fn explode(self) -> (Ix, Ix) {
         (self.0, self.1)
-    }
-}
-impl<Ix: Ord> PartialEq for EdgeIndex<Ix> {
-    fn eq(&self, other: &Self) -> bool {
-        let EdgeIndex(mut a, mut b) = self.as_ref();
-        if a.cmp(b) != other.0.cmp(&other.1) {
-            std::mem::swap(&mut a, &mut b)
-        }
-        *a == other.0 && *b == other.1
-    }
-}
-impl<Ix: Ord> Eq for EdgeIndex<Ix> {}
-impl<Ix: Ord> PartialOrd for EdgeIndex<Ix> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-impl<Ix: Ord> Ord for EdgeIndex<Ix> {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        let EdgeIndex(mut sa, mut sb) = self.as_ref();
-        let EdgeIndex(mut oa, mut ob) = other.as_ref();
-        if sa > sb {
-            std::mem::swap(&mut sa, &mut sb)
-        }
-        if oa > ob {
-            std::mem::swap(&mut oa, &mut ob)
-        }
-        sa.cmp(sb).then(oa.cmp(ob))
-    }
-}
-impl<Ix: Ord + Hash> Hash for EdgeIndex<Ix> {
-    fn hash<H: Hasher>(&self, h: &mut H) {
-        let EdgeIndex(mut a, mut b) = self.as_ref();
-        if a > b {
-            std::mem::swap(&mut a, &mut b)
-        }
-        a.hash(h);
-        b.hash(h);
     }
 }
 impl<Ix: IndexType> From<(Ix, Ix)> for EdgeIndex<Ix> {
@@ -151,24 +118,28 @@ impl<Ix: Copy> NodeRef for NodeReference<Ix> {
 pub struct EdgeReference<Ix> {
     pub edge_idx: EdgeIndex<Ix>,
     pub bond: Bond,
+    pub target_first: bool,
 }
-impl<Ix> EdgeReference<Ix> {
-    pub fn new<R: ArenaAccessor<Ix = Ix>>(mol_idx: Ix, edge_idx: EdgeIndex<Ix>, arena: R) -> Self
+impl<Ix: PartialOrd> EdgeReference<Ix> {
+    pub fn new<R: ArenaAccessor<Ix = Ix>>(mol_idx: Ix, source: Ix, target: Ix, arena: R) -> Self
     where
         Ix: IndexType,
     {
+        let edge_idx = EdgeIndex::new(source, target);
         Self {
-            edge_idx,
             bond: arena
                 .get_arena()
                 .molecule(mol_idx)
                 .get_bond(edge_idx)
                 .unwrap(),
+            target_first: target < source,
+            edge_idx
         }
     }
-    pub fn with_weight(edge_idx: EdgeIndex<Ix>, weight: Bond) -> Self {
+    pub fn with_weight(source: Ix, target: Ix, weight: Bond) -> Self {
         Self {
-            edge_idx,
+            target_first: target < source,
+            edge_idx: EdgeIndex::new(source, target),
             bond: weight,
         }
     }
@@ -176,10 +147,9 @@ impl<Ix> EdgeReference<Ix> {
         &self.bond
     }
     pub fn rev(self) -> Self {
-        let EdgeReference { edge_idx, bond } = self;
         Self {
-            edge_idx: edge_idx.rev(),
-            bond,
+            target_first: !self.target_first,
+            ..self
         }
     }
 }
@@ -195,9 +165,17 @@ impl<Ix: Copy> EdgeRef for EdgeReference<Ix> {
         &self.bond
     }
     fn source(&self) -> NodeIndex<Ix> {
-        NodeIndex(self.edge_idx.source())
+        NodeIndex(if self.target_first {
+            self.edge_idx.target()
+        } else {
+            self.edge_idx.source()
+        })
     }
     fn target(&self) -> NodeIndex<Ix> {
-        NodeIndex(self.edge_idx.target())
+        NodeIndex(if self.target_first {
+            self.edge_idx.source()
+        } else {
+            self.edge_idx.target()
+        })
     }
 }
