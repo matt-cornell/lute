@@ -83,9 +83,45 @@ fn alcohols() {
 /// Idfk what this test case is showing but it fails
 #[test]
 fn cursed_hydrazine() {
+    use crate::graph::isomorphisms_iter;
     trace_capture!();
+    let base_hz = smiles!("N&N&");
+    let base_dmhz = smiles!("CNNC");
+    assert_ne!(
+        isomorphisms_iter(
+            &&base_hz,
+            &&base_dmhz,
+            &mut Atom::matches,
+            &mut PartialEq::eq,
+            true
+        )
+        .next(),
+        None
+    );
     let mut arena = Arena::<u32>::new();
-    let hydrazine = arena.insert_mol(&smiles!("N&N&"));
-    let dimethylhydrazine = arena.insert_mol(&smiles!("CNNC"));
+    let hydrazine = arena.insert_mol(&base_hz);
+    let dimethylhydrazine = arena.insert_mol(&base_dmhz);
+    assert_ne!(
+        isomorphisms_iter(
+            &arena.molecule(hydrazine),
+            &&base_dmhz,
+            &mut Atom::matches,
+            &mut PartialEq::eq,
+            true
+        )
+        .next(),
+        None
+    );
+    assert_ne!(
+        isomorphisms_iter(
+            &arena.molecule(hydrazine),
+            &arena.molecule(dimethylhydrazine),
+            &mut Atom::matches,
+            &mut PartialEq::eq,
+            true
+        )
+        .next(),
+        None
+    );
     assert!(arena.contains_group(dimethylhydrazine, hydrazine));
 }
