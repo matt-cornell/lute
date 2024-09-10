@@ -9,11 +9,10 @@ use std::ffi::OsStr;
 use std::fmt::Write;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::Arc;
 use std::time::Instant;
 use thiserror::Error;
 use tracing_subscriber::filter::{LevelFilter, ParseError, Targets};
-use tracing_subscriber::fmt::{self, format::*};
+use tracing_subscriber::fmt;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::{reload, Registry};
 
