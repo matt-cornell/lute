@@ -1,5 +1,6 @@
 use super::arena::*;
 use super::*;
+use petgraph::visit::IntoNodeReferences;
 use small_map::ASmallMap;
 
 pub mod graph_traits;
@@ -253,6 +254,21 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
 
     pub fn contained_groups(&self) -> ContainedGroups<Ix, R> {
         ContainedGroups::new(self.index, self.arena)
+    }
+    pub fn graph_elements(
+        &self,
+    ) -> impl Iterator<Item = petgraph::data::Element<Atom, Bond>> + Clone {
+        use petgraph::data::Element;
+        use petgraph::visit::*;
+        self.node_references()
+            .map(|i| Element::Node {
+                weight: *i.weight(),
+            })
+            .chain(self.edge_references().map(|e| Element::Edge {
+                source: e.source().0.index(),
+                target: e.target().0.index(),
+                weight: *e.weight(),
+            }))
     }
 }
 
