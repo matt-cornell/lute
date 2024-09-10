@@ -8,12 +8,14 @@ use std::env;
 use std::ffi::OsStr;
 use std::fmt::Write;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Instant;
 use thiserror::Error;
 use tracing_subscriber::filter::{LevelFilter, ParseError, Targets};
 use tracing_subscriber::fmt::{self, format::*};
 use tracing_subscriber::prelude::*;
+use tracing_subscriber::{reload, Registry};
 
 #[derive(Debug, Clone, Copy, PartialEq, ValueEnum)]
 enum DumpType {
@@ -212,49 +214,26 @@ impl Drop for Timer {
     }
 }
 
-type SubscriberType = tracing_subscriber::layer::Layered<
-    Targets,
-    fmt::Subscriber<DefaultFields, Format<Full>, LevelFilter, fn() -> std::io::Stderr>,
->;
-
 struct Context {
     arena: Arena<u32>,
-    trace: Arc<SubscriberType>,
+    targets: reload::Handle<Targets, Registry>,
     timings: bool,
     legacy_render: bool,
-}
-
-fn default_subscriber() -> SubscriberType {
-    fmt::fmt()
-        .with_writer(std::io::stderr as _)
-        .finish()
-        .with(Targets::new())
-}
-
-fn make_subscriber(filter: &str) -> Result<SubscriberType, ParseError> {
-    use std::str::FromStr;
-    Ok(fmt::fmt()
-        .with_writer(std::io::stderr as _)
-        .finish()
-        .with(Targets::from_str(filter)?))
 }
 
 fn set_log(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, ReplError> {
     catch_panics(|| {
         if let Some(filter) = args.get_one::<String>("filter") {
-            ctx.trace = Arc::new(make_subscriber(filter)?);
+            let _ = ctx.targets.reload(Targets::from_str(filter)?);
             Ok(None)
         } else {
-            Ok(Some(
-                ctx.trace.downcast_ref::<Targets>().unwrap().to_string(),
-            ))
+            Ok(Some(ctx.targets.with_current(Targets::to_string).unwrap()))
         }
     })
 }
 
 fn load_smiles(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, ReplError> {
     catch_panics(|| {
-        let _guard = tracing::subscriber::set_default(ctx.trace.clone());
         let _timer = ctx.timings.then(Timer::new);
         let mut out = String::new();
         let inputs = args.get_many::<String>("input").unwrap();
@@ -278,7 +257,6 @@ fn load_smiles(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, Re
 
 fn dump(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, ReplError> {
     catch_panics(|| {
-        let _guard = tracing::subscriber::set_default(ctx.trace.clone());
         let _timer = ctx.timings.then(Timer::new);
         let path = args.get_one::<PathBuf>("out");
         if *args.get_one("graph").unwrap_or(&false) {
@@ -378,7 +356,6 @@ fn dump(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, ReplError
 
 fn index(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, ReplError> {
     catch_panics(|| {
-        let _guard = tracing::subscriber::set_default(ctx.trace.clone());
         let _timer = ctx.timings.then(Timer::new);
         let mut out = String::new();
         let mol = ctx.arena.molecule(*args.get_one("mol").unwrap());
@@ -410,7 +387,6 @@ fn index(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, ReplErro
 fn query(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, ReplError> {
     catch_panics(|| {
         use petgraph::visit::*;
-        let _guard = tracing::subscriber::set_default(ctx.trace.clone());
         let _timer = ctx.timings.then(Timer::new);
         let mol = ctx.arena.molecule(*args.get_one("mol").unwrap());
         let focus = args.get_many::<u32>("focus");
@@ -554,20 +530,25 @@ fn adjust_settings(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>
 }
 
 fn main() {
-    let trace = match env::var("LUTE_LOG") {
-        Ok(name) => make_subscriber(&name).unwrap_or_else(|e| {
+    let targets = match env::var("LUTE_LOG") {
+        Ok(name) => Targets::from_str(&name).unwrap_or_else(|e| {
             eprintln!("Error in LUTE_LOG environment variable: {e}");
-            default_subscriber()
+            Targets::new().with_default(LevelFilter::ERROR)
         }),
-        Err(env::VarError::NotPresent) => default_subscriber(),
+        Err(env::VarError::NotPresent) => Targets::new().with_default(LevelFilter::ERROR),
         Err(env::VarError::NotUnicode(_)) => {
             eprintln!("Error in LUTE_LOG environment variable: not valid UTF-8");
-            default_subscriber()
+            Targets::new().with_default(LevelFilter::ERROR)
         }
     };
+    let (filter, targets) = reload::Layer::new(targets);
+    Registry::default()
+        .with(filter)
+        .with(fmt::layer().with_writer(std::io::stderr))
+        .init();
     let context = Context {
         arena: Arena::new(),
-        trace: Arc::new(trace),
+        targets,
         timings: false,
         legacy_render: false,
     };
