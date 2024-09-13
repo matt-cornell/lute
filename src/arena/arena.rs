@@ -88,6 +88,11 @@ impl<Ix: IndexType> Arena<Ix> {
     pub fn expose_parts(&self) -> &(impl Debug + Clone + PartialEq) {
         &self.parts
     }
+    /// Get a reference to a single fragment. For debugging purposes only.
+    #[inline(always)]
+    pub fn expose_part(&self, index: usize) -> &(impl Debug + Clone + PartialEq) {
+        &self.parts[index]
+    }
 
     #[inline]
     fn push_frag(&mut self, frag: (MolRepr<Ix>, Ix)) -> Ix {
