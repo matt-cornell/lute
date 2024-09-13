@@ -278,7 +278,7 @@ impl<Ix: IndexType> Arena<Ix> {
             let mut bmatch = PartialEq::eq;
             let mut found_any = false;
             'isms: for mut ism in
-                isomorphisms_iter(&frag, &&compacted, &mut amatch, &mut bmatch, false)
+                isomorphisms_iter(&frag, &&compacted, &mut amatch, &mut bmatch, true)
             {
                 trace!(frag = i.index(), ?ism, "found fragment");
                 prune_buf.clear();
