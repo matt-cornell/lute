@@ -22,6 +22,8 @@ enum DumpType {
     FastSmiles,
     #[value(alias = "smiles")]
     CanonSmiles,
+    #[value(alias = "frags", alias = "fragment")]
+    Frag,
     #[cfg(feature = "coordgen")]
     Svg,
     #[cfg(all(feature = "coordgen", feature = "resvg"))]
@@ -290,6 +292,20 @@ fn dump(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, ReplError
                 } else {
                     Ok(Some(s))
                 }
+            }
+            DumpType::Frag => {
+                let mut out = String::new();
+                if let Some(inputs) = args.get_many::<u32>("mol") {
+                    for i in inputs {
+                        if !out.is_empty() {
+                            out.push('\n');
+                        }
+                        let _ = write!(out, "{:#?}", ctx.arena.expose_part(*i as _));
+                    }
+                } else {
+                    let _ = write!(out, "{:#?}", ctx.arena.expose_parts());
+                }
+                Ok(Some(out))
             }
             #[cfg(feature = "coordgen")]
             DumpType::Svg => {
