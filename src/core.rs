@@ -124,13 +124,21 @@ impl AtomData {
 }
 impl PartialEq for AtomData {
     fn eq(&self, other: &Self) -> bool {
-        self.chirality() == other.chirality() && self.is_compatible(*other)
+        self.chirality() == other.chirality()
+            && self.hydrogen() == other.hydrogen()
+            && self.unknown() == other.unknown()
+            && self.single() == other.single()
+            && self.other() == other.other()
     }
 }
 impl Eq for AtomData {}
 impl Hash for AtomData {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        state.write_u8(self.total_bonds());
+        state.write_u8(self.chirality() as u8);
+        state.write_u8(self.hydrogen());
+        state.write_u8(self.unknown());
+        state.write_u8(self.single());
+        state.write_u8(self.other());
     }
 }
 
@@ -210,6 +218,34 @@ impl Atom {
         } else {
             Err(TooManyBonds(TooMany::Other, b as _))
         }
+    }
+    /// Remove single bonds, replace them with unknowns
+    pub fn single_to_unknown(&mut self, b: u8) -> Result<(), TooManyBonds> {
+        let s = self.data.single();
+        if b > s {
+            return Err(TooManyBonds(TooMany::Single, 0));
+        }
+        let u = self.data.unknown() + b;
+        if u >= 16 {
+            return Err(TooManyBonds(TooMany::R, u as _));
+        }
+        self.data.set_single(s - b);
+        self.data.set_unknown(u);
+        Ok(())
+    }
+    /// Remove unknown bonds, replace them with singles
+    pub fn unknown_to_single(&mut self, b: u8) -> Result<(), TooManyBonds> {
+        let u = self.data.unknown();
+        if b > u {
+            return Err(TooManyBonds(TooMany::R, 0));
+        }
+        let s = self.data.single() + b;
+        if s >= 16 {
+            return Err(TooManyBonds(TooMany::Single, s as _));
+        }
+        self.data.set_single(s);
+        self.data.set_unknown(u - b);
+        Ok(())
     }
 
     #[inline(always)]

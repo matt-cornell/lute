@@ -1,10 +1,10 @@
 #![allow(clippy::too_long_first_doc_paragraph)]
 //! Taken from `petgraph`! It's been modified to only work for undirected graphs (which saves some space) and not require `EdgeCount`
-
+//! Also I have some `tracing` logs coming from here
 use crate::graph::misc::DataValueMap;
 use petgraph::visit::*;
 use petgraph::{Outgoing, Undirected};
-use tracing::instrument;
+use tracing::*;
 
 use self::semantic::EdgeMatcher;
 use self::semantic::NodeMatcher;
@@ -416,6 +416,7 @@ mod matching {
             OpenList::Other => st.1.next_rest_index(start),
         }
         .map(|c| c + start); // compensate for start offset.
+        trace!(res = cand1, "next ix");
         match cand1 {
             None => None, // no more candidates
             Some(ix) => {
@@ -425,7 +426,6 @@ mod matching {
         }
     }
 
-    #[instrument(level = "trace", skip_all)]
     fn pop_state<G0, G1>(
         st: &mut (Vf2State<'_, G0>, Vf2State<'_, G1>),
         nodes: (G0::NodeId, G1::NodeId),
@@ -433,11 +433,11 @@ mod matching {
         G0: GetAdjacencyMatrix + GraphProp + NodeCompactIndexable + IntoNeighborsDirected,
         G1: GetAdjacencyMatrix + GraphProp + NodeCompactIndexable + IntoNeighborsDirected,
     {
+        trace!("pop state");
         st.0.pop_mapping(nodes.0);
         st.1.pop_mapping(nodes.1);
     }
 
-    #[instrument(level = "trace", skip_all)]
     fn push_state<G0, G1>(
         st: &mut (Vf2State<'_, G0>, Vf2State<'_, G1>),
         nodes: (G0::NodeId, G1::NodeId),
@@ -445,6 +445,11 @@ mod matching {
         G0: GetAdjacencyMatrix + GraphProp + NodeCompactIndexable + IntoNeighborsDirected,
         G1: GetAdjacencyMatrix + GraphProp + NodeCompactIndexable + IntoNeighborsDirected,
     {
+        trace!(
+            node0 = st.0.graph.to_index(nodes.0),
+            node1 = st.1.graph.to_index(nodes.1),
+            "push state"
+        );
         st.0.push_mapping(nodes.0, st.1.graph.to_index(nodes.1));
         st.1.push_mapping(nodes.1, st.0.graph.to_index(nodes.0));
     }
@@ -486,6 +491,7 @@ mod matching {
         EM: EdgeMatcher<G0, G1>,
     {
         if st.0.is_complete() {
+            trace!("state is complete, returning mapping");
             return Some(st.0.mapping.clone());
         }
 
@@ -496,6 +502,11 @@ mod matching {
         while let Some(frame) = stack.pop() {
             match frame {
                 Frame::Unwind { nodes, open_list } => {
+                    trace!(
+                        node0 = st.0.graph.to_index(nodes.0),
+                        node1 = st.1.graph.to_index(nodes.1),
+                        "unwind frame"
+                    );
                     pop_state(st, nodes);
 
                     match next_from_ix(st, nodes.1, open_list) {
@@ -509,26 +520,37 @@ mod matching {
                         }
                     }
                 }
-                Frame::Outer => match next_candidate(st) {
-                    None => continue,
-                    Some((nx, mx, open_list)) => {
-                        let f = Frame::Inner {
-                            nodes: (nx, mx),
-                            open_list,
-                        };
-                        stack.push(f);
+                Frame::Outer => {
+                    trace!("outer frame");
+                    match next_candidate(st) {
+                        None => continue,
+                        Some((nx, mx, open_list)) => {
+                            let f = Frame::Inner {
+                                nodes: (nx, mx),
+                                open_list,
+                            };
+                            stack.push(f);
+                        }
                     }
-                },
+                }
                 Frame::Inner { nodes, open_list } => {
-                    if is_feasible(st, nodes, node_match, edge_match) {
+                    let feas = is_feasible(st, nodes, node_match, edge_match);
+                    trace!(
+                        node0 = st.0.graph.to_index(nodes.0),
+                        node1 = st.1.graph.to_index(nodes.1),
+                        feasible = feas,
+                        "inner frame"
+                    );
+                    if feas {
                         push_state(st, nodes);
                         if st.0.is_complete() {
                             result = Some(st.0.mapping.clone());
                         }
                         // Check cardinalities of Tin, Tout sets
-                        if (!match_subgraph && st.0.out_size == st.1.out_size)
-                            || (match_subgraph && st.0.out_size <= st.1.out_size)
-                        {
+                        let cards = (!match_subgraph && st.0.out_size == st.1.out_size)
+                            || (match_subgraph && st.0.out_size <= st.1.out_size);
+                        trace!(cards, "cardinality check");
+                        if cards {
                             let f0 = Frame::Unwind { nodes, open_list };
                             stack.push(f0);
                             stack.push(Frame::Outer);
@@ -549,9 +571,11 @@ mod matching {
                 }
             }
             if result.is_some() {
+                trace!(?result, "returning result");
                 return result;
             }
         }
+        trace!(?result, "returning result");
         result
     }
 

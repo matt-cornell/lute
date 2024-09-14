@@ -1,6 +1,7 @@
 use clap::builder::PossibleValue;
 use lute::graph::*;
 use lute::prelude::*;
+use petgraph::data::FromElements;
 use petgraph::prelude::*;
 use reedline_repl_rs::{self as rlr, Repl};
 use rlr::clap::{self, Arg, ArgAction, ArgMatches, Command, ValueEnum};
@@ -21,6 +22,8 @@ enum DumpType {
     FastSmiles,
     #[value(alias = "smiles")]
     CanonSmiles,
+    #[value(alias = "frags", alias = "fragment")]
+    Frag,
     #[cfg(feature = "coordgen")]
     Svg,
     #[cfg(all(feature = "coordgen", feature = "resvg"))]
@@ -65,6 +68,7 @@ enum QueryType {
     AllEdges,
     Neighbors,
     NeighborEdges,
+    Contained,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -289,6 +293,20 @@ fn dump(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, ReplError
                     Ok(Some(s))
                 }
             }
+            DumpType::Frag => {
+                let mut out = String::new();
+                if let Some(inputs) = args.get_many::<u32>("mol") {
+                    for i in inputs {
+                        if !out.is_empty() {
+                            out.push('\n');
+                        }
+                        let _ = write!(out, "{:#?}", ctx.arena.expose_part(*i as _));
+                    }
+                } else {
+                    let _ = write!(out, "{:#?}", ctx.arena.expose_parts());
+                }
+                Ok(Some(out))
+            }
             #[cfg(feature = "coordgen")]
             DumpType::Svg => {
                 use lute::disp::svg::FormatMode;
@@ -389,17 +407,28 @@ fn query(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, ReplErro
         let _timer = ctx.timings.then(Timer::new);
         let mol = ctx.arena.molecule(*args.get_one("mol").unwrap());
         let focus = args.get_many::<u32>("focus");
+        let graph = args.get_one("graph").unwrap_or(&false);
         match args.get_one("query").unwrap() {
             QueryType::AllNodes => {
                 if focus.is_some() {
                     Err(ReplError::FocusNodesOnQuery)
                 } else {
                     let mut out = String::new();
-                    for n in mol.node_references() {
-                        if !out.is_empty() {
-                            out.push('\n');
+                    if *graph {
+                        let mol = &UnGraph::<_, _, u32>::from_elements(mol.graph_elements());
+                        for n in mol.node_references() {
+                            if !out.is_empty() {
+                                out.push('\n');
+                            }
+                            let _ = write!(out, "{}: {:#?}", n.id().index(), n.weight());
                         }
-                        let _ = write!(out, "{}: {:#?}", n.id().0, n.weight());
+                    } else {
+                        for n in mol.node_references() {
+                            if !out.is_empty() {
+                                out.push('\n');
+                            }
+                            let _ = write!(out, "{}: {:#?}", n.id().0, n.weight());
+                        }
                     }
                     Ok(Some(out))
                 }
@@ -409,98 +438,186 @@ fn query(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, ReplErro
                     Err(ReplError::FocusNodesOnQuery)
                 } else {
                     let mut out = String::new();
-                    for n in mol.edge_references() {
-                        if !out.is_empty() {
-                            out.push('\n');
+                    if *graph {
+                        let mol = &UnGraph::<_, _, u32>::from_elements(mol.graph_elements());
+                        for n in mol.edge_references() {
+                            if !out.is_empty() {
+                                out.push('\n');
+                            }
+                            let _ = write!(
+                                out,
+                                "{}--{}: {}",
+                                n.source().index(),
+                                n.target().index(),
+                                n.weight()
+                            );
                         }
-                        let _ = write!(out, "{}--{}: {}", n.source().0, n.target().0, n.weight());
+                    } else {
+                        for n in mol.edge_references() {
+                            if !out.is_empty() {
+                                out.push('\n');
+                            }
+                            let _ =
+                                write!(out, "{}--{}: {}", n.source().0, n.target().0, n.weight());
+                        }
                     }
                     Ok(Some(out))
                 }
             }
             QueryType::Neighbors => {
-                let mut out = String::new();
-                if let Some(focus) = focus {
-                    let indent = focus.len() != 1;
-                    for &n in focus {
-                        if indent {
-                            if !out.is_empty() {
-                                out.push('\n');
-                            }
-                            let _ = write!(out, "{n}:");
-                        }
-                        for n2 in mol.neighbors(n.into()) {
-                            if !out.is_empty() {
-                                out.push('\n');
-                            }
+                fn handle<G: IntoNodeIdentifiers + IntoNeighbors + NodeIndexable>(
+                    mol: G,
+                    focus: Option<clap::parser::ValuesRef<u32>>,
+                ) -> String {
+                    let mut out = String::new();
+                    if let Some(focus) = focus {
+                        let indent = focus.len() != 1;
+                        for &n in focus {
                             if indent {
-                                out.push_str("  ");
+                                if !out.is_empty() {
+                                    out.push('\n');
+                                }
+                                let _ = write!(out, "{n}:");
                             }
-                            let _ = write!(out, "{}", n2.0);
+                            for n2 in mol.neighbors(mol.from_index(n as _)) {
+                                if !out.is_empty() {
+                                    out.push('\n');
+                                }
+                                if indent {
+                                    out.push_str("  ");
+                                }
+                                let _ = write!(out, "{}", mol.to_index(n2));
+                            }
+                        }
+                    } else {
+                        for n in mol.node_identifiers() {
+                            if !out.is_empty() {
+                                out.push('\n');
+                            }
+                            let _ = write!(out, "{}:", mol.to_index(n));
+                            for n2 in mol.neighbors(n) {
+                                out.push('\n');
+                                let _ = write!(out, "  {}", mol.to_index(n2));
+                            }
                         }
                     }
-                } else {
-                    for n in mol.node_identifiers() {
-                        if !out.is_empty() {
-                            out.push('\n');
-                        }
-                        let _ = write!(out, "{}:", n.0);
-                        for n2 in mol.neighbors(n) {
-                            out.push('\n');
-                            let _ = write!(out, "  {}", n2.0);
-                        }
-                    }
+                    out
                 }
+                let out = if *graph {
+                    handle(
+                        &UnGraph::<_, _, u32>::from_elements(mol.graph_elements()),
+                        focus,
+                    )
+                } else {
+                    handle(mol, focus)
+                };
                 Ok(Some(out))
             }
             QueryType::NeighborEdges => {
-                let mut out = String::new();
-                if let Some(focus) = focus {
-                    let indent = focus.len() != 1;
-                    for &n in focus {
-                        if indent {
-                            if !out.is_empty() {
-                                out.push('\n');
-                            }
-                            let _ = write!(out, "{n}:");
-                        }
-                        for n2 in mol.edges(n.into()) {
-                            if !out.is_empty() {
-                                out.push('\n');
-                            }
+                fn handle<G: IntoNodeIdentifiers + IntoEdges<EdgeWeight = Bond> + NodeIndexable>(
+                    mol: G,
+                    focus: Option<clap::parser::ValuesRef<u32>>,
+                ) -> String {
+                    let mut out = String::new();
+                    if let Some(focus) = focus {
+                        let indent = focus.len() != 1;
+                        for &n in focus {
                             if indent {
-                                out.push_str("  ");
+                                if !out.is_empty() {
+                                    out.push('\n');
+                                }
+                                let _ = write!(out, "{n}:");
                             }
-                            let _ = write!(
-                                out,
-                                "{}--{}: {}",
-                                n2.source().0,
-                                n2.target().0,
-                                n2.weight()
-                            );
+                            for n2 in mol.edges(mol.from_index(n as _)) {
+                                if !out.is_empty() {
+                                    out.push('\n');
+                                }
+                                if indent {
+                                    out.push_str("  ");
+                                }
+                                let _ = write!(
+                                    out,
+                                    "{}--{}: {}",
+                                    mol.to_index(n2.source()),
+                                    mol.to_index(n2.target()),
+                                    n2.weight()
+                                );
+                            }
+                        }
+                    } else {
+                        for n in mol.node_identifiers() {
+                            if !out.is_empty() {
+                                out.push('\n');
+                            }
+                            let _ = write!(out, "{}:", mol.to_index(n));
+                            for n2 in mol.edges(n) {
+                                out.push('\n');
+                                let _ = write!(
+                                    out,
+                                    "  {}--{}: {}",
+                                    mol.to_index(n2.source()),
+                                    mol.to_index(n2.target()),
+                                    n2.weight()
+                                );
+                            }
                         }
                     }
-                } else {
-                    for n in mol.node_identifiers() {
-                        if !out.is_empty() {
-                            out.push('\n');
-                        }
-                        let _ = write!(out, "{}:", n.0);
-                        for n2 in mol.edges(n) {
-                            out.push('\n');
-                            let _ = write!(
-                                out,
-                                "  {}--{}: {}",
-                                n2.source().0,
-                                n2.target().0,
-                                n2.weight()
-                            );
-                        }
-                    }
+                    out
                 }
+                let out = if *graph {
+                    handle(
+                        &UnGraph::<_, _, u32>::from_elements(mol.graph_elements()),
+                        focus,
+                    )
+                } else {
+                    handle(mol, focus)
+                };
                 Ok(Some(out))
             }
+            QueryType::Contained => {
+                if focus.is_some() {
+                    Err(ReplError::FocusNodesOnQuery)
+                } else {
+                    let set = mol
+                        .contained_groups()
+                        .collect::<std::collections::HashSet<_>>();
+                    Ok(Some(format!("{set:?}")))
+                }
+            }
         }
+    })
+}
+
+fn ism_check(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, ReplError> {
+    catch_panics(|| {
+        fn always_true<T>(_: &T, _: &T) -> bool {
+            true
+        }
+        let _timer = ctx.timings.then(Timer::new);
+        let first = ctx.arena.molecule(*args.get_one("first").unwrap());
+        let second = ctx.arena.molecule(*args.get_one("second").unwrap());
+        let sub = *args.get_one("sub").unwrap_or(&false);
+        let weak = *args.get_one("match").unwrap_or(&false);
+        let smatch = *args.get_one("noeq").unwrap_or(&false);
+        let mut amatch = if smatch {
+            always_true
+        } else if weak {
+            Atom::matches
+        } else {
+            PartialEq::eq
+        };
+        let mut bmatch = if smatch { always_true } else { PartialEq::eq };
+        let mut out = String::new();
+        for ism in lute::graph::isomorphisms_iter(&first, &second, &mut amatch, &mut bmatch, sub) {
+            if !out.is_empty() {
+                out.push('\n');
+            }
+            let _ = write!(out, "{ism:?}");
+        }
+        if out.is_empty() {
+            out = "none found".to_string();
+        }
+        Ok(Some(out))
     })
 }
 
@@ -653,8 +770,54 @@ fn main() {
                         .required(false)
                         .action(ArgAction::Append)
                         .value_parser(clap::value_parser!(u32)),
+                )
+                .arg(
+                    Arg::new("graph")
+                        .short('g')
+                        .long("graph")
+                        .required(false)
+                        .action(ArgAction::SetTrue),
                 ),
             query,
+        )
+        .with_command(
+            Command::new("ism")
+                .about("Check if two graphs are isomorphic")
+                .arg(
+                    Arg::new("sub")
+                        .short('s')
+                        .long("sub")
+                        .long("subgraphs")
+                        .action(ArgAction::SetTrue)
+                        .help("Include subgraphs in the check"),
+                )
+                .arg(
+                    Arg::new("match")
+                        .short('m')
+                        .long("match")
+                        .long("matches")
+                        .action(ArgAction::SetTrue)
+                        .help("Use a weaker match rather than strict equality"),
+                )
+                .arg(
+                    Arg::new("noeq")
+                        .short('n')
+                        .long("noeq")
+                        .action(ArgAction::SetTrue)
+                        .conflicts_with("match")
+                        .help("Only do a structural match, with no checks for equality"),
+                )
+                .arg(
+                    Arg::new("first")
+                        .required(true)
+                        .value_parser(clap::value_parser!(u32)),
+                )
+                .arg(
+                    Arg::new("second")
+                        .required(true)
+                        .value_parser(clap::value_parser!(u32)),
+                ),
+            ism_check,
         )
         .with_command(
             Command::new("set").about("Adjust REPL settings").arg(

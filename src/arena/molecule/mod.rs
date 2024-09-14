@@ -1,5 +1,6 @@
 use super::arena::*;
 use super::*;
+use petgraph::visit::IntoNodeReferences;
 use small_map::ASmallMap;
 
 pub mod graph_traits;
@@ -128,37 +129,47 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
         let mut idx = idx.0.index();
         let arena = self.arena.get_arena();
         (idx < arena.parts.get(self.index.index())?.1.index()).then_some(())?;
-
         let mut ix = self.index;
+        let mut cvt_singles = 0;
         loop {
             trace!(mol_idx = ix.index(), atom_idx = idx, "searching for atom");
             match &arena.parts[ix.index()].0 {
                 MolRepr::Modify(m) => {
                     if let Ok(a) = m.patch.binary_search_by_key(&Ix::new(idx), |m| m.0) {
-                        return Some(m.patch[a].1);
+                        let mut atom = m.patch[a].1;
+                        let _ = atom.unknown_to_single(cvt_singles);
+                        return Some(atom);
                     } else {
                         ix = m.base
                     }
                 }
                 MolRepr::Atomic(b) => {
                     let i = b.nth(idx)?;
-                    return Some(arena.graph()[petgraph::graph::NodeIndex::new(i)]);
+                    let mut atom = arena.graph()[petgraph::graph::NodeIndex::new(i)];
+                    let _ = atom.unknown_to_single(cvt_singles);
+                    return Some(atom);
                 }
                 MolRepr::Broken(b) => {
-                    let mut found = false;
-                    for p in &b.frags {
+                    let mut found = None;
+                    for (n, p) in b.frags.iter().enumerate() {
                         let s = arena.parts[p.index()].1.index();
-                        if idx > s {
+                        if idx >= s {
                             idx -= s;
                         } else {
                             ix = *p;
-                            found = true;
+                            found = Some(n);
                             break;
                         }
                     }
-                    if !found {
-                        return None;
-                    }
+                    let n = found?;
+                    cvt_singles += b
+                        .bonds
+                        .iter()
+                        .filter(|ifb| {
+                            (ifb.an.index() == n && ifb.ai.index() == idx)
+                                || (ifb.bn.index() == n && ifb.bi.index() == idx)
+                        })
+                        .count() as u8;
                 }
             }
         }
@@ -240,6 +251,25 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
             }
         }
     }
+
+    pub fn contained_groups(&self) -> ContainedGroups<Ix, R> {
+        ContainedGroups::new(self.index, self.arena)
+    }
+    pub fn graph_elements(
+        &self,
+    ) -> impl Iterator<Item = petgraph::data::Element<Atom, Bond>> + Clone {
+        use petgraph::data::Element;
+        use petgraph::visit::*;
+        self.node_references()
+            .map(|i| Element::Node {
+                weight: *i.weight(),
+            })
+            .chain(self.edge_references().map(|e| Element::Edge {
+                source: e.source().0.index(),
+                target: e.target().0.index(),
+                weight: *e.weight(),
+            }))
+    }
 }
 
 impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>, S: ArenaAccessor<Ix = Ix>> PartialEq<Molecule<Ix, S>>
@@ -258,5 +288,40 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> crate::graph::misc::DataValueMap
     }
     fn edge_weight(&self, idx: EdgeIndex<Ix>) -> Option<Bond> {
         self.get_bond(idx)
+    }
+}
+
+/// An iterator over the groups contained in a `Molecule`.
+#[derive(Debug, Clone)]
+pub struct ContainedGroups<Ix, R> {
+    stack: Vec<Ix>,
+    arena: R,
+}
+impl<Ix, R> ContainedGroups<Ix, R> {
+    pub fn new(group: Ix, arena: R) -> Self {
+        Self {
+            stack: vec![group],
+            arena,
+        }
+    }
+}
+impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Iterator for ContainedGroups<Ix, R> {
+    type Item = Ix;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(next) = self.stack.pop() {
+            let arena = self.arena.get_arena();
+            match arena.parts[next.index()].0 {
+                MolRepr::Atomic(_) => {}
+                MolRepr::Modify(ModdedMol { base, .. }) => self.stack.push(base),
+                MolRepr::Broken(BrokenMol { ref frags, .. }) => self.stack.extend_from_slice(frags),
+            }
+            Some(next)
+        } else {
+            None
+        }
+    }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.stack.len(), None)
     }
 }

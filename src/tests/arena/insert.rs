@@ -1,8 +1,10 @@
 use super::*;
 
+mod order;
+
 #[test]
 fn double_insert() {
-    super::trace_capture!();
+    trace_capture!();
     let mut arena = Arena::<u32>::new();
     let benzene = smiles!("c1ccccc1");
     let m1 = arena.insert_mol(&benzene);
@@ -49,26 +51,77 @@ fn isomorphism() {
 
 #[test]
 fn alcohols() {
-    super::trace_capture!();
+    trace_capture!();
     let mut arena = arena!(
         of u32:
         smiles!("O&"),     // alcohol
         smiles!("CCO"),    // ethanol
         smiles!("CC(C)O"), // isopropanol
     );
+    tracing::info!("arena created");
     let orig = arena.parts.clone();
 
     let alcohol = arena.insert_mol(&smiles!("O&"));
+    tracing::info!("alcohol inserted");
     assert_eq!(alcohol, 0);
     assert_eq!(orig.len(), arena.parts.len(), "arena length changed");
     assert!(orig == arena.parts, "arena changed");
 
     let isp_idx = arena.insert_mol(&smiles!("CC(C)O"));
+    tracing::info!("isopropanol inserted");
     let isp = arena.molecule(isp_idx);
+
+    println!("{:#?}", arena.parts);
 
     // if these aren't equal, the output is just ugly
     assert_eq!(orig.len(), arena.parts.len(), "arena length changed");
     assert!(orig == arena.parts, "arena changed");
 
     assert!(isp.contains(alcohol));
+}
+
+/// Idfk what this test case is showing but it fails
+#[test]
+fn cursed_hydrazine() {
+    use crate::graph::isomorphisms_iter;
+    trace_capture!();
+    let base_hz = smiles!("N&N&");
+    let base_dmhz = smiles!("CNNC");
+    assert_ne!(
+        isomorphisms_iter(
+            &&base_hz,
+            &&base_dmhz,
+            &mut Atom::matches,
+            &mut PartialEq::eq,
+            true
+        )
+        .next(),
+        None
+    );
+    let mut arena = Arena::<u32>::new();
+    let hydrazine = arena.insert_mol(&base_hz);
+    let dimethylhydrazine = arena.insert_mol(&base_dmhz);
+    assert_ne!(
+        isomorphisms_iter(
+            &arena.molecule(hydrazine),
+            &&base_dmhz,
+            &mut Atom::matches,
+            &mut PartialEq::eq,
+            true
+        )
+        .next(),
+        None
+    );
+    assert_ne!(
+        isomorphisms_iter(
+            &arena.molecule(hydrazine),
+            &arena.molecule(dimethylhydrazine),
+            &mut Atom::matches,
+            &mut PartialEq::eq,
+            true
+        )
+        .next(),
+        None
+    );
+    assert!(arena.contains_group(dimethylhydrazine, hydrazine));
 }
