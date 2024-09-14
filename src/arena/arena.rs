@@ -428,12 +428,10 @@ impl<Ix: IndexType> Arena<Ix> {
         {
             let matched = Cell::from_mut(&mut *matched).as_slice_of_cells();
             let filtered = NodeFilter::new(mol, |n| {
-                matched[mol.to_index(n)].get().0 == IndexType::max()
+                let n = mol.to_index(n);
+                matched[n].get().0 == IndexType::max() && bits.as_ref().map_or(true, |b| b.0.get(n))
             });
-            let mut cgi = bits.as_ref().map_or_else(
-                || ConnectedGraphIter::new(&filtered),
-                |b| ConnectedGraphIter::from_full(b.0.clone()),
-            );
+            let mut cgi = ConnectedGraphIter::<u16, ATOM_BIT_STORAGE>::new(&filtered);
             let mut bits = BSType::new();
             let mut ism_buf = Vec::new();
             while let Some(count) = cgi.step(&filtered, &mut bits) {
@@ -457,6 +455,9 @@ impl<Ix: IndexType> Arena<Ix> {
             }
             true
         });
+        if found.len() == 1 {
+            return found.into_iter().next().unwrap().1;
+        }
         let mut bonds = SmallVec::with_capacity(found.len().saturating_sub(1));
         for e in mol.edge_references() {
             let mut ami = mol.to_index(e.source());
