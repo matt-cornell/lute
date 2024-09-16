@@ -268,13 +268,7 @@ impl<Ix: IndexType> Arena<Ix> {
                 let v = matched[idx].get();
                 // SAFETY: the UnsafeCells' data doesn't escape the call
                 unsafe {
-                    v.0 == IndexType::max()
-                        || self.contains_group_impl(
-                            i,
-                            v.0,
-                            &mut *pred_buf.get(),
-                            &mut *seen_buf.get(),
-                        )
+                    self.contains_group_impl(i, v.0, &mut *pred_buf.get(), &mut *seen_buf.get())
                 }
             });
             let compacted = GraphCompactor::<NodeFilter<G, _>>::new(filtered);
