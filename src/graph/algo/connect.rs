@@ -53,8 +53,7 @@ impl<T: PrimInt, const N: usize, F: FnMut(usize) -> usize> ConnectedGraphIter<T,
         graph: G,
         out: &mut BitSet<U, O>,
     ) -> Option<NonZeroUsize> {
-        let start = self.full.nth(0);
-        let Some(start) = start else { return None };
+        let start = self.full.nth(0)?;
         let start = graph.from_index(start);
         out.clear();
         let mut stack: SmallVec<G::NodeId, 8> = smallvec![start];
