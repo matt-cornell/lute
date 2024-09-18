@@ -13,12 +13,12 @@ pub use node_impls::*;
 #[repr(C)]
 pub struct Molecule<Ix, R> {
     arena: R,
-    pub index: Ix,
+    pub index: MolIndex<Ix>,
 }
 impl<Ix, R> Molecule<Ix, R> {
     pub fn from_arena<'a, 'b: 'a, A: ArenaAccessible<Ix = Ix, Access<'a> = R> + 'a>(
         arena: &'b A,
-        index: Ix,
+        index: MolIndex<Ix>,
     ) -> Self
     where
         Self: 'a,
@@ -31,7 +31,7 @@ impl<Ix, R> Molecule<Ix, R> {
 
     pub fn from_mut_arena<'a, 'b: 'a, A: ArenaAccessibleMut<Ix = Ix, AccessMut<'a> = R> + 'a>(
         arena: &'b A,
-        index: Ix,
+        index: MolIndex<Ix>,
     ) -> Self
     where
         Self: 'a,
@@ -59,14 +59,14 @@ impl<Ix, R> Molecule<Ix, R> {
 
 impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
     /// Check if this molecule contains the underlying group.
-    pub fn contains(&self, group: Ix) -> bool {
+    pub fn contains(&self, group: MolIndex<Ix>) -> bool {
         self.arena.get_arena().contains_group(self.index, group)
     }
 
     /// Get an atom, along with the corresponding node index in the underlying graph.
     /// Slower than `get_atom` because it can't short-circuit at `MolRepr::Modify`s.
     #[inline]
-    #[instrument(level = "debug", skip_all, fields(mol_idx = self.index.index(), idx))]
+    #[instrument(level = "debug", skip_all, fields(mol_idx = self.index.0.index(), idx))]
     pub fn get_atom_idx(&self, idx: impl Into<NodeIndex<Ix>>) -> Option<(Ix, Atom)> {
         let idx = idx.into();
         Span::current().record("idx", idx.0.index());
@@ -78,7 +78,7 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
         (idx < arena.parts.get(self.index.index())?.1.index()).then_some(())?;
         let mut oride = None;
 
-        let mut ix = self.index;
+        let mut ix = self.index.0;
         loop {
             trace!(mol_idx = ix.index(), atom_idx = idx, "searching for atom");
             match &arena.parts[ix.index()].0 {
@@ -129,7 +129,7 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
         let mut idx = idx.0.index();
         let arena = self.arena.get_arena();
         (idx < arena.parts.get(self.index.index())?.1.index()).then_some(())?;
-        let mut ix = self.index;
+        let mut ix = self.index.0;
         let mut cvt_singles = 0;
         loop {
             trace!(mol_idx = ix.index(), atom_idx = idx, "searching for atom");
@@ -192,7 +192,7 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
         let s = arena.parts.get(self.index.index())?.1.index();
         (idx0 < s && idx1 < s).then_some(())?;
 
-        let mut ix = self.index;
+        let mut ix = self.index.0;
         loop {
             trace!(
                 mol_idx = ix.index(),
@@ -298,9 +298,9 @@ pub struct ContainedGroups<Ix, R> {
     arena: R,
 }
 impl<Ix, R> ContainedGroups<Ix, R> {
-    pub fn new(group: Ix, arena: R) -> Self {
+    pub fn new(group: MolIndex<Ix>, arena: R) -> Self {
         Self {
-            stack: vec![group],
+            stack: vec![group.0],
             arena,
         }
     }
