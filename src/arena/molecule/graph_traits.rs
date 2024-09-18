@@ -18,12 +18,12 @@ impl<Ix: Copy + Ord, R> GraphProp for Molecule<Ix, R> {
 
 impl<Ix: IndexType + Ord, R: ArenaAccessor<Ix = Ix>> NodeCount for Molecule<Ix, R> {
     fn node_count(&self) -> usize {
-        self.arena.get_arena().parts[self.index.0.index()].1.index()
+        self.arena.get_arena().frags[self.index.0.index()].size()
     }
 }
 impl<Ix: IndexType + Ord, R: ArenaAccessor<Ix = Ix>> NodeIndexable for Molecule<Ix, R> {
     fn node_bound(&self) -> usize {
-        self.arena.get_arena().parts[self.index.0.index()].1.index()
+        self.arena.get_arena().frags[self.index.0.index()].size()
     }
     fn to_index(&self, a: NodeIndex<Ix>) -> usize {
         a.0.index()
@@ -188,7 +188,7 @@ pub mod iter {
             }
             let arena = self.arena.get_arena();
             while let Some((idx, off)) = self.stack.pop() {
-                match arena.parts[idx.index()].0 {
+                match arena.frags[idx.index()].repr {
                     MolRepr::Modify(ModdedMol { base, .. }) => self.stack.push((base, off)),
                     MolRepr::Broken(BrokenMol {
                         ref frags,
@@ -199,7 +199,7 @@ pub mod iter {
                             .iter()
                             .scan(off.index(), |count, idx| {
                                 let old = *count;
-                                *count += arena.parts[idx.index()].1.index();
+                                *count += arena.frags[idx.index()].size();
                                 self.stack.push((*idx, Ix::new(old)));
                                 Some(old)
                             })
@@ -292,7 +292,7 @@ pub mod iter {
                     return None;
                 }
                 let arena = self.arena.get_arena();
-                match arena.parts[self.mol_idx.index()].0 {
+                match arena.frags[self.mol_idx.index()].repr {
                     MolRepr::Modify(ModdedMol { base, .. }) => self.mol_idx = base,
                     MolRepr::Atomic(ref b) => {
                         if !matches!(self.state, State::Atomic(_)) {
@@ -336,7 +336,7 @@ pub mod iter {
                         debug!("generating state for broken molecule");
                         if next_frag {
                             for &i in &b.frags {
-                                let size = arena.parts[i.index()].1.index();
+                                let size = arena.frags[i.index()].size();
                                 if let Some(new) = self.atom_idx.index().checked_sub(size) {
                                     self.atom_idx = Ix::new(new);
                                     self.offset = Ix::new(self.offset.index() + size);
@@ -352,14 +352,14 @@ pub mod iter {
                                 .iter()
                                 .scan(self.offset.index(), |count, idx| {
                                     let old = *count;
-                                    *count += arena.parts[idx.index()].1.index();
+                                    *count += arena.frags[idx.index()].size();
                                     Some(old)
                                 })
                                 .collect::<SmallVec<_, 3>>();
                             let mut n = 0;
                             let mut i = self.atom_idx.index();
                             for &f in &b.frags {
-                                if let Some(new) = i.checked_sub(arena.parts[f.index()].1.index()) {
+                                if let Some(new) = i.checked_sub(arena.frags[f.index()].size()) {
                                     n += 1;
                                     i = new;
                                 }
