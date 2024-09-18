@@ -123,9 +123,9 @@ impl<Ix: IndexType> Arena<Ix> {
     ) -> bool {
         stack.clear();
         seen.clear();
-        // if mol.index() < group.index() {
-        //     return false; // quirk of insertion order
-        // }
+        if mol.index() < group.index() {
+            return false; // quirk of insertion order
+        }
         if mol.index() >= self.parts.len() || group.index() >= self.parts.len() {
             return false;
         }
@@ -505,5 +505,125 @@ impl<Ix: IndexType> Arena<Ix> {
         G::NodeId: Hash + Eq,
     {
         self.insert_mol_impl(mol, 0, None, 0).0
+    }
+
+    /// Optimize the layout, ensuring that all elements are inserted optimally.
+    /// A permutation can be output through a mutable reference.
+    pub fn optimize_layout(&mut self, mut perm: Option<&mut Vec<Ix>>) {
+        if self.parts.is_empty() {
+            return;
+        }
+        if let Some(perm) = &mut perm {
+            perm.reserve(self.parts.len());
+        }
+        let mut graph = UnGraph::with_capacity(self.parts.iter().map(|i| i.1.index()).sum(), 0);
+        let mut graph_indices = Vec::with_capacity(self.parts.len());
+        let mut base = 0;
+        for i in 0..self.parts.len() {
+            let mol = self.molecule(Ix::new(i));
+            mol.node_references().for_each(|n| {
+                graph.add_node(n.atom);
+            });
+            mol.edge_references().for_each(|e| {
+                graph.add_edge(
+                    Ix::new(e.source().0.index() + base).into(),
+                    Ix::new(e.target().0.index() + base).into(),
+                    *e.weight(),
+                );
+            });
+            base += mol.node_count();
+            graph_indices.push(base);
+        }
+        let mut frags = self
+            .parts
+            .iter()
+            .enumerate()
+            .map(|(n, s)| (Ix::new(n), s.1.index()))
+            .collect::<Vec<_>>();
+        frags.sort_by_key(|x| x.1);
+        let mut start_ = Some(0);
+        let mut scratch = Vec::new();
+        let mut prune_buf = Vec::new();
+        println!("{frags:?}");
+        while let Some(start) = start_ {
+            println!("start: {start}");
+            let base = frags[0].1;
+            let len = frags[start..].iter().position(|x| x.1 > base);
+            let slice = if let Some(len) = len {
+                &mut frags[start..(start + len)]
+            } else {
+                &mut frags[start..]
+            };
+            start_ = len.map(|l| start + l);
+            scratch.clear();
+            scratch.extend(slice.iter().map(|s| (s.0, Vec::new())));
+            for i in 0..scratch.len() {
+                for j in 0..scratch.len() {
+                    if i == j {
+                        continue;
+                    }
+                    let frag_0 = slice[i].0.index();
+                    let frag_1 = slice[j].0.index();
+                    if i > j && scratch[j].1.contains(&Ix::new(frag_0)) {
+                        continue;
+                    }
+                    let range_0 = RangeFiltered::new(
+                        &graph,
+                        if frag_0 == 0 {
+                            0
+                        } else {
+                            graph_indices[frag_0 - 1]
+                        },
+                        graph_indices[frag_0],
+                    );
+                    let range_1 = RangeFiltered::new(
+                        &graph,
+                        if frag_1 == 0 {
+                            0
+                        } else {
+                            graph_indices[frag_1 - 1]
+                        },
+                        graph_indices[frag_1],
+                    );
+                    if is_isomorphic_matching(&range_0, &range_1, Atom::matches, PartialEq::eq) {
+                        scratch[j].1.push(Ix::new(frag_0));
+                    }
+                }
+            }
+            let mut i = 0;
+            while !scratch.is_empty() {
+                prune_buf.clear();
+                scratch.retain(|(n, c)| {
+                    c.is_empty() && {
+                        println!("{slice:?}[{i}]");
+                        slice[i] = (*n, 0);
+                        i += 1;
+                        prune_buf.push(*n);
+                        true
+                    }
+                });
+                for (_, c) in &mut scratch {
+                    c.retain(|n| !prune_buf.contains(n));
+                }
+            }
+        }
+        for &(n, _) in &frags {
+            self.graph.clear();
+            self.parts.clear();
+            let frag = n.index();
+            let range = RangeFiltered::new(
+                &graph,
+                if frag == 0 {
+                    0
+                } else {
+                    graph_indices[frag - 1]
+                },
+                graph_indices[frag],
+            );
+            let idx = self.insert_mol(&range);
+            if let Some(perm) = &mut perm {
+                perm.push(idx);
+            }
+        }
     }
 }
