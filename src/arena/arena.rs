@@ -269,12 +269,13 @@ impl<Ix: IndexType> Arena<Ix> {
                 // SAFETY: the UnsafeCells' data doesn't escape the call
                 unsafe {
                     v.0 == IndexType::max()
-                        || self.contains_group_impl(
-                            i,
-                            v.0,
-                            &mut *pred_buf.get(),
-                            &mut *seen_buf.get(),
-                        )
+                        || (i != v.0
+                            && self.contains_group_impl(
+                                i,
+                                v.0,
+                                &mut *pred_buf.get(),
+                                &mut *seen_buf.get(),
+                            ))
                 }
             });
             let compacted = GraphCompactor::<NodeFilter<G, _>>::new(filtered);
