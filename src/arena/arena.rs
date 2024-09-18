@@ -516,6 +516,7 @@ impl<Ix: IndexType> Arena<Ix> {
 
     /// Optimize the layout, ensuring that all elements are inserted optimally.
     /// A permutation can be output through a mutable reference.
+    #[instrument(skip_all, fields(perm = perm.is_some()))]
     pub fn optimize_layout(&mut self, mut perm: Option<&mut Vec<Ix>>) {
         if self.parts.is_empty() {
             return;
@@ -528,6 +529,7 @@ impl<Ix: IndexType> Arena<Ix> {
         let mut graph_indices = Vec::with_capacity(self.parts.len());
         let mut base = 0;
         for i in 0..self.parts.len() {
+            trace!(i, "adding fragment to graph");
             let mol = self.molecule(Ix::new(i));
             mol.node_references().for_each(|n| {
                 graph.add_node(n.atom);
@@ -542,6 +544,12 @@ impl<Ix: IndexType> Arena<Ix> {
             base += mol.node_count();
             graph_indices.push(base);
         }
+        debug!(
+            nodes = graph.node_count(),
+            edges = graph.edge_count(),
+            frags = self.parts.len(),
+            "built graph"
+        );
         let mut frags = self
             .parts
             .iter()
@@ -553,9 +561,9 @@ impl<Ix: IndexType> Arena<Ix> {
         let mut scratch = Vec::new();
         let mut prune_buf = Vec::new();
         while let Some(start) = start_ {
-            println!("start: {start}");
             let base = frags[start].1;
             let len = frags[start..].iter().position(|x| x.1 > base);
+            trace!(size = base, len, "arranging fragments with same size");
             let slice = if let Some(len) = len {
                 &mut frags[start..(start + len)]
             } else {
@@ -571,7 +579,7 @@ impl<Ix: IndexType> Arena<Ix> {
                     }
                     let frag_0 = slice[i].0.index();
                     let frag_1 = slice[j].0.index();
-                    if i > j && dbg!(&scratch[i].1).contains(&Ix::new(frag_1)) {
+                    if i > j && scratch[i].1.contains(&Ix::new(frag_1)) {
                         continue;
                     }
                     let range_0 = RangeFiltered::new(
@@ -592,10 +600,8 @@ impl<Ix: IndexType> Arena<Ix> {
                         },
                         graph_indices[frag_1],
                     );
-                    print!("comparing {i} and {j}... ");
                     let res =
                         is_isomorphic_matching(&range_0, &range_1, Atom::matches, PartialEq::eq);
-                    println!("{res}");
                     if res {
                         scratch[j].1.push(Ix::new(frag_0));
                     }
@@ -603,7 +609,6 @@ impl<Ix: IndexType> Arena<Ix> {
             }
             let mut i = 0;
             while !scratch.is_empty() {
-                // println!("scratch: {scratch:?}");
                 prune_buf.clear();
                 scratch.retain(|(n, c)| {
                     !c.is_empty() || {
@@ -622,6 +627,7 @@ impl<Ix: IndexType> Arena<Ix> {
         self.parts.clear();
         for &(n, _) in &frags {
             let frag = n.index();
+            trace!(frag, "re-inserting fragment");
             let range = RangeFiltered::new(
                 &graph,
                 if frag == 0 {
@@ -632,6 +638,7 @@ impl<Ix: IndexType> Arena<Ix> {
                 graph_indices[frag],
             );
             let idx = self.insert_mol(&range);
+            debug!(old = frag, new = idx.index(), "re-inserting fragment");
             if let Some(perm) = &mut perm {
                 perm[frag] = idx;
             }
