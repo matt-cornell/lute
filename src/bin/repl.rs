@@ -266,7 +266,7 @@ fn dump(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, ReplError
             println!("{:#?}", ctx.arena.graph());
         }
         if *args.get_one("frags").unwrap_or(&false) {
-            println!("{:#?}", ctx.arena.expose_parts());
+            println!("{:#?}", ctx.arena.expose_frags());
         }
         let Some(dump_ty) = args.get_one::<DumpType>("type") else {
             return Ok(Some(String::new()));
@@ -300,10 +300,10 @@ fn dump(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, ReplError
                         if !out.is_empty() {
                             out.push('\n');
                         }
-                        let _ = write!(out, "{:#?}", ctx.arena.expose_part(*i as _));
+                        let _ = write!(out, "{:#?}", ctx.arena.expose_frags()[*i as usize]);
                     }
                 } else {
-                    let _ = write!(out, "{:#?}", ctx.arena.expose_parts());
+                    let _ = write!(out, "{:#?}", ctx.arena.expose_frags());
                 }
                 Ok(Some(out))
             }

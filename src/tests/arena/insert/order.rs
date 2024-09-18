@@ -27,8 +27,6 @@ fn small_med_large() {
     let ester = arena.insert_mol(&smiles!("C&(=O)O&"));
     let methyl_acetate = arena.insert_mol(&smiles!("CC(=O)OC"));
 
-    println!("{:#?}", arena.expose_parts());
-
     assert!(arena.contains_group(ester, ether));
     assert!(arena.contains_group(ester, ketone));
     assert!(arena.contains_group(methyl_acetate, ether));
@@ -44,8 +42,6 @@ fn small_large_med() {
     let methyl_acetate = arena.insert_mol(&smiles!("CC(=O)OC"));
     let ketone = arena.insert_mol(&smiles!("C&&=O"));
     let ester = arena.insert_mol(&smiles!("C&(=O)O&"));
-
-    println!("{:#?}", arena.expose_parts());
 
     assert!(arena.contains_group(ester, ether));
     assert!(arena.contains_group(ester, ketone));
@@ -63,8 +59,6 @@ fn large_med_small() {
     let ether = arena.insert_mol(&smiles!("O&&"));
     let ketone = arena.insert_mol(&smiles!("C&&=O"));
 
-    println!("{:#?}", arena.expose_parts());
-
     assert!(arena.contains_group(ester, ether));
     assert!(arena.contains_group(ester, ketone));
     assert!(arena.contains_group(methyl_acetate, ether));
@@ -81,8 +75,6 @@ fn large_small_med() {
     let ketone = arena.insert_mol(&smiles!("C&&=O"));
     let ester = arena.insert_mol(&smiles!("C&(=O)O&"));
 
-    println!("{arena:#?}");
-
     assert!(arena.contains_group(ester, ether));
     assert!(arena.contains_group(ester, ketone));
     assert!(arena.contains_group(methyl_acetate, ether));
@@ -98,8 +90,6 @@ fn large_small_med_small() {
     let ether = arena.insert_mol(&smiles!("O&&"));
     let ester = arena.insert_mol(&smiles!("C&(=O)O&"));
     let ketone = arena.insert_mol(&smiles!("C&&=O"));
-
-    println!("{:#?}", arena.expose_parts());
 
     assert!(arena.contains_group(ester, ether));
     assert!(arena.contains_group(ester, ketone));

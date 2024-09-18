@@ -15,17 +15,20 @@ use std::sync::Arc;
 /// accessor.
 pub trait ArenaAccessor: Copy {
     type Ix: IndexType;
-    type Ref<'a>: Deref<Target = Arena<Self::Ix>>
+    type Data;
+    type Ref<'a>: Deref<Target = Arena<Self::Ix, Self::Data>>
     where
-        Self: 'a;
+        Self: 'a,
+        Self::Data: 'a;
     type MappedRef<'a, T: 'a>: Deref<Target = T>
     where
         Self: 'a;
     fn get_arena<'a>(&'a self) -> Self::Ref<'a>
     where
-        Self: 'a;
+        Self: 'a,
+        Self::Data: 'a;
 
-    fn map_ref<'a, T: 'a, F: FnOnce(&Arena<Self::Ix>) -> &T>(
+    fn map_ref<'a, T: 'a, F: FnOnce(&Arena<Self::Ix, Self::Data>) -> &T>(
         r: Self::Ref<'a>,
         f: F,
     ) -> Self::MappedRef<'a, T>;
@@ -37,18 +40,20 @@ pub trait ArenaAccessor: Copy {
 
 /// This trait provides mutable access to the underlying arena.
 pub trait ArenaAccessorMut: ArenaAccessor {
-    type RefMut<'a>: DerefMut<Target = Arena<Self::Ix>>
+    type RefMut<'a>: DerefMut<Target = Arena<Self::Ix, Self::Data>>
     where
-        Self: 'a;
+        Self: 'a,
+        Self::Data: 'a;
     type MappedRefMut<'a, T: 'a>: DerefMut<Target = T>
     where
         Self: 'a;
 
     fn get_arena_mut<'a>(&'a self) -> Self::RefMut<'a>
     where
-        Self: 'a;
+        Self: 'a,
+        Self::Data: 'a;
 
-    fn map_ref_mut<'a, T: 'a, F: FnOnce(&mut Arena<Self::Ix>) -> &mut T>(
+    fn map_ref_mut<'a, T: 'a, F: FnOnce(&mut Arena<Self::Ix, Self::Data>) -> &mut T>(
         r: Self::RefMut<'a>,
         f: F,
     ) -> Self::MappedRefMut<'a, T>;
@@ -94,23 +99,30 @@ impl<T: ArenaAccessibleMut> ArenaAccessibleMut for &T {
 }
 
 #[doc(hidden)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 #[repr(transparent)]
-pub struct PtrAcc<Ix: IndexType>(NonNull<Arena<Ix>>);
-impl<Ix: IndexType> ArenaAccessor for PtrAcc<Ix> {
+pub struct PtrAcc<Ix: IndexType, D>(NonNull<Arena<Ix, D>>);
+impl<Ix: IndexType, D> Clone for PtrAcc<Ix, D> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl<Ix: IndexType, D> Copy for PtrAcc<Ix, D> {}
+impl<Ix: IndexType, D> ArenaAccessor for PtrAcc<Ix, D> {
     type Ix = Ix;
-    type Ref<'a> = &'a Arena<Ix>;
-    type MappedRef<'a, T: 'a> = &'a T;
+    type Data = D;
+    type Ref<'a> = &'a Arena<Ix, D> where D: 'a;
+    type MappedRef<'a, T: 'a> = &'a T where D: 'a;
 
     fn get_arena<'a>(&'a self) -> Self::Ref<'a>
     where
-        Self: 'a,
+        D: 'a,
     {
         // Safety: this was created with an `unsafe`, so the caller must know about the invariants
         unsafe { &mut *self.0.as_ptr() }
     }
 
-    fn map_ref<'a, T: 'a, F: FnOnce(&Arena<Self::Ix>) -> &T>(
+    fn map_ref<'a, T: 'a, F: FnOnce(&Arena<Self::Ix, Self::Data>) -> &T>(
         r: Self::Ref<'a>,
         f: F,
     ) -> Self::MappedRef<'a, T> {
@@ -119,23 +131,26 @@ impl<Ix: IndexType> ArenaAccessor for PtrAcc<Ix> {
     fn map_mapped_ref<'a, T: 'a, U: 'a, F: FnOnce(&T) -> &U>(
         r: Self::MappedRef<'a, T>,
         f: F,
-    ) -> Self::MappedRef<'a, U> {
+    ) -> Self::MappedRef<'a, U>
+    where
+        D: 'a,
+    {
         f(r)
     }
 }
-impl<Ix: IndexType> ArenaAccessorMut for PtrAcc<Ix> {
-    type RefMut<'a> = &'a mut Arena<Ix>;
-    type MappedRefMut<'a, T: 'a> = &'a mut T;
+impl<Ix: IndexType, D> ArenaAccessorMut for PtrAcc<Ix, D> {
+    type RefMut<'a> = &'a mut Arena<Ix, D> where D: 'a;
+    type MappedRefMut<'a, T: 'a> = &'a mut T where D: 'a;
 
     fn get_arena_mut<'a>(&'a self) -> Self::RefMut<'a>
     where
-        Self: 'a,
+        D: 'a,
     {
         // Safety: this was created with an `unsafe`, so the caller must know about the invariants
         unsafe { &mut *self.0.as_ptr() }
     }
 
-    fn map_ref_mut<'a, T: 'a, F: FnOnce(&mut Arena<Self::Ix>) -> &mut T>(
+    fn map_ref_mut<'a, T: 'a, F: FnOnce(&mut Arena<Self::Ix, Self::Data>) -> &mut T>(
         r: Self::RefMut<'a>,
         f: F,
     ) -> Self::MappedRefMut<'a, T> {
@@ -144,7 +159,10 @@ impl<Ix: IndexType> ArenaAccessorMut for PtrAcc<Ix> {
     fn map_mapped_ref_mut<'a, T: 'a, U: 'a, F: FnOnce(&mut T) -> &mut U>(
         r: Self::MappedRefMut<'a, T>,
         f: F,
-    ) -> Self::MappedRefMut<'a, U> {
+    ) -> Self::MappedRefMut<'a, U>
+    where
+        D: 'a,
+    {
         f(r)
     }
 }
@@ -153,40 +171,47 @@ impl<Ix: IndexType> ArenaAccessorMut for PtrAcc<Ix> {
 /// `ArenaAccessible` implementation can't be.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
-pub struct ArenaPtr<Ix: IndexType>(NonNull<Arena<Ix>>);
-impl<Ix: IndexType> ArenaPtr<Ix> {
+pub struct ArenaPtr<Ix: IndexType, D>(NonNull<Arena<Ix, D>>);
+impl<Ix: IndexType, D> ArenaPtr<Ix, D> {
     /// # Safety
     /// This type basically wraps a pointer, but moves the `unsafe` to its construction. All
     /// pointer invariants must hold, as they won't be checked elsewhere.
-    pub const unsafe fn new(ptr: NonNull<Arena<Ix>>) -> Self {
+    pub const unsafe fn new(ptr: NonNull<Arena<Ix, D>>) -> Self {
         Self(ptr)
     }
-    pub fn get_ptr(self) -> *mut Arena<Ix> {
+    pub fn get_ptr(self) -> *mut Arena<Ix, D> {
         self.0.as_ptr()
     }
 }
-impl<Ix: IndexType> ArenaAccessible for ArenaPtr<Ix> {
+impl<Ix: IndexType, D> ArenaAccessible for ArenaPtr<Ix, D> {
     type Ix = Ix;
-    type Access<'a> = PtrAcc<Ix>;
+    type Access<'a> = PtrAcc<Ix, D> where D: 'a;
 
-    fn get_accessor(&self) -> PtrAcc<Ix> {
+    fn get_accessor(&self) -> PtrAcc<Ix, D> {
         PtrAcc(self.0)
     }
 }
-impl<Ix: IndexType> ArenaAccessibleMut for ArenaPtr<Ix> {
-    type AccessMut<'a> = PtrAcc<Ix>;
+impl<Ix: IndexType, D> ArenaAccessibleMut for ArenaPtr<Ix, D> {
+    type AccessMut<'a> = PtrAcc<Ix, D> where D: 'a;
 
-    fn get_accessor_mut(&self) -> PtrAcc<Ix> {
+    fn get_accessor_mut(&self) -> PtrAcc<Ix, D> {
         PtrAcc(self.0)
     }
 }
 
 #[doc(hidden)]
-#[derive(Debug, Clone, Copy)]
-pub struct RefAcc<'a, Ix: IndexType>(&'a Arena<Ix>);
-impl<'a, Ix: IndexType> ArenaAccessor for RefAcc<'a, Ix> {
+#[derive(Debug)]
+pub struct RefAcc<'a, Ix: IndexType, D>(&'a Arena<Ix, D>);
+impl<Ix: IndexType, D> Clone for RefAcc<'_, Ix, D> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl<Ix: IndexType, D> Copy for RefAcc<'_, Ix, D> {}
+impl<'a, Ix: IndexType, D> ArenaAccessor for RefAcc<'a, Ix, D> {
     type Ix = Ix;
-    type Ref<'b> = &'b Arena<Ix> where 'a: 'b;
+    type Data = D;
+    type Ref<'b> = &'b Arena<Ix, D> where 'a: 'b;
     type MappedRef<'b, T: 'b> = &'b T where 'a: 'b;
 
     fn get_arena<'b>(&'b self) -> Self::Ref<'b>
@@ -196,7 +221,7 @@ impl<'a, Ix: IndexType> ArenaAccessor for RefAcc<'a, Ix> {
         self.0
     }
 
-    fn map_ref<'b, T: 'b, F: FnOnce(&Arena<Self::Ix>) -> &T>(
+    fn map_ref<'b, T: 'b, F: FnOnce(&Arena<Self::Ix, Self::Data>) -> &T>(
         r: Self::Ref<'b>,
         f: F,
     ) -> Self::MappedRef<'b, T>
@@ -216,21 +241,28 @@ impl<'a, Ix: IndexType> ArenaAccessor for RefAcc<'a, Ix> {
     }
 }
 
-impl<Ix: IndexType> ArenaAccessible for Arena<Ix> {
+impl<Ix: IndexType, D> ArenaAccessible for Arena<Ix, D> {
     type Ix = Ix;
-    type Access<'a> = RefAcc<'a, Ix>;
+    type Access<'a> = RefAcc<'a, Ix, D> where D: 'a;
 
-    fn get_accessor(&self) -> RefAcc<Ix> {
+    fn get_accessor(&self) -> RefAcc<Ix, D> {
         RefAcc(self)
     }
 }
 
 #[doc(hidden)]
-#[derive(Debug, Clone, Copy)]
-pub struct RefCellAcc<'a, Ix: IndexType>(&'a RefCell<Arena<Ix>>);
-impl<'a, Ix: IndexType> ArenaAccessor for RefCellAcc<'a, Ix> {
+#[derive(Debug)]
+pub struct RefCellAcc<'a, Ix: IndexType, D>(&'a RefCell<Arena<Ix, D>>);
+impl<Ix: IndexType, D> Clone for RefCellAcc<'_, Ix, D> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl<Ix: IndexType, D> Copy for RefCellAcc<'_, Ix, D> {}
+impl<'a, Ix: IndexType, D> ArenaAccessor for RefCellAcc<'a, Ix, D> {
     type Ix = Ix;
-    type Ref<'b> = Ref<'b, Arena<Ix>> where 'a: 'b;
+    type Data = D;
+    type Ref<'b> = Ref<'b, Arena<Ix, D>> where 'a: 'b;
     type MappedRef<'b, T: 'b> = Ref<'b, T> where 'a: 'b;
 
     fn get_arena<'b>(&'b self) -> Self::Ref<'b>
@@ -240,7 +272,7 @@ impl<'a, Ix: IndexType> ArenaAccessor for RefCellAcc<'a, Ix> {
         self.0.borrow()
     }
 
-    fn map_ref<'b, T: 'b, F: FnOnce(&Arena<Self::Ix>) -> &T>(
+    fn map_ref<'b, T: 'b, F: FnOnce(&Arena<Self::Ix, D>) -> &T>(
         r: Self::Ref<'b>,
         f: F,
     ) -> Self::MappedRef<'b, T>
@@ -259,8 +291,8 @@ impl<'a, Ix: IndexType> ArenaAccessor for RefCellAcc<'a, Ix> {
         Ref::map(r, f)
     }
 }
-impl<'a, Ix: IndexType> ArenaAccessorMut for RefCellAcc<'a, Ix> {
-    type RefMut<'b> = RefMut<'b, Arena<Ix>> where 'a: 'b;
+impl<'a, Ix: IndexType, D> ArenaAccessorMut for RefCellAcc<'a, Ix, D> {
+    type RefMut<'b> = RefMut<'b, Arena<Ix, D>> where 'a: 'b;
     type MappedRefMut<'b, T: 'b> = RefMut<'b, T> where 'a: 'b;
 
     fn get_arena_mut<'b>(&'b self) -> Self::RefMut<'b>
@@ -270,7 +302,7 @@ impl<'a, Ix: IndexType> ArenaAccessorMut for RefCellAcc<'a, Ix> {
         self.0.borrow_mut()
     }
 
-    fn map_ref_mut<'b, T: 'b, F: FnOnce(&mut Arena<Self::Ix>) -> &mut T>(
+    fn map_ref_mut<'b, T: 'b, F: FnOnce(&mut Arena<Self::Ix, D>) -> &mut T>(
         r: Self::RefMut<'b>,
         f: F,
     ) -> Self::MappedRefMut<'b, T>
@@ -290,35 +322,36 @@ impl<'a, Ix: IndexType> ArenaAccessorMut for RefCellAcc<'a, Ix> {
     }
 }
 
-impl<Ix: IndexType> ArenaAccessible for RefCell<Arena<Ix>> {
+impl<Ix: IndexType, D> ArenaAccessible for RefCell<Arena<Ix, D>> {
     type Ix = Ix;
-    type Access<'a> = RefCellAcc<'a, Ix>;
+    type Access<'a> = RefCellAcc<'a, Ix, D> where D: 'a;
 
-    fn get_accessor(&self) -> RefCellAcc<Ix> {
+    fn get_accessor(&self) -> RefCellAcc<Ix, D> {
         RefCellAcc(self)
     }
 }
-impl<Ix: IndexType> ArenaAccessibleMut for RefCell<Arena<Ix>> {
-    type AccessMut<'a> = RefCellAcc<'a, Ix>;
+impl<Ix: IndexType, D> ArenaAccessibleMut for RefCell<Arena<Ix, D>> {
+    type AccessMut<'a> = RefCellAcc<'a, Ix, D> where D: 'a;
 
-    fn get_accessor_mut(&self) -> RefCellAcc<Ix> {
+    fn get_accessor_mut(&self) -> RefCellAcc<Ix, D> {
         RefCellAcc(self)
     }
 }
 
 #[doc(hidden)]
 #[derive(Debug)]
-pub struct RwLockAcc<'a, Ix: IndexType, R: RawRwLock + 'a>(&'a RwLock<R, Arena<Ix>>);
+pub struct RwLockAcc<'a, Ix: IndexType, D, R: RawRwLock + 'a>(&'a RwLock<R, Arena<Ix, D>>);
 // Manual impls of `Clone` and `Copy` because the derives add bounds to `R`
-impl<'a, Ix: IndexType, R: RawRwLock + 'a> Clone for RwLockAcc<'a, Ix, R> {
+impl<'a, Ix: IndexType, D, R: RawRwLock + 'a> Clone for RwLockAcc<'a, Ix, D, R> {
     fn clone(&self) -> Self {
         *self
     }
 }
-impl<'a, Ix: IndexType, R: RawRwLock + 'a> Copy for RwLockAcc<'a, Ix, R> {}
-impl<'a, Ix: IndexType, R: RawRwLock + 'a> ArenaAccessor for RwLockAcc<'a, Ix, R> {
+impl<'a, Ix: IndexType, D, R: RawRwLock + 'a> Copy for RwLockAcc<'a, Ix, D, R> {}
+impl<'a, Ix: IndexType, D, R: RawRwLock + 'a> ArenaAccessor for RwLockAcc<'a, Ix, D, R> {
     type Ix = Ix;
-    type Ref<'b> = RwLockReadGuard<'b, R, Arena<Ix>> where 'a: 'b;
+    type Data = D;
+    type Ref<'b> = RwLockReadGuard<'b, R, Arena<Ix, D>> where 'a: 'b, D: 'b;
     type MappedRef<'b, T: 'b> = MappedRwLockReadGuard<'b, R, T> where 'a: 'b;
 
     fn get_arena<'b>(&'b self) -> Self::Ref<'b>
@@ -328,7 +361,7 @@ impl<'a, Ix: IndexType, R: RawRwLock + 'a> ArenaAccessor for RwLockAcc<'a, Ix, R
         self.0.read()
     }
 
-    fn map_ref<'b, T: 'b, F: FnOnce(&Arena<Self::Ix>) -> &T>(
+    fn map_ref<'b, T: 'b, F: FnOnce(&Arena<Self::Ix, D>) -> &T>(
         r: Self::Ref<'b>,
         f: F,
     ) -> Self::MappedRef<'b, T>
@@ -347,8 +380,8 @@ impl<'a, Ix: IndexType, R: RawRwLock + 'a> ArenaAccessor for RwLockAcc<'a, Ix, R
         MappedRwLockReadGuard::map(r, f)
     }
 }
-impl<'a, Ix: IndexType, R: RawRwLock + 'a> ArenaAccessorMut for RwLockAcc<'a, Ix, R> {
-    type RefMut<'b> = RwLockWriteGuard<'b, R, Arena<Ix>> where 'a: 'b;
+impl<'a, Ix: IndexType, D, R: RawRwLock + 'a> ArenaAccessorMut for RwLockAcc<'a, Ix, D, R> {
+    type RefMut<'b> = RwLockWriteGuard<'b, R, Arena<Ix, D>> where 'a: 'b;
     type MappedRefMut<'b, T: 'b> = MappedRwLockWriteGuard<'b, R, T> where 'a: 'b;
 
     fn get_arena_mut<'b>(&'b self) -> Self::RefMut<'b>
@@ -358,7 +391,7 @@ impl<'a, Ix: IndexType, R: RawRwLock + 'a> ArenaAccessorMut for RwLockAcc<'a, Ix
         self.0.write()
     }
 
-    fn map_ref_mut<'b, T: 'b, F: FnOnce(&mut Arena<Self::Ix>) -> &mut T>(
+    fn map_ref_mut<'b, T: 'b, F: FnOnce(&mut Arena<Self::Ix, D>) -> &mut T>(
         r: Self::RefMut<'b>,
         f: F,
     ) -> Self::MappedRefMut<'b, T>
@@ -378,18 +411,18 @@ impl<'a, Ix: IndexType, R: RawRwLock + 'a> ArenaAccessorMut for RwLockAcc<'a, Ix
     }
 }
 
-impl<Ix: IndexType, R: RawRwLock> ArenaAccessible for RwLock<R, Arena<Ix>> {
+impl<Ix: IndexType, D, R: RawRwLock> ArenaAccessible for RwLock<R, Arena<Ix, D>> {
     type Ix = Ix;
-    type Access<'a> = RwLockAcc<'a, Ix, R> where R: 'a;
+    type Access<'a> = RwLockAcc<'a, Ix, D, R> where R: 'a, D: 'a;
 
-    fn get_accessor(&self) -> RwLockAcc<Ix, R> {
+    fn get_accessor(&self) -> RwLockAcc<Ix, D, R> {
         RwLockAcc(self)
     }
 }
-impl<Ix: IndexType, R: RawRwLock> ArenaAccessibleMut for RwLock<R, Arena<Ix>> {
-    type AccessMut<'a> = RwLockAcc<'a, Ix, R> where R: 'a;
+impl<Ix: IndexType, D, R: RawRwLock> ArenaAccessibleMut for RwLock<R, Arena<Ix, D>> {
+    type AccessMut<'a> = RwLockAcc<'a, Ix, D, R> where R: 'a, D: 'a;
 
-    fn get_accessor_mut(&self) -> RwLockAcc<Ix, R> {
+    fn get_accessor_mut(&self) -> RwLockAcc<Ix, D, R> {
         RwLockAcc(self)
     }
 }

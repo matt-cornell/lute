@@ -75,13 +75,13 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
     fn get_atom_idx_impl(&self, idx: NodeIndex<Ix>) -> Option<(Ix, Atom)> {
         let mut idx = idx.0.index();
         let arena = self.arena.get_arena();
-        (idx < arena.parts.get(self.index.index())?.1.index()).then_some(())?;
+        (idx < arena.frags.get(self.index.index())?.size()).then_some(())?;
         let mut oride = None;
 
         let mut ix = self.index.0;
         loop {
             trace!(mol_idx = ix.index(), atom_idx = idx, "searching for atom");
-            match &arena.parts[ix.index()].0 {
+            match &arena.frags[ix.index()].repr {
                 MolRepr::Modify(m) => {
                     if oride.is_none() {
                         if let Ok(a) = m.patch.binary_search_by_key(&Ix::new(idx), |m| m.0) {
@@ -100,7 +100,7 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
                 MolRepr::Broken(b) => {
                     let mut found = false;
                     for p in &b.frags {
-                        let s = arena.parts[p.index()].1.index();
+                        let s = arena.frags[p.index()].size();
                         if idx > s {
                             idx -= s;
                         } else {
@@ -128,12 +128,12 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
     fn get_atom_impl(&self, idx: NodeIndex<Ix>) -> Option<Atom> {
         let mut idx = idx.0.index();
         let arena = self.arena.get_arena();
-        (idx < arena.parts.get(self.index.index())?.1.index()).then_some(())?;
+        (idx < arena.frags.get(self.index.index())?.size()).then_some(())?;
         let mut ix = self.index.0;
         let mut cvt_singles = 0;
         loop {
             trace!(mol_idx = ix.index(), atom_idx = idx, "searching for atom");
-            match &arena.parts[ix.index()].0 {
+            match &arena.frags[ix.index()].repr {
                 MolRepr::Modify(m) => {
                     if let Ok(a) = m.patch.binary_search_by_key(&Ix::new(idx), |m| m.0) {
                         let mut atom = m.patch[a].1;
@@ -152,7 +152,7 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
                 MolRepr::Broken(b) => {
                     let mut found = None;
                     for (n, p) in b.frags.iter().enumerate() {
-                        let s = arena.parts[p.index()].1.index();
+                        let s = arena.frags[p.index()].size();
                         if idx >= s {
                             idx -= s;
                         } else {
@@ -189,7 +189,7 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
         let mut idx0 = idx.source().index();
         let mut idx1 = idx.target().index();
         let arena = self.arena.get_arena();
-        let s = arena.parts.get(self.index.index())?.1.index();
+        let s = arena.frags.get(self.index.index())?.size();
         (idx0 < s && idx1 < s).then_some(())?;
 
         let mut ix = self.index.0;
@@ -200,7 +200,7 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
                 atom_idx1 = idx1,
                 "searching for bond"
             );
-            match &arena.parts[ix.index()].0 {
+            match &arena.frags[ix.index()].repr {
                 MolRepr::Modify(m) => ix = m.base,
                 MolRepr::Atomic(b) => {
                     // inefficient, but works
@@ -218,7 +218,7 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
                     let mut first = None;
                     let mut found = false;
                     for p in &b.frags {
-                        let s = arena.parts[p.index()].1.index();
+                        let s = arena.frags[p.index()].size();
                         if let Some(first) = first {
                             if idx1 > s {
                                 idx1 -= s;
@@ -272,8 +272,12 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
     }
 }
 
-impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>, S: ArenaAccessor<Ix = Ix>> PartialEq<Molecule<Ix, S>>
-    for Molecule<Ix, R>
+impl<
+        Ix: IndexType,
+        D,
+        R: ArenaAccessor<Ix = Ix, Data = D>,
+        S: ArenaAccessor<Ix = Ix, Data = D>,
+    > PartialEq<Molecule<Ix, S>> for Molecule<Ix, R>
 {
     fn eq(&self, other: &Molecule<Ix, S>) -> bool {
         self.index == other.index && std::ptr::eq(&*self.arena(), &*other.arena())
@@ -311,7 +315,7 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Iterator for ContainedGroups<Ix, 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(next) = self.stack.pop() {
             let arena = self.arena.get_arena();
-            match arena.parts[next.index()].0 {
+            match arena.frags[next.index()].repr {
                 MolRepr::Atomic(_) => {}
                 MolRepr::Modify(ModdedMol { base, .. }) => self.stack.push(base),
                 MolRepr::Broken(BrokenMol { ref frags, .. }) => self.stack.extend_from_slice(frags),
