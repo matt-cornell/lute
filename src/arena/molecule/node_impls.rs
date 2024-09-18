@@ -79,7 +79,11 @@ pub struct NodeReference<Ix> {
     pub atom: Atom,
 }
 impl<Ix> NodeReference<Ix> {
-    pub fn new<R: ArenaAccessor<Ix = Ix>>(mol_idx: Ix, node_idx: NodeIndex<Ix>, arena: R) -> Self
+    pub fn new<R: ArenaAccessor<Ix = Ix>>(
+        mol_idx: MolIndex<Ix>,
+        node_idx: NodeIndex<Ix>,
+        arena: R,
+    ) -> Self
     where
         Ix: IndexType,
     {
@@ -121,7 +125,12 @@ pub struct EdgeReference<Ix> {
     pub target_first: bool,
 }
 impl<Ix: PartialOrd> EdgeReference<Ix> {
-    pub fn new<R: ArenaAccessor<Ix = Ix>>(mol_idx: Ix, source: Ix, target: Ix, arena: R) -> Self
+    pub fn new<R: ArenaAccessor<Ix = Ix>>(
+        mol_idx: MolIndex<Ix>,
+        source: Ix,
+        target: Ix,
+        arena: R,
+    ) -> Self
     where
         Ix: IndexType,
     {

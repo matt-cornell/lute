@@ -280,7 +280,7 @@ fn dump(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, ReplError
                 };
                 let s = if let Some(inputs) = args.get_many::<u32>("mol") {
                     generate_smiles(
-                        &GraphUnion(inputs.map(|i| ctx.arena.molecule(*i)).collect()),
+                        &GraphUnion(inputs.map(|&i| ctx.arena.molecule(i.into())).collect()),
                         cfg,
                     )
                 } else {
@@ -317,7 +317,7 @@ fn dump(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, ReplError
                 };
                 let s = if let Some(inputs) = args.get_many::<u32>("mol") {
                     SvgFormatter {
-                        graph: &GraphUnion(inputs.map(|i| ctx.arena.molecule(*i)).collect()),
+                        graph: &GraphUnion(inputs.map(|&i| ctx.arena.molecule(i.into())).collect()),
                         mode,
                     }
                     .to_string()
@@ -347,7 +347,7 @@ fn dump(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, ReplError
                 };
                 let s = if let Some(inputs) = args.get_many::<u32>("mol") {
                     SvgFormatter {
-                        graph: &GraphUnion(inputs.map(|i| ctx.arena.molecule(*i)).collect()),
+                        graph: &GraphUnion(inputs.map(|&i| ctx.arena.molecule(i.into())).collect()),
                         mode,
                     }
                     .render(None)

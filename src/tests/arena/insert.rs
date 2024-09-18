@@ -19,8 +19,7 @@ fn isomorphism() {
     use petgraph::{Incoming, Outgoing};
     let mut arena = Arena::<u32>::new();
     let acid = smiles!("OS(=O)(=O)O");
-    let ix = arena.insert_mol(&acid);
-    let ins_acid = arena.molecule(ix);
+    let ins_acid = arena.insert_mol(&acid).in_arena(&arena);
     println!("before");
     for node in acid.node_identifiers() {
         println!("{node:?}");
@@ -63,7 +62,7 @@ fn alcohols() {
 
     let alcohol = arena.insert_mol(&smiles!("O&"));
     tracing::info!("alcohol inserted");
-    assert_eq!(alcohol, 0);
+    assert_eq!(alcohol.index(), 0);
     assert_eq!(orig.len(), arena.parts.len(), "arena length changed");
     assert!(orig == arena.parts, "arena changed");
 

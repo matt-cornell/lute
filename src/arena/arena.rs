@@ -11,7 +11,7 @@ use slab::Slab;
 use smallvec::SmallVec;
 use std::cell::{Cell, UnsafeCell};
 use std::collections::VecDeque;
-use std::fmt::Debug;
+use std::fmt::{self, Debug, Display, Formatter};
 use std::hash::Hash;
 
 #[macro_export]
@@ -65,6 +65,37 @@ pub(crate) enum MolRepr<Ix: IndexType> {
     Modify(ModdedMol<Ix>),
 }
 
+/// Wrapper around the index of a molecule
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct MolIndex<Ix>(pub Ix);
+impl<Ix: IndexType> MolIndex<Ix> {
+    pub fn index(self) -> usize {
+        self.0.index()
+    }
+    pub fn in_arena<'a, 'b: 'a, R: ArenaAccessible<Ix = Ix>>(
+        &self,
+        arena: &'b R,
+    ) -> Molecule<Ix, R::Access<'a>> {
+        Molecule::from_arena(arena, *self)
+    }
+    pub fn in_mut_arena<'a, 'b: 'a, R: ArenaAccessibleMut<Ix = Ix>>(
+        &self,
+        arena: &'b R,
+    ) -> Molecule<Ix, R::AccessMut<'a>> {
+        Molecule::from_mut_arena(arena, *self)
+    }
+}
+impl<Ix> From<Ix> for MolIndex<Ix> {
+    fn from(value: Ix) -> Self {
+        Self(value)
+    }
+}
+impl<Ix: Display> Display for MolIndex<Ix> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Ix::fmt(&self.0, f)
+    }
+}
+
 /// The `Arena` is the backing storage for everything. It tracks all molecules and handles
 /// deduplication.
 #[derive(Debug, Default, Clone)]
@@ -106,14 +137,14 @@ impl<Ix: IndexType> Arena<Ix> {
         Ix::new(idx)
     }
 
-    pub fn contains_group(&self, mol: Ix, group: Ix) -> bool {
+    #[instrument(level = "trace", skip(self))]
+    pub fn contains_group(&self, mol: MolIndex<Ix>, group: MolIndex<Ix>) -> bool {
         let mut stack = SmallVec::<_, 3>::new();
         let mut seen = BSType::new();
-        self.contains_group_impl(mol, group, &mut stack, &mut seen)
+        self.contains_group_impl(mol.0, group.0, &mut stack, &mut seen)
     }
 
     /// Check if `mol` contains `group`
-    #[instrument(level = "trace", name = "contains_group", skip(self))]
     fn contains_group_impl(
         &self,
         mol: Ix,
@@ -151,7 +182,7 @@ impl<Ix: IndexType> Arena<Ix> {
 
     /// Get a graph of the molecule at the given index. Note that `Molecule::from_arena` could give
     /// better results as it can borrow from `RefCell`s and `RwLock`s.
-    pub fn molecule(&self, mol: Ix) -> Molecule<Ix, access::RefAcc<Ix>> {
+    pub fn molecule(&self, mol: MolIndex<Ix>) -> Molecule<Ix, access::RefAcc<Ix>> {
         Molecule::from_arena(self, mol)
     }
 
@@ -279,7 +310,7 @@ impl<Ix: IndexType> Arena<Ix> {
                 }
             });
             let compacted = GraphCompactor::<NodeFilter<G, _>>::new(filtered);
-            let frag = self.molecule(i);
+            let frag = self.molecule(i.into());
             let mut amatch = Atom::matches;
             let mut bmatch = PartialEq::eq;
             let mut found_any = false;
@@ -297,7 +328,7 @@ impl<Ix: IndexType> Arena<Ix> {
                     mol_a
                         .single_to_unknown(mat.3)
                         .expect("Too many unknown groups would exist on this atom!");
-                    let frag_a = self.molecule(i).get_atom(Ix::new(n)).unwrap();
+                    let frag_a = self.molecule(i.into()).get_atom(Ix::new(n)).unwrap();
                     let matches = if mat.2 {
                         if mol_a != frag_a {
                             continue 'isms;
@@ -330,7 +361,7 @@ impl<Ix: IndexType> Arena<Ix> {
             }
         }
         for (_, (i, ism)) in &found {
-            let cmp = self.molecule(*i);
+            let cmp = self.molecule((*i).into());
             for (from, &to) in ism.iter().enumerate() {
                 let mi = mol.from_index(to);
                 let new = mol
@@ -500,7 +531,7 @@ impl<Ix: IndexType> Arena<Ix> {
     }
     #[inline(always)]
     #[instrument(skip(self, mol), fields(size = mol.node_count()))]
-    pub fn insert_mol<G>(&mut self, mol: G) -> Ix
+    pub fn insert_mol<G>(&mut self, mol: G) -> MolIndex<Ix>
     where
         G: Data<NodeWeight = Atom, EdgeWeight = Bond>
             + misc::DataValueMap
@@ -511,26 +542,26 @@ impl<Ix: IndexType> Arena<Ix> {
             + IntoNodeReferences,
         G::NodeId: Hash + Eq,
     {
-        self.insert_mol_impl(mol, 0, None, 0).0
+        self.insert_mol_impl(mol, 0, None, 0).0.into()
     }
 
     /// Optimize the layout, ensuring that all elements are inserted optimally.
     /// A permutation can be output through a mutable reference.
     #[instrument(skip_all, fields(perm = perm.is_some()))]
-    pub fn optimize_layout(&mut self, mut perm: Option<&mut Vec<Ix>>) {
+    pub fn optimize_layout(&mut self, mut perm: Option<&mut Vec<MolIndex<Ix>>>) {
         if self.parts.is_empty() {
             return;
         }
         if let Some(perm) = &mut perm {
             perm.clear();
-            perm.resize(self.parts.len(), IndexType::max());
+            perm.resize(self.parts.len(), <Ix as IndexType>::max().into());
         }
         let mut graph = UnGraph::with_capacity(self.parts.iter().map(|i| i.1.index()).sum(), 0);
         let mut graph_indices = Vec::with_capacity(self.parts.len());
         let mut base = 0;
         for i in 0..self.parts.len() {
             trace!(i, "adding fragment to graph");
-            let mol = self.molecule(Ix::new(i));
+            let mol = self.molecule(Ix::new(i).into());
             mol.node_references().for_each(|n| {
                 graph.add_node(n.atom);
             });
