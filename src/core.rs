@@ -132,17 +132,17 @@ impl AtomData {
         let Some(o) = other.single().checked_sub(self.single()) else {
             return false;
         };
-        if h >= u {
+        if u >= h {
             u -= h;
         } else {
             return false;
         }
-        if o >= u {
+        if u >= o {
             u -= o;
         } else {
             return false;
         }
-        u == other.unknown()
+        u == 0
     }
 }
 impl PartialEq for AtomData {
@@ -295,7 +295,6 @@ impl Atom {
 
     /// The first atom, used in a pattern, could refer to the second.
     /// If the first atom has no isotope or chirality and the second does, this can still return true.
-    /// Otherwise, acts the same as `eq_or_r`
     pub fn matches(&self, other: &Self) -> bool {
         if self.data.chirality() != Chirality::None
             && self.data.chirality() != other.data.chirality()
