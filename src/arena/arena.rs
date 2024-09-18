@@ -123,9 +123,9 @@ impl<Ix: IndexType> Arena<Ix> {
     ) -> bool {
         stack.clear();
         seen.clear();
-        // if mol.index() < group.index() {
-        //     return false; // quirk of insertion order
-        // }
+        if mol.index() < group.index() {
+            return false; // quirk of insertion order
+        }
         if mol.index() >= self.parts.len() || group.index() >= self.parts.len() {
             return false;
         }
@@ -269,12 +269,13 @@ impl<Ix: IndexType> Arena<Ix> {
                 // SAFETY: the UnsafeCells' data doesn't escape the call
                 unsafe {
                     v.0 == IndexType::max()
-                        || self.contains_group_impl(
-                            i,
-                            v.0,
-                            &mut *pred_buf.get(),
-                            &mut *seen_buf.get(),
-                        )
+                        || (i != v.0
+                            && self.contains_group_impl(
+                                i,
+                                v.0,
+                                &mut *pred_buf.get(),
+                                &mut *seen_buf.get(),
+                            ))
                 }
             });
             let compacted = GraphCompactor::<NodeFilter<G, _>>::new(filtered);
@@ -511,5 +512,136 @@ impl<Ix: IndexType> Arena<Ix> {
         G::NodeId: Hash + Eq,
     {
         self.insert_mol_impl(mol, 0, None, 0).0
+    }
+
+    /// Optimize the layout, ensuring that all elements are inserted optimally.
+    /// A permutation can be output through a mutable reference.
+    #[instrument(skip_all, fields(perm = perm.is_some()))]
+    pub fn optimize_layout(&mut self, mut perm: Option<&mut Vec<Ix>>) {
+        if self.parts.is_empty() {
+            return;
+        }
+        if let Some(perm) = &mut perm {
+            perm.clear();
+            perm.resize(self.parts.len(), IndexType::max());
+        }
+        let mut graph = UnGraph::with_capacity(self.parts.iter().map(|i| i.1.index()).sum(), 0);
+        let mut graph_indices = Vec::with_capacity(self.parts.len());
+        let mut base = 0;
+        for i in 0..self.parts.len() {
+            trace!(i, "adding fragment to graph");
+            let mol = self.molecule(Ix::new(i));
+            mol.node_references().for_each(|n| {
+                graph.add_node(n.atom);
+            });
+            mol.edge_references().for_each(|e| {
+                graph.add_edge(
+                    Ix::new(e.source().0.index() + base).into(),
+                    Ix::new(e.target().0.index() + base).into(),
+                    *e.weight(),
+                );
+            });
+            base += mol.node_count();
+            graph_indices.push(base);
+        }
+        debug!(
+            nodes = graph.node_count(),
+            edges = graph.edge_count(),
+            frags = self.parts.len(),
+            "built graph"
+        );
+        let mut frags = self
+            .parts
+            .iter()
+            .enumerate()
+            .map(|(n, s)| (Ix::new(n), s.1.index()))
+            .collect::<Vec<_>>();
+        frags.sort_by_key(|x| x.1);
+        let mut start_ = Some(0);
+        let mut scratch = Vec::new();
+        let mut prune_buf = Vec::new();
+        while let Some(start) = start_ {
+            let base = frags[start].1;
+            let len = frags[start..].iter().position(|x| x.1 > base);
+            trace!(size = base, len, "arranging fragments with same size");
+            let slice = if let Some(len) = len {
+                &mut frags[start..(start + len)]
+            } else {
+                &mut frags[start..]
+            };
+            start_ = len.map(|l| start + l);
+            scratch.clear();
+            scratch.extend(slice.iter().map(|s| (s.0, Vec::new())));
+            for i in 0..scratch.len() {
+                for j in 0..scratch.len() {
+                    if i == j {
+                        continue;
+                    }
+                    let frag_0 = slice[i].0.index();
+                    let frag_1 = slice[j].0.index();
+                    if i > j && scratch[i].1.contains(&Ix::new(frag_1)) {
+                        continue;
+                    }
+                    let range_0 = RangeFiltered::new(
+                        &graph,
+                        if frag_0 == 0 {
+                            0
+                        } else {
+                            graph_indices[frag_0 - 1]
+                        },
+                        graph_indices[frag_0],
+                    );
+                    let range_1 = RangeFiltered::new(
+                        &graph,
+                        if frag_1 == 0 {
+                            0
+                        } else {
+                            graph_indices[frag_1 - 1]
+                        },
+                        graph_indices[frag_1],
+                    );
+                    let res =
+                        is_isomorphic_matching(&range_0, &range_1, Atom::matches, PartialEq::eq);
+                    if res {
+                        scratch[j].1.push(Ix::new(frag_0));
+                    }
+                }
+            }
+            let mut i = 0;
+            while !scratch.is_empty() {
+                prune_buf.clear();
+                scratch.retain(|(n, c)| {
+                    !c.is_empty() || {
+                        slice[i] = (*n, 0);
+                        i += 1;
+                        prune_buf.push(*n);
+                        false
+                    }
+                });
+                for (_, c) in &mut scratch {
+                    c.retain(|n| !prune_buf.contains(n));
+                }
+            }
+        }
+        self.graph.clear();
+        self.parts.clear();
+        for &(n, _) in &frags {
+            let frag = n.index();
+            trace!(frag, "re-inserting fragment");
+            let range = RangeFiltered::new(
+                &graph,
+                if frag == 0 {
+                    0
+                } else {
+                    graph_indices[frag - 1]
+                },
+                graph_indices[frag],
+            );
+            let idx = self.insert_mol(&range);
+            debug!(old = frag, new = idx.index(), "re-inserting fragment");
+            if let Some(perm) = &mut perm {
+                perm[frag] = idx;
+            }
+        }
     }
 }

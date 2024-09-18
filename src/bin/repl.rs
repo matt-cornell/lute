@@ -694,6 +694,16 @@ fn main() {
             load_smiles,
         )
         .with_command(
+            Command::new("optimize").about("Optimize arena layout"),
+            |_, ctx| {
+                catch_panics(|| {
+                    let mut out = Vec::new();
+                    ctx.arena.optimize_layout(Some(&mut out));
+                    Ok(Some(format!("{out:?}")))
+                })
+            },
+        )
+        .with_command(
             Command::new("dump")
                 .about("Show the output of inputs, or the whole graph if no ids are given")
                 .arg(
