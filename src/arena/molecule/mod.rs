@@ -58,6 +58,20 @@ impl<Ix, R> Molecule<Ix, R> {
 }
 
 impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
+    pub fn data(&self) -> R::MappedRef<'_, R::Data> {
+        R::map_ref(self.arena(), |a| &a.frags[self.index.index()].custom)
+    }
+    pub fn data_mut(&self) -> R::MappedRefMut<'_, R::Data>
+    where
+        R: ArenaAccessorMut,
+    {
+        R::map_ref_mut(self.arena_mut(), |a| {
+            &mut a.frags[self.index.index()].custom
+        })
+    }
+}
+
+impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
     /// Check if this molecule contains the underlying group.
     pub fn contains(&self, group: MolIndex<Ix>) -> bool {
         self.arena.get_arena().contains_group(self.index, group)
