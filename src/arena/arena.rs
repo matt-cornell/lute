@@ -514,7 +514,8 @@ impl<Ix: IndexType> Arena<Ix> {
             return;
         }
         if let Some(perm) = &mut perm {
-            perm.reserve(self.parts.len());
+            perm.clear();
+            perm.resize(self.parts.len(), IndexType::max());
         }
         let mut graph = UnGraph::with_capacity(self.parts.iter().map(|i| i.1.index()).sum(), 0);
         let mut graph_indices = Vec::with_capacity(self.parts.len());
@@ -544,10 +545,9 @@ impl<Ix: IndexType> Arena<Ix> {
         let mut start_ = Some(0);
         let mut scratch = Vec::new();
         let mut prune_buf = Vec::new();
-        println!("{frags:?}");
         while let Some(start) = start_ {
             println!("start: {start}");
-            let base = frags[0].1;
+            let base = frags[start].1;
             let len = frags[start..].iter().position(|x| x.1 > base);
             let slice = if let Some(len) = len {
                 &mut frags[start..(start + len)]
@@ -564,7 +564,7 @@ impl<Ix: IndexType> Arena<Ix> {
                     }
                     let frag_0 = slice[i].0.index();
                     let frag_1 = slice[j].0.index();
-                    if i > j && scratch[j].1.contains(&Ix::new(frag_0)) {
+                    if i > j && dbg!(&scratch[i].1).contains(&Ix::new(frag_1)) {
                         continue;
                     }
                     let range_0 = RangeFiltered::new(
@@ -585,21 +585,26 @@ impl<Ix: IndexType> Arena<Ix> {
                         },
                         graph_indices[frag_1],
                     );
-                    if is_isomorphic_matching(&range_0, &range_1, Atom::matches, PartialEq::eq) {
+                    print!("comparing {i} and {j}... ");
+                    let res =
+                        is_isomorphic_matching(&range_0, &range_1, Atom::matches, PartialEq::eq);
+                    println!("{res}");
+                    if res {
                         scratch[j].1.push(Ix::new(frag_0));
                     }
                 }
             }
             let mut i = 0;
             while !scratch.is_empty() {
+                // println!("scratch: {scratch:?}");
                 prune_buf.clear();
                 scratch.retain(|(n, c)| {
-                    c.is_empty() && {
+                    !c.is_empty() || {
                         println!("{slice:?}[{i}]");
                         slice[i] = (*n, 0);
                         i += 1;
                         prune_buf.push(*n);
-                        true
+                        false
                     }
                 });
                 for (_, c) in &mut scratch {
@@ -607,9 +612,9 @@ impl<Ix: IndexType> Arena<Ix> {
                 }
             }
         }
+        self.graph.clear();
+        self.parts.clear();
         for &(n, _) in &frags {
-            self.graph.clear();
-            self.parts.clear();
             let frag = n.index();
             let range = RangeFiltered::new(
                 &graph,
@@ -622,7 +627,7 @@ impl<Ix: IndexType> Arena<Ix> {
             );
             let idx = self.insert_mol(&range);
             if let Some(perm) = &mut perm {
-                perm.push(idx);
+                perm[frag] = idx;
             }
         }
     }

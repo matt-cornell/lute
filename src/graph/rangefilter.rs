@@ -62,10 +62,10 @@ impl<G: DataValueMap + NodeIndexable> DataValueMap for RangeFiltered<G> {
 
 impl<G: NodeIndexable> NodeIndexable for RangeFiltered<G> {
     fn from_index(&self, i: usize) -> Self::NodeId {
-        self.graph.from_index(i.saturating_sub(self.start))
+        self.graph.from_index(i + self.start)
     }
     fn to_index(&self, a: Self::NodeId) -> usize {
-        self.graph.to_index(a) + self.start
+        self.graph.to_index(a) - self.start
     }
     fn node_bound(&self) -> usize {
         self.end - self.start
