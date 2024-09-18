@@ -600,7 +600,6 @@ impl<Ix: IndexType> Arena<Ix> {
                 prune_buf.clear();
                 scratch.retain(|(n, c)| {
                     !c.is_empty() || {
-                        println!("{slice:?}[{i}]");
                         slice[i] = (*n, 0);
                         i += 1;
                         prune_buf.push(*n);

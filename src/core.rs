@@ -121,6 +121,29 @@ impl AtomData {
         debug_assert_eq!(u1, u2, "u1 == u2 should hold because their sums are equal!");
         true
     }
+
+    pub fn compatible_one_way(self, other: Self) -> bool {
+        let Some(mut u) = self.unknown().checked_sub(other.unknown()) else {
+            return false;
+        };
+        let Some(h) = other.hydrogen().checked_sub(self.hydrogen()) else {
+            return false;
+        };
+        let Some(o) = other.single().checked_sub(self.single()) else {
+            return false;
+        };
+        if h >= u {
+            u -= h;
+        } else {
+            return false;
+        }
+        if o >= u {
+            u -= o;
+        } else {
+            return false;
+        }
+        u == other.unknown()
+    }
 }
 impl PartialEq for AtomData {
     fn eq(&self, other: &Self) -> bool {
@@ -274,7 +297,12 @@ impl Atom {
     /// If the first atom has no isotope or chirality and the second does, this can still return true.
     /// Otherwise, acts the same as `eq_or_r`
     pub fn matches(&self, other: &Self) -> bool {
-        if !self.data.is_compatible(other.data) {
+        if self.data.chirality() != Chirality::None
+            && self.data.chirality() != other.data.chirality()
+        {
+            return false;
+        }
+        if !self.data.compatible_one_way(other.data) {
             return false;
         }
         if self.protons == 0 {
