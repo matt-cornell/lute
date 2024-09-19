@@ -4,6 +4,7 @@
 
 use super::*;
 use crate::graph::*;
+use misc::DataValueMap;
 use petgraph::graph::DefaultIx;
 use petgraph::prelude::*;
 use petgraph::visit::*;
@@ -161,6 +162,7 @@ impl InvariantState {
         matches!(self, Self::AllFragments | Self::AllOrdered)
     }
     /// Check whether this set satisfies the other set
+    #[allow(clippy::match_like_matches_macro)]
     pub const fn satisfies(&self, other: Self) -> bool {
         match (self, other) {
             (Self::AllOrdered, _) => true,
@@ -168,6 +170,35 @@ impl InvariantState {
             (Self::OrderedFragments, Self::OrderedFragments) => true,
             (_, Self::CoreInvariants) => true,
             _ => false,
+        }
+    }
+}
+
+struct AMatch<'a, Ix: IndexType, D> {
+    frags: &'a [Fragment<Ix, D>],
+    matched: &'a [Cell<(Ix, usize, bool, u8)>],
+    i: Ix,
+}
+impl<G0, G1: GraphBase, Ix: IndexType, D> NodeMatcher<G0, &GraphCompactor<G1>> for AMatch<'_, Ix, D>
+where
+    G0: DataValueMap<NodeWeight = Atom>,
+    G1: NodeIndexable,
+    GraphCompactor<G1>: DataValueMap<NodeId = G1::NodeId, NodeWeight = Atom>,
+{
+    fn enabled() -> bool {
+        true
+    }
+    fn eq(&mut self, g0: &G0, g1: &&GraphCompactor<G1>, n0: G0::NodeId, n1: G1::NodeId) -> bool {
+        let l = g0.node_weight(n0).unwrap();
+        let mut r = g1.node_weight(n1).unwrap();
+        let mat = self.matched[g1.graph.to_index(n1)].get();
+        r.single_to_unknown(mat.3)
+            .expect("Too many unknown groups would exist on this atom!");
+        if self.frags[self.i.index()].tracked() {
+            l.matches(&r)
+        } else {
+            trace!(rs = mat.3, "check failed");
+            l == r
         }
     }
 }
@@ -475,7 +506,7 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
                         MolRepr::Broken(b) => &b.frags,
                         MolRepr::Modify(m) => std::slice::from_ref(&m.base),
                     };
-                    (frag.size() < node_count || (frag.size() == node_count && frag.tracked()))
+                    (frag.size() == node_count || (frag.size() < node_count && frag.tracked()))
                         .then_some((n + isms_from, children))
                 })
                 .partition::<Vec<_>, _>(|v| v.1.is_empty());
@@ -554,10 +585,10 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
             });
             let compacted = GraphCompactor::<NodeFilter<G, _>>::new(filtered);
             let frag = self.molecule(i.into());
-            let mut amatch = if self.frags[i.index()].tracked() {
-                Atom::matches
-            } else {
-                PartialEq::eq
+            let mut amatch = AMatch {
+                frags: &self.frags,
+                matched,
+                i,
             };
             let mut bmatch = PartialEq::eq;
             let mut found_any = false;

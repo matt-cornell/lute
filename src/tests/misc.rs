@@ -1,3 +1,5 @@
+//! Unit tests to affirm my sanity
+
 use crate::core::Atom;
 
 #[test]
@@ -23,4 +25,13 @@ fn atom_check() {
     assert!(atom2.matches(&atom1));
     assert!(atom2.matches(&atom3));
     assert!(atom4.matches(&atom2));
+}
+
+/// I promise I'm not insane
+#[test]
+fn atom_eq_check() {
+    let mut atom = Atom::new(6);
+    atom.add_hydrogens(3).unwrap();
+    atom.add_rs(1).unwrap();
+    assert_eq!(atom, atom);
 }
