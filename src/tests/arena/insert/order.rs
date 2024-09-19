@@ -12,6 +12,7 @@ fn small_large() {
 
 #[test]
 fn large_small() {
+    trace_capture!();
     let mut arena = Arena::<u8>::new();
     let dimethyl_ether = arena.insert_mol(&smiles!("COC"));
     let ether = arena.insert_mol(&smiles!("O&&"));

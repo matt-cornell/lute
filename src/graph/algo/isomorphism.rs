@@ -737,6 +737,7 @@ pub fn is_isomorphic_matching<G0, G1, NM, EM>(
     g1: G1,
     mut node_match: NM,
     mut edge_match: EM,
+    subgraph: bool
 ) -> bool
 where
     G0: NodeCompactIndexable
@@ -759,7 +760,7 @@ where
     }
 
     let mut st = (Vf2State::new(&g0), Vf2State::new(&g1));
-    self::matching::try_match(&mut st, &mut node_match, &mut edge_match, false).unwrap_or(false)
+    self::matching::try_match(&mut st, &mut node_match, &mut edge_match, subgraph).unwrap_or(false)
 }
 
 pub fn find_isomorphism_matching<G0, G1, NM, EM>(
