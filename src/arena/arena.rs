@@ -188,6 +188,7 @@ impl<Ix: IndexType, D> Arena<Ix, D> {
         &self.graph
     }
 
+    /// Get the current invariants that this arena is holding
     pub fn current_invariant(&self) -> InvariantState {
         match self.invariants.load(Ordering::Relaxed) {
             0 => InvariantState::CoreInvariants,
@@ -232,6 +233,7 @@ impl<Ix: IndexType, D> Arena<Ix, D> {
         }
     }
 
+    /// Check if `mol` contains `group`
     #[instrument(level = "trace", skip(self))]
     pub fn contains_group(&self, mol: MolIndex<Ix>, group: MolIndex<Ix>) -> bool {
         let mut stack = SmallVec::<_, 3>::new();
@@ -239,7 +241,6 @@ impl<Ix: IndexType, D> Arena<Ix, D> {
         self.contains_group_impl(mol.0, group.0, &mut stack, &mut seen)
     }
 
-    /// Check if `mol` contains `group`
     fn contains_group_impl(
         &self,
         mol: Ix,
@@ -308,13 +309,12 @@ impl<Ix: IndexType, D> Arena<Ix, D> {
     }
 }
 impl<Ix: IndexType, D: Default> Arena<Ix, D> {
+    /// Update the set of invariants that we want to hold
     pub fn request_invariant(&mut self, state: InvariantState) {
-        let inv = self.invariants.get_mut();
-        if *inv >= state as _ {
-            *inv = state as _;
-        } else {
+        if *self.invariants.get_mut() < state as _ {
             self.optimize_layout(None);
         }
+        *self.invariants.get_mut() = state as _;
     }
     /// Insert a molecule into the arena, deduplicating common parts.
     fn insert_mol_impl<G>(
