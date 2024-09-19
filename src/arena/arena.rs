@@ -57,12 +57,12 @@ pub(crate) struct ModdedMol<Ix> {
     pub patch: SmallVec<(Ix, Atom), 4>,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum MolRepr<Ix: IndexType> {
     Atomic(BSType),
     Broken(BrokenMol<Ix>),
     Modify(ModdedMol<Ix>),
+    Empty,
 }
 
 /// Wrapper around the index of a molecule
@@ -145,6 +145,22 @@ impl<Ix: IndexType, D> Arena<Ix, D> {
         self.frags.push(frag);
         Ix::new(idx)
     }
+    fn push_or_set_frag(&mut self, frag: Fragment<Ix, D>, to: Option<Ix>) -> Ix {
+        if let Some(idx) = to {
+            #[cfg(debug_assertions)]
+            {
+                let old = std::mem::replace(&mut self.frags[idx.index()], frag);
+                debug_assert_eq!(old.repr, MolRepr::Empty);
+            }
+            #[cfg(not(debug_assertions))]
+            {
+                self.frags[idx.index()] = frag;
+            }
+            idx
+        } else {
+            self.push_frag(frag)
+        }
+    }
 
     #[instrument(level = "trace", skip(self))]
     pub fn contains_group(&self, mol: MolIndex<Ix>, group: MolIndex<Ix>) -> bool {
@@ -183,7 +199,7 @@ impl<Ix: IndexType, D> Arena<Ix, D> {
                 None => warn!(idx, "OOB node found when checking for membership"),
                 Some(MolRepr::Modify(ModdedMol { base: i, .. })) => stack.push(*i),
                 Some(MolRepr::Broken(BrokenMol { frags, .. })) => stack.extend_from_slice(frags),
-                Some(MolRepr::Atomic(_)) => {}
+                Some(MolRepr::Atomic(_) | MolRepr::Empty) => {}
             }
         }
         false
@@ -202,6 +218,7 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
         mol: G,
         isms_from: usize,
         bits: Option<(&mut BSType, usize)>,
+        to: Option<Ix>,
         depth: usize,
     ) -> (Ix, Vec<usize>)
     where
@@ -239,7 +256,7 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
                 .enumerate()
                 .filter_map(|(n, frag)| {
                     let children = match &frag.repr {
-                        MolRepr::Atomic(_) => &[] as &[_],
+                        MolRepr::Atomic(_) | MolRepr::Empty => &[] as &[_],
                         MolRepr::Broken(b) => &b.frags,
                         MolRepr::Modify(m) => std::slice::from_ref(&m.base),
                     };
@@ -458,11 +475,14 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
                 .into_iter()
                 .filter_map(|x| (x.0 != IndexType::max()).then_some((x.0.index(), x.1)))
                 .unzip();
-            let idx = self.push_frag(Fragment {
-                custom: D::default(),
-                repr: MolRepr::Atomic(new_bits),
-                size: Ix::new(count),
-            });
+            let idx = self.push_or_set_frag(
+                Fragment {
+                    custom: D::default(),
+                    repr: MolRepr::Atomic(new_bits),
+                    size: Ix::new(count),
+                },
+                to,
+            );
             return (idx, new_map);
         } else if found.len() == 1 {
             let (n, (_, ism)) = found.iter().next().unwrap();
@@ -483,8 +503,13 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
             let mut ism_buf = Vec::new();
             while let Some(count) = cgi.step(&filtered, &mut bits) {
                 trace!(size = count.get(), "inserting fragment");
-                let (i, ism) =
-                    self.insert_mol_impl(mol, old_start, Some((&mut bits, count.get())), depth + 1);
+                let (i, ism) = self.insert_mol_impl(
+                    mol,
+                    old_start,
+                    Some((&mut bits, count.get())),
+                    None,
+                    depth + 1,
+                );
                 ism_buf.clone_from(&ism);
                 let idx = found.insert((i, ism));
                 for ni in ism_buf.drain(..) {
@@ -538,11 +563,12 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
             Vec::new()
         };
         let frags = found.into_iter().map(|f| f.1 .0).collect();
-        let idx = self.push_frag(Fragment {
+        let frag = Fragment {
             custom: D::default(),
             repr: MolRepr::Broken(BrokenMol { frags, bonds }),
             size: Ix::new(node_count),
-        });
+        };
+        let idx = self.push_or_set_frag(frag, to);
         (idx, out_map)
     }
     #[inline(always)]
@@ -558,7 +584,7 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
             + IntoNodeReferences,
         G::NodeId: Hash + Eq,
     {
-        self.insert_mol_impl(mol, 0, None, 0).0.into()
+        self.insert_mol_impl(mol, 0, None, None, 0).0.into()
     }
 
     /// Optimize the layout, ensuring that all elements are inserted optimally.
