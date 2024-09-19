@@ -301,7 +301,21 @@ impl<Ix: IndexType, D> Arena<Ix, D> {
             let idx = MolIndex(Ix::new(i));
             is_isomorphic_matching(self.molecule(idx), mol, PartialEq::eq, PartialEq::eq).then(
                 || {
-                    self.frags[i].seen.store(true, Ordering::Relaxed);
+                    let new_seen = !self.frags[i].seen.swap(true, Ordering::Relaxed);
+                    if new_seen {
+                        let _ = self.invariants.compare_exchange(
+                            InvariantState::AllOrdered as _,
+                            InvariantState::OrderedFragments as _,
+                            Ordering::Relaxed,
+                            Ordering::Relaxed,
+                        );
+                        let _ = self.invariants.compare_exchange(
+                            InvariantState::AllFragments as _,
+                            InvariantState::CoreInvariants as _,
+                            Ordering::Relaxed,
+                            Ordering::Relaxed,
+                        );
+                    }
                     idx
                 },
             )
