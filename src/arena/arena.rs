@@ -140,7 +140,7 @@ pub enum InvariantState {
     /// let ix1 = arena.insert_mol(mol);
     /// assert!(is_isomoprhic_matching(ix1.in_arena(arena), &mol, PartialEq::eq, PartialEq::eq, false)); // isomorphism
     /// let ix2 = arena.insert_mol(mol);
-    /// assert_eq!(ix1, ix2); // inempotency
+    /// assert_eq!(ix1, ix2); // idempotency
     /// ```
     CoreInvariants,
     /// Core invariants, plus:
