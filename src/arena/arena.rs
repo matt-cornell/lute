@@ -255,6 +255,7 @@ impl<Ix: IndexType, D> Arena<Ix, D> {
         if let Some(idx) = to {
             let old = &mut self.frags[idx.index()];
             std::mem::swap(&mut old.custom, &mut frag.custom);
+            std::mem::swap(&mut old.seen, &mut frag.seen);
             #[cfg(debug_assertions)]
             {
                 let old = std::mem::replace(old, frag);
@@ -411,13 +412,8 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
                 let mol = self.molecule(idx.into());
                 let m2 = self.molecule(frag.into());
                 if !(queue.iter().rev().any(|(q, _)| children.contains(q))
-                    || (dbg!(is_isomorphic_matching(
-                        mol,
-                        m2,
-                        Atom::matches,
-                        PartialEq::eq,
-                        true
-                    )) && !self.contains_group(frag.into(), idx.into())))
+                    || (is_isomorphic_matching(mol, m2, Atom::matches, PartialEq::eq, true)
+                        && !self.contains_group(frag.into(), idx.into())))
                 {
                     trace!(frag = frag.index(), "pruning fragment");
                     continue;
@@ -437,12 +433,23 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
                 queue.push((frag, base));
             }
         }
+        for frag in &queue {
+            self.frags[frag.0.index()].repr = MolRepr::Empty;
+        }
         base = 0;
         for (f, end) in queue {
             span.in_scope(|| debug!(frag = f.index(), "re-inserting fragment"));
             let new_mol = RangeFiltered::new(&graph, base, end);
             self.insert_mol_impl(&new_mol, 0, None, Some(f), 0);
         }
+        self.invariants = match self.invariants {
+            InvariantState::AllFragments | InvariantState::AllOrdered => {
+                InvariantState::AllFragments
+            }
+            InvariantState::OrderedFragments | InvariantState::CoreInvariants => {
+                InvariantState::CoreInvariants
+            }
+        };
     }
 
     /// Insert a molecule into the arena, deduplicating common parts.
@@ -785,7 +792,25 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
             true
         });
         if found.len() == 1 {
-            return found.into_iter().next().unwrap().1;
+            let frag = found.into_iter().next().unwrap().1;
+            if let Some(idx) = to {
+                if idx == frag.0 {
+                    return frag;
+                }
+                let [old, new] = self
+                    .frags
+                    .get_many_mut([frag.0.index(), idx.index()])
+                    .unwrap();
+                std::mem::swap(&mut old.custom, &mut new.custom);
+                std::mem::swap(&mut old.seen, &mut new.seen);
+                std::mem::swap(old, new);
+                if frag.0.index() + 1 == self.frags.len() {
+                    self.frags.pop();
+                }
+                return (idx, frag.1);
+            } else {
+                return frag;
+            }
         }
         let mut bonds = SmallVec::with_capacity(found.len().saturating_sub(1));
         for e in mol.edge_references() {
@@ -844,7 +869,9 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
     {
         let res = self.insert_mol_impl(mol, 0, None, None, 0).0;
         self.frags[res.index()].seen = true;
-        self.fix_frags_containing(res);
+        if self.invariants.contained() {
+            self.fix_frags_containing(res);
+        }
         res.into()
     }
 

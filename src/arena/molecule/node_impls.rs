@@ -87,6 +87,11 @@ impl<Ix> NodeReference<Ix> {
     where
         Ix: IndexType,
     {
+        trace!(
+            mi = mol_idx.index(),
+            ni = node_idx.0.index(),
+            "creating node reference"
+        );
         Self {
             node_idx,
             atom: arena

@@ -755,7 +755,7 @@ where
     NM: NodeMatcher<G0, G1>,
     EM: EdgeMatcher<G0, G1>,
 {
-    if g0.node_count() != g1.node_count() {
+    if g0.node_count() != g1.node_count() && (!subgraph || g0.node_count() > g1.node_count()) {
         return false;
     }
 

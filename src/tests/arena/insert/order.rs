@@ -16,6 +16,7 @@ fn large_small() {
     let mut arena = Arena::<u8>::new();
     let dimethyl_ether = arena.insert_mol(&smiles!("COC"));
     let ether = arena.insert_mol(&smiles!("O&&"));
+    println!("{:#?}", arena.expose_frags());
     assert!(arena.contains_group(dimethyl_ether, ether));
 }
 
