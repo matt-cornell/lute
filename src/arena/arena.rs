@@ -189,8 +189,12 @@ where
         true
     }
     fn eq(&mut self, g0: &G0, g1: &&GraphCompactor<G1>, n0: G0::NodeId, n1: G1::NodeId) -> bool {
-        let l = g0.node_weight(n0).unwrap();
-        let mut r = g1.node_weight(n1).unwrap();
+        let Some(l) = g0.node_weight(n0) else {
+            return false;
+        };
+        let Some(mut r) = g1.node_weight(n1) else {
+            return false;
+        };
         let mat = self.matched[g1.graph.to_index(n1)].get();
         r.single_to_unknown(mat.3)
             .expect("Too many unknown groups would exist on this atom!");
