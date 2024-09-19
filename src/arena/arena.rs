@@ -13,7 +13,6 @@ use std::cell::{Cell, UnsafeCell};
 use std::collections::VecDeque;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::hash::Hash;
-use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
 #[macro_export]
 macro_rules! arena {
@@ -97,32 +96,19 @@ impl<Ix: Display> Display for MolIndex<Ix> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Fragment<Ix: IndexType, D> {
     pub custom: D,
+    pub seen: bool,
     pub(crate) repr: MolRepr<Ix>,
     pub(crate) size: Ix,
-    pub(crate) seen: AtomicBool,
 }
 impl<Ix: IndexType, D> Fragment<Ix, D> {
     pub fn size(&self) -> usize {
         self.size.index()
     }
-    pub fn seen(&self) -> bool {
-        self.seen.load(Ordering::Relaxed)
-    }
-    pub fn set_seen(&self, seen: bool) -> bool {
-        self.seen.swap(seen, Ordering::Relaxed)
-    }
-}
-impl<Ix: IndexType, D: Clone> Clone for Fragment<Ix, D> {
-    fn clone(&self) -> Self {
-        Self {
-            custom: self.custom.clone(),
-            repr: self.repr.clone(),
-            size: self.size,
-            seen: AtomicBool::new(false),
-        }
+    pub fn tracked(&self) -> bool {
+        self.seen || self.size() >= 3
     }
 }
 impl<Ix: IndexType, D: PartialEq> PartialEq for Fragment<Ix, D> {
@@ -165,21 +151,41 @@ pub enum InvariantState {
     /// `AllFragments` + `OrderedFragments`
     AllOrdered,
 }
+impl InvariantState {
+    /// `OrderedFragments | AllOrdered` 
+    pub const fn ordered(&self) -> bool {
+        matches!(self, Self::OrderedFragments | Self::AllOrdered)
+    }
+    /// `AllFragments | AllOrdered`
+    pub const fn contained(&self) -> bool {
+        matches!(self, Self::AllFragments | Self::AllOrdered)
+    }
+    /// Check whether this set satisfies the other set
+    pub const fn satisfies(&self, other: Self) -> bool {
+        match (self, other) {
+            (Self::AllOrdered, _) => true,
+            (Self::AllFragments, Self::AllFragments) => true,
+            (Self::OrderedFragments, Self::OrderedFragments) => true,
+            (_, Self::CoreInvariants) => true,
+            _ => false
+        }
+    }
+}
 
 /// The `Arena` is the backing storage for everything. It tracks all molecules and handles
 /// deduplication.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Arena<Ix: IndexType = DefaultIx, D = ()> {
     graph: Graph<Ix>,
     pub(crate) frags: SmallVec<Fragment<Ix, D>, 16>,
-    invariants: AtomicU8,
+    invariants: InvariantState,
 }
 impl<Ix: IndexType, D> Arena<Ix, D> {
     pub fn new() -> Self {
         Self {
             graph: Graph::default(),
             frags: SmallVec::new(),
-            invariants: AtomicU8::new(InvariantState::AllOrdered as _),
+            invariants: InvariantState::AllOrdered,
         }
     }
 
@@ -189,14 +195,8 @@ impl<Ix: IndexType, D> Arena<Ix, D> {
     }
 
     /// Get the current invariants that this arena is holding
-    pub fn current_invariant(&self) -> InvariantState {
-        match self.invariants.load(Ordering::Relaxed) {
-            0 => InvariantState::CoreInvariants,
-            1 => InvariantState::AllFragments,
-            2 => InvariantState::OrderedFragments,
-            3 => InvariantState::AllOrdered,
-            _ => unreachable!(),
-        }
+    pub fn invariant(&self) -> InvariantState {
+        self.invariants
     }
 
     /// Get a reference to the fragments. For debugging purposes only.
@@ -251,7 +251,7 @@ impl<Ix: IndexType, D> Arena<Ix, D> {
         stack.clear();
         seen.clear();
         if mol.index() < group.index()
-            && self.invariants.load(Ordering::Relaxed) >= InvariantState::AllOrdered as _
+            && self.invariants.ordered()
         {
             return false; // quirk of insertion order
         }
@@ -297,38 +297,20 @@ impl<Ix: IndexType, D> Arena<Ix, D> {
             + IntoNodeReferences,
     {
         (0..self.frags.len()).find_map(|i| {
-            (self.frags[i].size() == mol.node_count()).then_some(())?;
+            let frag = &self.frags[i];
+            (frag.seen && frag.size() == mol.node_count()).then_some(())?;
             let idx = MolIndex(Ix::new(i));
-            is_isomorphic_matching(self.molecule(idx), mol, PartialEq::eq, PartialEq::eq).then(
-                || {
-                    let new_seen = !self.frags[i].seen.swap(true, Ordering::Relaxed);
-                    if new_seen {
-                        let _ = self.invariants.compare_exchange(
-                            InvariantState::AllOrdered as _,
-                            InvariantState::OrderedFragments as _,
-                            Ordering::Relaxed,
-                            Ordering::Relaxed,
-                        );
-                        let _ = self.invariants.compare_exchange(
-                            InvariantState::AllFragments as _,
-                            InvariantState::CoreInvariants as _,
-                            Ordering::Relaxed,
-                            Ordering::Relaxed,
-                        );
-                    }
-                    idx
-                },
-            )
+            is_isomorphic_matching(self.molecule(idx), mol, PartialEq::eq, PartialEq::eq).then_some(idx)
         })
     }
 }
 impl<Ix: IndexType, D: Default> Arena<Ix, D> {
     /// Update the set of invariants that we want to hold
     pub fn request_invariant(&mut self, state: InvariantState) {
-        if *self.invariants.get_mut() < state as _ {
+        if self.invariants.satisfies(state) {
             self.optimize_layout(None);
         }
-        *self.invariants.get_mut() = state as _;
+        self.invariants = state;
     }
     /// Insert a molecule into the arena, deduplicating common parts.
     fn insert_mol_impl<G>(
@@ -364,7 +346,7 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
                         custom: D::default(),
                         repr: MolRepr::Empty,
                         size: Ix::new(0),
-                        seen: AtomicBool::new(false),
+                        seen: false,
                     },
                     to,
                 );
@@ -395,7 +377,7 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
                         MolRepr::Broken(b) => &b.frags,
                         MolRepr::Modify(m) => std::slice::from_ref(&m.base),
                     };
-                    (frag.size() <= node_count && (frag.size() >= 3 || frag.seen()))
+                    (frag.size() <= node_count && frag.tracked())
                         .then_some((n + isms_from, children))
                 })
                 .partition::<Vec<_>, _>(|v| v.1.is_empty());
@@ -579,7 +561,7 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
                 custom: D::default(),
                 repr: MolRepr::Modify(ModdedMol { base: *i, patch }),
                 size: Ix::new(ism.len()),
-                seen: AtomicBool::new(false),
+                seen: ism.len() >= 3,
             });
         }
         if found.is_empty() {
@@ -617,7 +599,7 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
                     custom: D::default(),
                     repr: MolRepr::Atomic(new_bits),
                     size: Ix::new(count),
-                    seen: AtomicBool::new(false),
+                    seen: count >= 3,
                 },
                 to,
             );
@@ -705,7 +687,7 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
             custom: D::default(),
             repr: MolRepr::Broken(BrokenMol { frags, bonds }),
             size: Ix::new(node_count),
-            seen: AtomicBool::new(false),
+            seen: false,
         };
         let idx = self.push_or_set_frag(frag, to);
         (idx, out_map)
@@ -724,7 +706,7 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
         G::NodeId: Hash + Eq,
     {
         let res = self.insert_mol_impl(mol, 0, None, None, 0).0;
-        self.frags[res.index()].seen.store(true, Ordering::Relaxed);
+        self.frags[res.index()].seen = true;
         res.into()
     }
 
@@ -733,7 +715,7 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
     #[instrument(skip_all, fields(perm = perm.is_some()))]
     pub fn optimize_layout(&mut self, mut perm: Option<&mut Vec<MolIndex<Ix>>>) {
         if self.frags.is_empty() {
-            *self.invariants.get_mut() = InvariantState::AllOrdered as _;
+            self.invariants = InvariantState::AllOrdered;
             return;
         }
         if let Some(perm) = &mut perm {
@@ -744,7 +726,7 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
         let mut graph_indices = Vec::with_capacity(self.frags.len());
         let mut base = 0;
         for i in 0..self.frags.len() {
-            if self.frags[i].seen() {
+            if self.frags[i].tracked() {
                 trace!(i, "adding fragment to graph");
                 let mol = self.molecule(Ix::new(i).into());
                 mol.node_references().for_each(|n| {
@@ -772,7 +754,7 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
             .iter()
             .enumerate()
             .map(|(n, s)| {
-                let seen = s.seen();
+                let seen = s.tracked();
                 (Ix::new(n), if seen { s.size() } else { 0 }, seen)
             })
             .collect::<Vec<_>>();
@@ -869,20 +851,11 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
                 perm[frag] = idx.into();
             }
         }
-        *self.invariants.get_mut() = InvariantState::AllOrdered as _;
+        self.invariants = InvariantState::AllOrdered;
     }
 }
 impl<Ix: IndexType, D> Default for Arena<Ix, D> {
     fn default() -> Self {
         Self::new()
-    }
-}
-impl<Ix: IndexType, D: Clone> Clone for Arena<Ix, D> {
-    fn clone(&self) -> Self {
-        Self {
-            graph: self.graph.clone(),
-            frags: self.frags.clone(),
-            invariants: AtomicU8::new(self.invariants.load(Ordering::Relaxed)),
-        }
     }
 }
