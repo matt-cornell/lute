@@ -1,0 +1,3 @@
+[alias]
+repl = "r -F repl-feats -- -H repl.txt"
+mrepl = "r -F repl-feats --no-default-features -- -H repl.txt"
