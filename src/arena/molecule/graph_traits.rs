@@ -361,9 +361,12 @@ pub mod iter {
                             let mut n = 0;
                             let mut i = self.atom_idx.index();
                             for &f in &b.frags {
+                                trace!(n, i, "frag check");
                                 if let Some(new) = i.checked_sub(arena.frags[f.index()].size()) {
                                     n += 1;
                                     i = new;
+                                } else {
+                                    break;
                                 }
                             }
                             let mut it = b.bonds.iter().filter_map(|ifb| {
@@ -378,6 +381,11 @@ pub mod iter {
                             let ret = it.next();
                             let cont = it.collect::<SmallVec<_, 4>>();
                             if cont.is_empty() {
+                                debug!(
+                                    mol_idx = b.frags[n].index(),
+                                    atom_idx = i,
+                                    "delegating to next fragment"
+                                );
                                 self.mol_idx = b.frags[n];
                                 self.atom_idx = Ix::new(i);
                                 self.offset = Ix::new(offsets[n]);
