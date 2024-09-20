@@ -4,7 +4,7 @@ use lute::prelude::*;
 use petgraph::data::FromElements;
 use petgraph::prelude::*;
 use reedline_repl_rs::{self as rlr, Repl};
-use rlr::clap::{self, Arg, ArgAction, ArgMatches, Command, ValueEnum};
+use rlr::clap::{self, Arg, ArgAction, ArgMatches, Command, Parser, ValueEnum};
 use std::env;
 use std::ffi::OsStr;
 use std::fmt::Write;
@@ -645,7 +645,16 @@ fn adjust_settings(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>
     })
 }
 
+///
+#[derive(Debug, Parser)]
+struct Cli {
+    /// File to load for command history
+    #[arg(short = 'H', long)]
+    history_file: Option<PathBuf>,
+}
+
 fn main() {
+    let cli = Cli::parse();
     let targets = match env::var("LUTE_LOG") {
         Ok(name) => Targets::from_str(&name).unwrap_or_else(|e| {
             eprintln!("Error in LUTE_LOG environment variable: {e}");
@@ -839,6 +848,9 @@ fn main() {
             ),
             adjust_settings,
         );
+    if let Some(path) = cli.history_file {
+        repl = repl.with_history(path, 1000);
+    }
     let res = repl.run();
     if let Err(err) = res {
         eprintln!("{err}");
