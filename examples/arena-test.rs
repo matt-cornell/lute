@@ -19,6 +19,8 @@ struct Cli {
     graph: bool,
     #[arg(short, long)]
     bench: Option<PathBuf>,
+    #[arg(short, long)]
+    rerun: Option<usize>,
     inputs: Vec<String>,
 }
 
@@ -26,16 +28,17 @@ fn main() {
     let cli = Cli::parse();
     let _guard = init_tracing(cli.bench.as_deref());
     let mut arena = Arena::<u16>::new();
-
-    for (n, input) in cli.inputs.iter().enumerate() {
-        let res = SmilesParser::new(&input).parse();
-        tracing::info!("parsed input {n}");
-        match res {
-            Ok(graph) => {
-                arena.insert_mol(&graph);
-                tracing::info!("inserted input {n}");
+    for _ in 0..cli.rerun.unwrap_or(0) {
+        for (n, input) in cli.inputs.iter().enumerate() {
+            let res = SmilesParser::new(&input).parse();
+            tracing::info!("parsed input {n}");
+            match res {
+                Ok(graph) => {
+                    arena.insert_mol(&graph);
+                    tracing::info!("inserted input {n}");
+                }
+                Err(err) => tracing::error!("{err}"),
             }
-            Err(err) => tracing::error!("{err}"),
         }
     }
 
@@ -43,7 +46,7 @@ fn main() {
         eprintln!("arena graph: {:#?}", arena.graph());
     }
     if cli.arena {
-        eprintln!("arena: {:#?}", arena.expose_parts());
+        eprintln!("arena: {:#?}", arena.expose_frags());
     }
 
     let graph = lute::graph::GraphCompactor::<&StableUnGraph<Atom, Bond, u16>>::new(arena.graph());
