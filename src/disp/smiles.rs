@@ -474,9 +474,9 @@ where
             {
                 last_idx += n + 1;
                 queue.push((Some(next.1), None, Bond::Non, false));
-                if !out.is_empty() {
-                    out.push('.');
-                }
+                // if !out.is_empty() {
+                //     out.push('.');
+                // }
             } else {
                 break;
             }
@@ -746,9 +746,9 @@ where
             {
                 last_idx += n + 1;
                 queue.push((Some(next.1), None, Bond::Non, false));
-                if !out.is_empty() {
-                    out.push('.');
-                }
+                // if !out.is_empty() {
+                //     out.push('.');
+                // }
             } else {
                 break;
             }
