@@ -341,6 +341,35 @@ impl<Ix: IndexType, D> Arena<Ix, D> {
                 .then_some(idx)
         })
     }
+
+    /// Assert that all invariants requested hold.
+    /// This can be a very expensive operation, and should only be used for debugging.
+    pub fn integrity_check(&self) {
+        use crate::disp::smiles::generate_smiles_quick as gsq;
+        for i in 0..self.frags.len() {
+            for j in 0..self.frags.len() {
+                if i == j {
+                    continue;
+                }
+                let ii = Ix::new(i).into();
+                let ji = Ix::new(j).into();
+                let imol = self.molecule(ii);
+                let jmol = self.molecule(ji);
+                if is_isomorphic_matching(imol, jmol, PartialEq::eq, PartialEq::eq, false) {
+                    panic!("fragments {i} and {j} are isomorphic!");
+                }
+                let sub_ism =
+                    is_isomorphic_matching(jmol, imol, Atom::matches, PartialEq::eq, true);
+                let contained = self.contains_group(ii, ji);
+                if self.invariants.contained() && self.frags[j].seen && sub_ism && !contained {
+                    panic!("fragment {i} (smiles: {:?}) should contain fragment {j} (smiles: {:?}) but it does not", gsq(imol), gsq(jmol));
+                }
+                if self.invariants.ordered() && contained && j > i {
+                    panic!("fragment {i} (smiles: {:?}) should have a lower index than fragment {j} (smiles: {:?}) but it does not", gsq(imol), gsq(jmol));
+                }
+            }
+        }
+    }
 }
 impl<Ix: IndexType, D: Default> Arena<Ix, D> {
     /// Update the set of invariants that we want to hold

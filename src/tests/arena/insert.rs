@@ -10,6 +10,7 @@ fn double_insert() {
     let m1 = arena.insert_mol(&benzene);
     let m2 = arena.insert_mol(&benzene);
     assert_eq!(m1, m2);
+    arena.integrity_check();
 }
 
 #[test]
@@ -47,6 +48,7 @@ fn isomorphism() {
         PartialEq::eq,
         false,
     ));
+    arena.integrity_check();
 }
 
 #[test]
@@ -78,6 +80,8 @@ fn alcohols() {
     assert!(orig == arena.frags, "arena changed");
 
     assert!(isp.contains(alcohol));
+
+    arena.integrity_check();
 }
 
 /// Idfk what this test case is showing but it fails
@@ -124,4 +128,5 @@ fn cursed_hydrazine() {
         None
     );
     assert!(arena.contains_group(dimethylhydrazine, hydrazine));
+    arena.integrity_check();
 }
