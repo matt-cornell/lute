@@ -119,62 +119,6 @@ impl<Ix: IndexType, D: PartialEq> PartialEq for Fragment<Ix, D> {
     }
 }
 
-/// Invariant state of the arena.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[repr(u8)]
-pub enum InvariantState {
-    /// Core invariants hold:
-    /// ```ignore
-    /// let ix1 = arena.insert_mol(mol);
-    /// assert!(is_isomoprhic_matching(ix1.in_arena(arena), &mol, PartialEq::eq, PartialEq::eq, false)); // isomorphism
-    /// let ix2 = arena.insert_mol(mol);
-    /// assert_eq!(ix1, ix2); // idempotency
-    /// ```
-    CoreInvariants,
-    /// Core invariants, plus:
-    /// ```ignore
-    /// let small_frag = arena.expose_frags()[i.index()];
-    /// if small_frag.seen() || small_frag.size() >= 3 {
-    ///     let small_mol = arena.molecule(i);
-    ///     let big_mol = arena.molecule(j);
-    ///     if is_isomoprhic_matching(small_mol, big_mol, Atom::matches, PartialEq::eq, true) {
-    ///         assert!(arena.contains_group(j, i)); // full group structure tracked
-    ///     }
-    /// }
-    /// ```
-    AllFragments,
-    /// Core invariants, plus:
-    /// ```ignore
-    /// if arena.contains(i, j) {
-    ///     assert!(i >= j);
-    /// }
-    /// ```
-    OrderedFragments,
-    /// `AllFragments` + `OrderedFragments`
-    AllOrdered,
-}
-impl InvariantState {
-    /// `OrderedFragments | AllOrdered`
-    pub const fn ordered(&self) -> bool {
-        matches!(self, Self::OrderedFragments | Self::AllOrdered)
-    }
-    /// `AllFragments | AllOrdered`
-    pub const fn contained(&self) -> bool {
-        matches!(self, Self::AllFragments | Self::AllOrdered)
-    }
-    /// Check whether this set satisfies the other set
-    #[allow(clippy::match_like_matches_macro)]
-    pub const fn satisfies(&self, other: Self) -> bool {
-        match (self, other) {
-            (Self::AllOrdered, _) => true,
-            (Self::AllFragments, Self::AllFragments) => true,
-            (Self::OrderedFragments, Self::OrderedFragments) => true,
-            (_, Self::CoreInvariants) => true,
-            _ => false,
-        }
-    }
-}
-
 struct AMatch<'a, Ix: IndexType> {
     matched: &'a [Cell<(Ix, usize, bool, u8)>],
     exact: bool,
@@ -212,14 +156,18 @@ where
 pub struct Arena<Ix: IndexType = DefaultIx, D = ()> {
     graph: Graph<Ix>,
     pub(crate) frags: SmallVec<Fragment<Ix, D>, 16>,
-    invariants: InvariantState,
+    ordered: bool,
+    contained: bool,
+    require_contained: bool,
 }
 impl<Ix: IndexType, D> Arena<Ix, D> {
     pub fn new() -> Self {
         Self {
             graph: Graph::default(),
             frags: SmallVec::new(),
-            invariants: InvariantState::AllOrdered,
+            contained: true,
+            ordered: true,
+            require_contained: true,
         }
     }
 
@@ -228,12 +176,20 @@ impl<Ix: IndexType, D> Arena<Ix, D> {
         &self.graph
     }
 
-    /// Get the current invariants that this arena is holding
-    pub fn invariant(&self) -> InvariantState {
-        self.invariants
+    /// Check if the fragments are ordered by containment, i.e. a fragment contained in another has a smaller index.
+    #[inline(always)]
+    pub fn is_ordered(&self) -> bool {
+        self.ordered
     }
 
-    /// Get a reference to the fragments. For debugging purposes only.
+    /// Check if every (seen) molecule that's been looked up will be tracked as contained in a molecule if it's subgraph isomorphic.
+    /// When false, `contained_group` may return false even when it should return true based on the structure.
+    #[inline(always)]
+    pub fn is_contained(&self) -> bool {
+        self.contained
+    }
+
+    /// Get a reference to the fragments.
     #[inline(always)]
     pub fn expose_frags(&self) -> &[Fragment<Ix, D>] {
         &self.frags
@@ -287,7 +243,7 @@ impl<Ix: IndexType, D> Arena<Ix, D> {
     ) -> bool {
         stack.clear();
         seen.clear();
-        if mol.index() < group.index() && self.invariants.ordered() {
+        if mol.index() < group.index() && self.ordered {
             return false; // quirk of insertion order
         }
         if mol.index() >= self.frags.len() || group.index() >= self.frags.len() {
@@ -362,10 +318,10 @@ impl<Ix: IndexType, D> Arena<Ix, D> {
                 let sub_ism =
                     is_isomorphic_matching(jmol, imol, Atom::matches, PartialEq::eq, true);
                 let contained = self.contains_group(ii, ji);
-                if self.invariants.contained() && self.frags[j].seen && sub_ism && !contained {
+                if self.contained && self.frags[j].seen && sub_ism && !contained {
                     panic!("fragment {i} (smiles: {:?}) should contain fragment {j} (smiles: {:?}) but it does not", gsq(imol), gsq(jmol));
                 }
-                if self.invariants.ordered() && contained && j > i {
+                if self.ordered && contained && j > i {
                     panic!("fragment {i} (smiles: {:?}) should have a lower index than fragment {j} (smiles: {:?}) but it does not", gsq(imol), gsq(jmol));
                 }
             }
@@ -373,12 +329,21 @@ impl<Ix: IndexType, D> Arena<Ix, D> {
     }
 }
 impl<Ix: IndexType, D: Default> Arena<Ix, D> {
-    /// Update the set of invariants that we want to hold
-    pub fn request_invariant(&mut self, state: InvariantState) {
-        if self.invariants.satisfies(state) {
+    /// Enforce that the arena is ordered.
+    /// See `is_ordered` for what this means.
+    pub fn make_ordered(&mut self) {
+        if !self.ordered {
             self.optimize_layout(None);
         }
-        self.invariants = state;
+    }
+
+    /// Enforce that all arena fragments are contained properly.
+    /// See `is_contained` for what this means.
+    pub fn make_contained(&mut self) {
+        if !self.contained {
+            self.optimize_layout(None);
+        }
+        self.require_contained = true;
     }
 
     fn fix_frags_containing(&mut self, idx: Ix) {
@@ -462,6 +427,7 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
             base += m2.node_count();
             queue.push((frag, base));
         }
+        self.ordered &= !queue.is_empty();
         for frag in &queue {
             self.frags[frag.0.index()].repr = MolRepr::Empty;
         }
@@ -472,14 +438,6 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
             self.insert_mol_impl(&new_mol, 0, None, Some(f), 0);
             base = end;
         }
-        self.invariants = match self.invariants {
-            InvariantState::AllFragments | InvariantState::AllOrdered => {
-                InvariantState::AllFragments
-            }
-            InvariantState::OrderedFragments | InvariantState::CoreInvariants => {
-                InvariantState::CoreInvariants
-            }
-        };
     }
 
     /// Insert a molecule into the arena, deduplicating common parts.
@@ -962,8 +920,10 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
         );
         let res = self.insert_mol_impl(mol, 0, None, None, 0).0;
         self.frags[res.index()].seen = true;
-        if self.invariants.contained() {
+        if self.require_contained {
             self.fix_frags_containing(res);
+        } else {
+            self.contained = false;
         }
         res.into()
     }
@@ -973,7 +933,8 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
     #[instrument(skip_all, fields(perm = perm.is_some()))]
     pub fn optimize_layout(&mut self, mut perm: Option<&mut Vec<MolIndex<Ix>>>) {
         if self.frags.is_empty() {
-            self.invariants = InvariantState::AllOrdered;
+            self.ordered = true;
+            self.contained = true;
             return;
         }
         if let Some(perm) = &mut perm {
@@ -1114,7 +1075,8 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
                 perm[frag] = idx.into();
             }
         }
-        self.invariants = InvariantState::AllOrdered;
+        self.ordered = true;
+        self.contained = true;
     }
 }
 impl<Ix: IndexType, D> Default for Arena<Ix, D> {
