@@ -12,7 +12,7 @@ use slab::Slab;
 use smallvec::SmallVec;
 use std::cell::{Cell, UnsafeCell};
 use std::collections::VecDeque;
-use std::fmt::{self, Debug, Display, Formatter};
+use std::fmt::{self, from_fn, Debug, Display, Formatter};
 use std::hash::Hash;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -576,8 +576,9 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
             trace!(?frags, "topo-sorted fragments");
             frags
         };
+        let default = (<Ix as IndexType>::max(), usize::MAX, false, 0u8);
         // vec of (index in frags, index in parts, perfect match)
-        let mut matched = vec![(IndexType::max(), usize::MAX, false, 0u8); mol.node_count()]; // this may be inefficient for matching small fragments
+        let mut matched = vec![default; mol.node_count()]; // this may be inefficient for matching small fragments
         if let Some((bits, _)) = &bits {
             for (n, (_, _, _, i)) in matched.iter_mut().enumerate() {
                 if !bits.get(n) {
@@ -597,7 +598,6 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
         let mut prune_buf = Vec::new();
         let mut found = Slab::new();
         while let Some((i, _)) = frags.pop_front() {
-            trace!(i, "checking for isomorphisms");
             let i = Ix::new(i);
             let matched = Cell::from_mut(&mut *matched).as_slice_of_cells();
             let filtered = NodeFilter::new(mol, |n| {
@@ -608,18 +608,28 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
                     }
                 }
                 let v = matched[idx].get();
+                if v.0 == IndexType::max() {
+                    return true;
+                }
+                let f1 = &self.frags[i.index()];
+                let f2 = &self.frags[v.0.index()];
                 // SAFETY: the UnsafeCells' data doesn't escape the call
-                unsafe {
-                    v.0 == IndexType::max()
-                        || (i != v.0
+                f1.seen.cmp(&f2.seen).then(f1.size().cmp(&f2.size())) == std::cmp::Ordering::Greater
+                    || unsafe {
+                        i != v.0
                             && self.contains_group_impl(
                                 i,
                                 v.0,
                                 &mut *pred_buf.get(),
                                 &mut *seen_buf.get(),
-                            ))
-                }
+                            )
+                    }
             });
+            trace!(
+                i = i.index(),
+                filtered = ?from_fn(|f| f.debug_list().entries(filtered.node_identifiers().map(|i| mol.to_index(i))).finish()),
+                "checking for isomorphisms"
+            );
             let compacted = GraphCompactor::<NodeFilter<G, _>>::new(filtered);
             let frag = self.molecule(i.into());
             let mut amatch = AMatch {
@@ -656,11 +666,20 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
                     prune_buf.push((Ix::new(new), matches));
                 }
                 let idx = found.insert((i, ism));
+                scratch.clear();
                 for &(p, m) in &prune_buf {
                     let c = &matched[p.index()];
                     let u = c.get().3;
                     let old_idx = c.replace((i, idx, m, u)).1;
-                    found.try_remove(old_idx);
+                    let res = found.try_remove(old_idx).is_some();
+                    if res {
+                        scratch.push(old_idx);
+                    }
+                }
+                for c in matched {
+                    if scratch.contains(&c.get().1) {
+                        c.set(default);
+                    }
                 }
                 found_any = true;
             }
