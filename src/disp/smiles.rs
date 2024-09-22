@@ -51,7 +51,7 @@ impl Default for SmilesConfig {
     }
 }
 
-#[tracing::instrument(level = "trace", skip(graph))]
+#[tracing::instrument(skip(graph))]
 pub fn generate_smiles<G>(graph: G, cfg: SmilesConfig) -> String
 where
     G: DataValueMap<NodeWeight = Atom, EdgeWeight = Bond>
@@ -59,7 +59,7 @@ where
         + IntoEdges
         + NodeCount
         + Visitable,
-    G::NodeId: Hash + Eq + std::fmt::Debug,
+    G::NodeId: Hash + Eq,
 {
     if graph.node_count() == 0 {
         return String::new();
@@ -439,6 +439,278 @@ where
                                             needs_h = true;
                                         }
                                     }
+                                }
+                            }
+                            if needs_h {
+                                out.push('H');
+                                let h = atom.data.hydrogen();
+                                if h != 1 {
+                                    let _ = write!(out, "{h}");
+                                }
+                            }
+                            match atom.charge {
+                                0 => {}
+                                1 => out.push('+'),
+                                -1 => out.push('-'),
+                                n => {
+                                    let _ = write!(out, "{n:+}");
+                                }
+                            }
+                            out.push(']');
+                        }
+                        out.extend(std::iter::repeat('&').take(atom.data.unknown() as usize));
+                        visited.insert(
+                            node,
+                            (out.len(), prev.into_iter().map(|i| i.0).collect::<Vec<_>>()),
+                        );
+                    }
+                } else {
+                    out.push(')');
+                }
+            } else if let Some((n, next)) = order[last_idx..]
+                .iter()
+                .enumerate()
+                .find(|i| !visited.contains_key(&i.1 .1))
+            {
+                last_idx += n + 1;
+                queue.push((Some(next.1), None, Bond::Non, false));
+                if !out.is_empty() {
+                    out.push('.');
+                }
+            } else {
+                break;
+            }
+        }
+    }
+    out
+}
+
+/// Stripped down version of `generate_smiles` that gives minimal information
+#[tracing::instrument(skip(graph))]
+pub fn generate_smiles_quick<G>(graph: G) -> String
+where
+    G: DataValueMap<NodeWeight = Atom, EdgeWeight = Bond>
+        + IntoNodeReferences
+        + IntoEdges
+        + NodeCount,
+    G::NodeId: Hash + Eq,
+{
+    if graph.node_count() == 0 {
+        return String::new();
+    } // guarantee order is non-empty
+    let mut out = String::with_capacity(graph.node_count());
+    let order = graph
+        .node_references()
+        .map(|i| (*i.weight(), i.id(), (0, 0)))
+        .collect::<Vec<_>>();
+    let lookup = order
+        .iter()
+        .enumerate()
+        .map(|(n, o)| (o.1, n))
+        .collect::<AHashMap<_, _>>();
+    let mut visited: AHashMap<_, (_, Vec<G::NodeId>)> = AHashMap::with_capacity(order.len());
+    let mut last_idx = 0;
+    let mut queue: Vec<(Option<G::NodeId>, Option<(_, _)>, _, _)> = Vec::new();
+    let mut counter = 0usize;
+    let mut buf = String::new();
+    let mut edge_buf = Vec::new();
+    {
+        let _guard = tracing::debug_span!("traversing graph", canon = false).entered();
+        loop {
+            if let Some((node, prev, edge, branch)) = queue.pop() {
+                if let Some(node) = node {
+                    if let Some(&(idx, ref prevs)) = visited.get(&node) {
+                        if prevs.contains(&prev.unwrap().0) {
+                            match out.pop() {
+                                None => {}
+                                Some(')') => {
+                                    let mut depth = 1;
+                                    for (n, i) in out.bytes().rev().enumerate() {
+                                        match i {
+                                            b')' => depth += 1,
+                                            b'(' => {
+                                                depth -= 1;
+                                                let idx = out.len() - n - 1;
+                                                if depth == 0 {
+                                                    out.remove(idx);
+                                                    break;
+                                                }
+                                                for (_, (i, _)) in &mut visited {
+                                                    if *i > idx {
+                                                        *i -= 1;
+                                                    }
+                                                }
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                }
+                                Some(c) => out.push(c),
+                            }
+                            continue;
+                        }
+                        counter += 1;
+                        let len = if let Some(ch) = u32::try_from(counter)
+                            .ok()
+                            .and_then(|d| char::from_digit(d, 10))
+                        {
+                            out.insert(idx, ch);
+                            out.push_str(bond2str(edge));
+                            out.push(ch);
+                            1
+                        } else {
+                            buf.clear();
+                            let _ = write!(buf, "%{counter}");
+                            out.insert_str(idx, &buf);
+                            out.push_str(bond2str(edge));
+                            out.push_str(&buf);
+                            buf.len()
+                        };
+                        for (n, (i, prevs)) in &mut visited {
+                            if *i >= idx {
+                                *i += len;
+                            }
+                            if *n == prev.unwrap().0 {
+                                prevs.push(node);
+                            }
+                        }
+                    } else {
+                        if branch {
+                            out.push('(');
+                            queue.push((None, None, Bond::Non, false));
+                        }
+                        if !(edge == Bond::Non && out.is_empty()) {
+                            out.push_str(bond2str(edge));
+                        }
+                        let idx = lookup[&node];
+                        let atom = order[idx].0;
+                        edge_buf.clear();
+                        edge_buf.extend(graph.edges(node));
+                        let aromatic = ([5, 6, 7, 8, 15, 16].contains(&atom.protons)
+                            || (atom.protons == 0 && [0xFFFE, 0xFFFC].contains(&atom.isotope)))
+                            && {
+                                let mut it =
+                                    edge_buf.iter().filter(|e| *e.weight() == Bond::Aromatic);
+                                it.next().is_some() && it.next().is_some()
+                            };
+                        let bond_count = (atom.data.unknown() + atom.data.hydrogen()) as isize
+                            + edge_buf
+                                .iter()
+                                .map(|i| i.weight().bond_count())
+                                .sum::<f32>() as isize
+                            + atom.charge as isize;
+                        let ex_bonds = match atom.protons {
+                            1 => Some(1),
+                            x @ 6..=9 => Some((10 - (x as i8) + atom.charge) as isize),
+                            x @ 14..=17 => Some((18 - (x as i8) + atom.charge) as isize),
+                            35 | 53 => Some(1),
+                            _ => None,
+                        };
+                        let needs_h = ex_bonds != Some(bond_count)
+                            && ex_bonds
+                                .map_or(true, |e| e > bond_count - atom.data.hydrogen() as isize);
+                        if aromatic {
+                            match out.pop() {
+                                None | Some(':') => {}
+                                Some(c) => out.push(c),
+                            }
+                        }
+                        let out_idx = queue.len();
+                        {
+                            queue.extend(
+                                graph
+                                    .edges(node)
+                                    .filter(|e| prev.map(|p| p.0) != Some(e.target()))
+                                    .map(|e| {
+                                        let w = *e.weight();
+                                        let weight = if aromatic && w == Bond::Aromatic {
+                                            Bond::Single
+                                        } else {
+                                            w
+                                        };
+                                        (Some(e.target()), Some((node, edge)), weight, true)
+                                    }),
+                            );
+                            if let Some(i) = queue.get_mut(out_idx) {
+                                i.3 = false;
+                            }
+                        }
+                        'print_atom: {
+                            if !needs_h {
+                                match atom.protons {
+                                    0 => match atom.isotope {
+                                        0xFFFF => {
+                                            out.push('*');
+                                            break 'print_atom;
+                                        }
+                                        0xFFFE => {
+                                            out.push(if aromatic { 'a' } else { 'A' });
+                                            break 'print_atom;
+                                        }
+                                        0xFFFC => {
+                                            out.push(if aromatic { 'q' } else { 'Q' });
+                                            break 'print_atom;
+                                        }
+                                        0x0100 => {
+                                            out.push('X');
+                                            break 'print_atom;
+                                        }
+                                        0x042B => {
+                                            out.push('M');
+                                            break 'print_atom;
+                                        }
+                                        _ => {}
+                                    },
+                                    5 => {
+                                        out.push(if aromatic { 'b' } else { 'B' });
+                                        break 'print_atom;
+                                    }
+                                    6 => {
+                                        out.push(if aromatic { 'c' } else { 'C' });
+                                        break 'print_atom;
+                                    }
+                                    7 => {
+                                        out.push(if aromatic { 'n' } else { 'N' });
+                                        break 'print_atom;
+                                    }
+                                    8 => {
+                                        out.push(if aromatic { 'o' } else { 'O' });
+                                        break 'print_atom;
+                                    }
+                                    9 => {
+                                        out.push('F');
+                                        break 'print_atom;
+                                    }
+                                    15 => {
+                                        out.push(if aromatic { 'p' } else { 'P' });
+                                        break 'print_atom;
+                                    }
+                                    16 => {
+                                        out.push(if aromatic { 's' } else { 'S' });
+                                        break 'print_atom;
+                                    }
+                                    17 => {
+                                        out.push_str("Cl");
+                                        break 'print_atom;
+                                    }
+                                    35 => {
+                                        out.push_str("Br");
+                                        break 'print_atom;
+                                    }
+                                    53 => {
+                                        out.push('I');
+                                        break 'print_atom;
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            out.push('[');
+                            let idx = out.len();
+                            out.push_str(ATOM_DATA[atom.protons as usize].sym);
+                            if aromatic {
+                                // ascii to ascii is safe
+                                unsafe {
+                                    out.as_bytes_mut()[idx].make_ascii_lowercase();
                                 }
                             }
                             if needs_h {
