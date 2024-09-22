@@ -175,12 +175,11 @@ impl InvariantState {
     }
 }
 
-struct AMatch<'a, Ix: IndexType, D> {
-    frags: &'a [Fragment<Ix, D>],
+struct AMatch<'a, Ix: IndexType> {
     matched: &'a [Cell<(Ix, usize, bool, u8)>],
-    i: Ix,
+    exact: bool,
 }
-impl<G0, G1: GraphBase, Ix: IndexType, D> NodeMatcher<G0, &GraphCompactor<G1>> for AMatch<'_, Ix, D>
+impl<G0, G1: GraphBase, Ix: IndexType> NodeMatcher<G0, &GraphCompactor<G1>> for AMatch<'_, Ix>
 where
     G0: DataValueMap<NodeWeight = Atom>,
     G1: NodeIndexable,
@@ -199,11 +198,10 @@ where
         let mat = self.matched[g1.graph.to_index(n1)].get();
         r.single_to_unknown(mat.3)
             .expect("Too many unknown groups would exist on this atom!");
-        if self.frags[self.i.index()].tracked() {
-            l.matches(&r)
-        } else {
-            trace!(rs = mat.3, "check failed");
+        if self.exact {
             l == r
+        } else {
+            l.matches(&r)
         }
     }
 }
@@ -565,7 +563,8 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
         );
         let mut scratch = Vec::new();
         let mut frags = {
-            let (frags, mut src) = self.frags[isms_from..]
+            let (mut src, frags) = self
+                .frags
                 .iter()
                 .enumerate()
                 .filter_map(|(n, frag)| {
@@ -575,10 +574,19 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
                         MolRepr::Broken(b) => &b.frags,
                         MolRepr::Modify(m) => std::slice::from_ref(&m.base),
                     };
-                    (frag.size() == node_count || (frag.size() < node_count && frag.tracked()))
-                        .then_some((n + isms_from, children))
+                    (frag.size() == node_count
+                        || (frag.size() < node_count && n >= isms_from && frag.tracked()))
+                    .then_some((n, children))
                 })
-                .partition::<Vec<_>, _>(|v| v.1.is_empty());
+                .partition::<Vec<_>, _>(|v| {
+                    v.1.iter().any(|n| {
+                        let frag = &self.frags[n.index()];
+                        frag.size() == node_count
+                            || (frag.size() < node_count
+                                && n.index() >= isms_from
+                                && frag.tracked())
+                    })
+                });
             let mut frags = VecDeque::from(frags);
             let mut edge = frags.iter().map(|i| i.0).collect::<Vec<_>>();
             frags.reserve(src.len());
@@ -603,7 +611,7 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
             }
             debug_assert!(
                 src.iter().all(|i| i.0 == usize::MAX),
-                "cycle detected in arena fragments?"
+                "cycle detected in arena fragments?\nsrc: {src:?}"
             );
             trace!(?frags, "topo-sorted fragments");
             frags
@@ -629,8 +637,8 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
         let pred_buf = UnsafeCell::new(SmallVec::new());
         let mut prune_buf = Vec::new();
         let mut found = Slab::new();
-        while let Some((i, _)) = frags.pop_front() {
-            let i = Ix::new(i);
+        while let Some((i_, _)) = frags.pop_front() {
+            let i = Ix::new(i_);
             let matched = Cell::from_mut(&mut *matched).as_slice_of_cells();
             let filtered = NodeFilter::new(mol, |n| {
                 let idx = mol.to_index(n);
@@ -665,9 +673,8 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
             let compacted = GraphCompactor::<NodeFilter<G, _>>::new(filtered);
             let frag = self.molecule(i.into());
             let mut amatch = AMatch {
-                frags: &self.frags,
                 matched,
-                i,
+                exact: i_ < isms_from.index() || !self.frags[i_].tracked(),
             };
             let mut bmatch = PartialEq::eq;
             let mut found_any = false;
@@ -786,7 +793,6 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
             });
         }
         if found.is_empty() {
-            debug!("no fragments found, inserting molecule");
             let mut mapping = vec![(IndexType::max(), 0); mol.node_count()];
             let mut count = 0;
             for n in mol.node_references() {
@@ -824,11 +830,14 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
                 },
                 to,
             );
+            debug!(idx = idx.index(), "no fragments found, inserting molecule");
             return (idx, new_map);
         } else if found.len() == 1 {
             let (n, (_, ism)) = found.iter().next().unwrap();
             if ism.len() == mol.node_count() {
-                return found.remove(n);
+                let res = found.remove(n);
+                debug!(idx = res.0.index(), "found a single fragment");
+                return res;
             }
         }
         let old_start = self.frags.len();
@@ -870,6 +879,7 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
         });
         if found.len() == 1 {
             let frag = found.into_iter().next().unwrap().1;
+            debug!(idx = frag.0.index(), "inserted a single fragment");
             if let Some(idx) = to {
                 if idx == frag.0 {
                     return frag;
@@ -929,6 +939,7 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
             seen: false,
         };
         let idx = self.push_or_set_frag(frag, to);
+        debug!(idx = idx.index(), "returning a new broken fragment");
         (idx, out_map)
     }
 

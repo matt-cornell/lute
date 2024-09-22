@@ -721,6 +721,15 @@ fn main() {
             },
         )
         .with_command(
+            Command::new("check").about("Check that the invariants hold"),
+            |_, ctx| {
+                catch_panics(|| {
+                    ctx.arena.integrity_check();
+                    Ok(None)
+                })
+            },
+        )
+        .with_command(
             Command::new("dump")
                 .about("Show the output of inputs, or the whole graph if no ids are given")
                 .arg(
