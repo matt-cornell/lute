@@ -356,7 +356,10 @@ impl<Ix: IndexType, D> Arena<Ix, D> {
                 let imol = self.molecule(ii);
                 let jmol = self.molecule(ji);
                 if is_isomorphic_matching(imol, jmol, PartialEq::eq, PartialEq::eq, false) {
-                    panic!("fragments {i} and {j} are isomorphic!");
+                    panic!(
+                        "fragments {i} and {j} are isomorphic (smiles: {:?})",
+                        gsq(imol)
+                    );
                 }
                 let sub_ism =
                     is_isomorphic_matching(jmol, imol, Atom::matches, PartialEq::eq, true);
