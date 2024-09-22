@@ -677,7 +677,7 @@ fn main() {
     let (filter, targets) = reload::Layer::new(targets);
     Registry::default()
         .with(filter)
-        .with(fmt::layer().with_writer(std::io::stderr))
+        .with(fmt::layer().with_writer(std::io::stderr).pretty())
         .init();
     let context = Context {
         arena: Arena::new(),
