@@ -189,7 +189,7 @@ pub mod iter {
             let arena = self.arena.get_arena();
             while let Some((idx, off)) = self.stack.pop() {
                 match arena.frags[idx.index()].repr {
-                    MolRepr::Empty => {}
+                    MolRepr::TempEmpty | MolRepr::Empty => {}
                     MolRepr::Modify(ModdedMol { base, .. }) => self.stack.push((base, off)),
                     MolRepr::Broken(BrokenMol {
                         ref frags,
@@ -294,7 +294,7 @@ pub mod iter {
                 }
                 let arena = self.arena.get_arena();
                 match arena.frags[self.mol_idx.index()].repr {
-                    MolRepr::Empty => None?,
+                    MolRepr::TempEmpty | MolRepr::Empty => None?,
                     MolRepr::Modify(ModdedMol { base, .. }) => self.mol_idx = base,
                     MolRepr::Atomic(ref b) => {
                         if !matches!(self.state, State::Atomic(_)) {

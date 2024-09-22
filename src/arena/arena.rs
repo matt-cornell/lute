@@ -64,6 +64,7 @@ pub(crate) enum MolRepr<Ix: IndexType> {
     Atomic(BSType),
     Broken(BrokenMol<Ix>),
     Modify(ModdedMol<Ix>),
+    TempEmpty,
     Empty,
 }
 
@@ -104,6 +105,7 @@ pub struct Fragment<Ix: IndexType, D> {
     pub seen: bool,
     pub(crate) repr: MolRepr<Ix>,
     pub(crate) size: Ix,
+    refcnt: usize,
 }
 impl<Ix: IndexType, D> Fragment<Ix, D> {
     pub fn size(&self) -> usize {
@@ -156,6 +158,7 @@ where
 pub struct Arena<Ix: IndexType = DefaultIx, D = ()> {
     graph: Graph<Ix>,
     pub(crate) frags: SmallVec<Fragment<Ix, D>, 16>,
+    next_vacant_frag: Ix,
     ordered: bool,
     contained: bool,
     require_contained: bool,
@@ -165,6 +168,7 @@ impl<Ix: IndexType, D> Arena<Ix, D> {
         Self {
             graph: Graph::default(),
             frags: SmallVec::new(),
+            next_vacant_frag: IndexType::max(),
             contained: true,
             ordered: true,
             require_contained: true,
@@ -198,27 +202,44 @@ impl<Ix: IndexType, D> Arena<Ix, D> {
     #[inline]
     fn push_frag(&mut self, frag: Fragment<Ix, D>) -> Ix {
         let max = <Ix as IndexType>::max().index() - 1;
-        let idx = self.frags.len();
-        assert!(
-            idx < max,
-            "too many fragments in molecule: limit of {idx} reached!"
-        );
-        self.frags.push(frag);
-        Ix::new(idx)
+        if self.next_vacant_frag == IndexType::max() {
+            let idx = self.frags.len();
+            assert!(
+                idx < max,
+                "too many fragments in molecule: limit of {idx} reached!"
+            );
+            self.frags.push(frag);
+            Ix::new(idx)
+        } else {
+            let ret = self.next_vacant_frag;
+            let ni = ret.index();
+            self.frags[ni] = frag;
+            self.next_vacant_frag = self.frags[(ni + 1)..]
+                .iter()
+                .position(|f| f.repr == MolRepr::Empty)
+                .map_or_else(IndexType::max, |n| {
+                    let ret = n + ni;
+                    if ret < max {
+                        Ix::new(ret)
+                    } else {
+                        IndexType::max()
+                    }
+                });
+            ret
+        }
     }
-    fn push_or_set_frag(&mut self, mut frag: Fragment<Ix, D>, to: Option<Ix>) -> Ix {
+    fn push_or_set_frag(&mut self, frag: Fragment<Ix, D>, to: Option<Ix>) -> Ix {
         if let Some(idx) = to {
             let old = &mut self.frags[idx.index()];
-            std::mem::swap(&mut old.custom, &mut frag.custom);
-            std::mem::swap(&mut old.seen, &mut frag.seen);
+            old.size = frag.size;
             #[cfg(debug_assertions)]
             {
-                let old = std::mem::replace(old, frag);
-                debug_assert_eq!(old.repr, MolRepr::Empty);
+                let old = std::mem::replace(&mut old.repr, frag.repr);
+                debug_assert_eq!(old, MolRepr::TempEmpty);
             }
             #[cfg(not(debug_assertions))]
             {
-                *old = frag;
+                old.repr = frag.repr;
             }
             idx
         } else {
@@ -263,7 +284,7 @@ impl<Ix: IndexType, D> Arena<Ix, D> {
                 None => warn!(idx, "OOB node found when checking for membership"),
                 Some(MolRepr::Modify(ModdedMol { base: i, .. })) => stack.push(*i),
                 Some(MolRepr::Broken(BrokenMol { frags, .. })) => stack.extend_from_slice(frags),
-                Some(MolRepr::Atomic(_) | MolRepr::Empty) => {}
+                Some(MolRepr::Atomic(_) | MolRepr::TempEmpty | MolRepr::Empty) => {}
             }
         }
         false
@@ -327,6 +348,77 @@ impl<Ix: IndexType, D> Arena<Ix, D> {
             }
         }
     }
+
+    fn gc_from(&mut self, repr: &MolRepr<Ix>) {
+        let mut stack = SmallVec::<_, 3>::new();
+        match repr {
+            MolRepr::Atomic(b) => {
+                for i in b {
+                    self.graph.remove_node(Ix::new(i).into());
+                }
+            }
+            MolRepr::Broken(BrokenMol { frags, .. }) => stack.extend_from_slice(frags),
+            MolRepr::Modify(ModdedMol { base, .. }) => stack.push(*base),
+            _ => {}
+        }
+        while let Some(i) = stack.pop() {
+            let frag = &mut self.frags[i.index()];
+            frag.refcnt -= 1;
+            if frag.seen || frag.refcnt > 0 || frag.repr == MolRepr::TempEmpty {
+                continue;
+            }
+            if i.index() < self.next_vacant_frag.index() {
+                self.next_vacant_frag = i;
+            }
+            match std::mem::replace(&mut frag.repr, MolRepr::Empty) {
+                MolRepr::Atomic(b) => {
+                    for i in &b {
+                        self.graph.remove_node(Ix::new(i).into());
+                    }
+                }
+                MolRepr::Broken(BrokenMol { frags, .. }) => stack.extend_from_slice(&frags),
+                MolRepr::Modify(ModdedMol { base, .. }) => stack.push(base),
+                _ => {}
+            }
+        }
+    }
+
+    /// Cleanup unused fragments. Probably doesn't need to be called.
+    pub fn gc(&mut self) {
+        let mut stack = SmallVec::<_, 3>::new();
+        for frag in &mut self.frags {
+            if frag.seen || frag.refcnt > 0 {
+                continue;
+            }
+            match std::mem::replace(&mut frag.repr, MolRepr::Empty) {
+                MolRepr::Atomic(b) => {
+                    for i in &b {
+                        self.graph.remove_node(Ix::new(i).into());
+                    }
+                }
+                MolRepr::Broken(BrokenMol { frags, .. }) => stack.extend_from_slice(&frags),
+                MolRepr::Modify(ModdedMol { base, .. }) => stack.push(base),
+                _ => {}
+            }
+        }
+        while let Some(i) = stack.pop() {
+            let frag = &mut self.frags[i.index()];
+            frag.refcnt -= 1;
+            if frag.seen || frag.refcnt > 0 {
+                continue;
+            }
+            match std::mem::replace(&mut frag.repr, MolRepr::Empty) {
+                MolRepr::Atomic(b) => {
+                    for i in &b {
+                        self.graph.remove_node(Ix::new(i).into());
+                    }
+                }
+                MolRepr::Broken(BrokenMol { frags, .. }) => stack.extend_from_slice(&frags),
+                MolRepr::Modify(ModdedMol { base, .. }) => stack.push(base),
+                _ => {}
+            }
+        }
+    }
 }
 impl<Ix: IndexType, D: Default> Arena<Ix, D> {
     /// Enforce that the arena is ordered.
@@ -360,7 +452,7 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
                 .enumerate()
                 .filter_map(|(n, frag)| {
                     let children = match &frag.repr {
-                        MolRepr::Empty => None?,
+                        MolRepr::TempEmpty | MolRepr::Empty => None?,
                         MolRepr::Atomic(_) => &[] as &[_],
                         MolRepr::Broken(b) => &b.frags,
                         MolRepr::Modify(m) => std::slice::from_ref(&m.base),
@@ -429,7 +521,8 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
         }
         self.ordered &= !queue.is_empty();
         for frag in &queue {
-            self.frags[frag.0.index()].repr = MolRepr::Empty;
+            let old = std::mem::replace(&mut self.frags[frag.0.index()].repr, MolRepr::TempEmpty);
+            self.gc_from(&old);
         }
         base = 0;
         for (f, end) in queue {
@@ -480,9 +573,10 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
                 let idx = self.push_or_set_frag(
                     Fragment {
                         custom: D::default(),
-                        repr: MolRepr::Empty,
+                        repr: MolRepr::TempEmpty,
                         size: Ix::new(0),
                         seen: false,
+                        refcnt: 0,
                     },
                     to,
                 );
@@ -527,7 +621,7 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
                 .enumerate()
                 .filter_map(|(n, frag)| {
                     let children = match &frag.repr {
-                        MolRepr::Empty => None?,
+                        MolRepr::TempEmpty | MolRepr::Empty => None?,
                         MolRepr::Atomic(_) => &[] as &[_],
                         MolRepr::Broken(b) => &b.frags,
                         MolRepr::Modify(m) => std::slice::from_ref(&m.base),
@@ -743,11 +837,13 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
             if patch.is_empty() {
                 continue;
             }
+            self.frags[i.index()].refcnt += 1;
             *i = self.push_frag(Fragment {
                 custom: D::default(),
                 repr: MolRepr::Modify(ModdedMol { base: *i, patch }),
                 size: Ix::new(ism.len()),
                 seen: ism.len() >= 3,
+                refcnt: 0,
             });
         }
         if found.is_empty() {
@@ -785,6 +881,7 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
                     repr: MolRepr::Atomic(new_bits),
                     size: Ix::new(count),
                     seen: false,
+                    refcnt: 0,
                 },
                 to,
             );
@@ -846,9 +943,8 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
                     .frags
                     .get_many_mut([frag.0.index(), idx.index()])
                     .unwrap();
-                std::mem::swap(&mut old.custom, &mut new.custom);
-                std::mem::swap(&mut old.seen, &mut new.seen);
-                std::mem::swap(old, new);
+                std::mem::swap(&mut old.repr, &mut new.repr);
+                std::mem::swap(&mut old.size, &mut new.size);
                 if frag.0.index() + 1 == self.frags.len() {
                     self.frags.pop();
                 }
@@ -889,12 +985,20 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
         } else {
             Vec::new()
         };
-        let frags = found.into_iter().map(|f| f.1 .0).collect();
+        let frags = found
+            .into_iter()
+            .map(|f| {
+                let res = f.1 .0;
+                self.frags[res.index()].refcnt += 1;
+                res
+            })
+            .collect();
         let frag = Fragment {
             custom: D::default(),
             repr: MolRepr::Broken(BrokenMol { frags, bonds }),
             size: Ix::new(node_count),
             seen: false,
+            refcnt: 0,
         };
         let idx = self.push_or_set_frag(frag, to);
         debug!(idx = idx.index(), "returning a new broken fragment");

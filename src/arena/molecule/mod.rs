@@ -96,7 +96,7 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
         loop {
             trace!(mol_idx = ix.index(), atom_idx = idx, "searching for atom");
             match &arena.frags[ix.index()].repr {
-                MolRepr::Empty => None?,
+                MolRepr::TempEmpty | MolRepr::Empty => None?,
                 MolRepr::Modify(m) => {
                     if oride.is_none() {
                         if let Ok(a) = m.patch.binary_search_by_key(&Ix::new(idx), |m| m.0) {
@@ -149,7 +149,7 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
         loop {
             trace!(mol_idx = ix.index(), atom_idx = idx, "searching for atom");
             match &arena.frags[ix.index()].repr {
-                MolRepr::Empty => None?,
+                MolRepr::TempEmpty | MolRepr::Empty => None?,
                 MolRepr::Modify(m) => {
                     if let Ok(a) = m.patch.binary_search_by_key(&Ix::new(idx), |m| m.0) {
                         let mut atom = m.patch[a].1;
@@ -217,7 +217,8 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
                 "searching for bond"
             );
             match &arena.frags[ix.index()].repr {
-                MolRepr::Empty => None?,
+                MolRepr::Empty => unreachable!("somehow referenced an Empty fragment"),
+                MolRepr::TempEmpty => None?,
                 MolRepr::Modify(m) => ix = m.base,
                 MolRepr::Atomic(b) => {
                     // inefficient, but works
@@ -333,7 +334,7 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Iterator for ContainedGroups<Ix, 
         if let Some(next) = self.stack.pop() {
             let arena = self.arena.get_arena();
             match arena.frags[next.index()].repr {
-                MolRepr::Atomic(_) | MolRepr::Empty => {}
+                MolRepr::Atomic(_) | MolRepr::TempEmpty | MolRepr::Empty => {}
                 MolRepr::Modify(ModdedMol { base, .. }) => self.stack.push(base),
                 MolRepr::Broken(BrokenMol { ref frags, .. }) => self.stack.extend_from_slice(frags),
             }
