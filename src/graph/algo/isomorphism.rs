@@ -6,8 +6,8 @@ use petgraph::visit::*;
 use petgraph::{Outgoing, Undirected};
 use tracing::*;
 
-use self::semantic::EdgeMatcher;
-use self::semantic::NodeMatcher;
+pub use self::semantic::EdgeMatcher;
+pub use self::semantic::NodeMatcher;
 use self::state::Vf2State;
 
 mod state {
@@ -712,8 +712,8 @@ where
         + IntoEdgesDirected,
     G0::NodeWeight: Copy,
     G1::NodeWeight: Copy,
-    NM: 'a + FnMut(&G0::NodeWeight, &G1::NodeWeight) -> bool,
-    EM: 'a + FnMut(&G0::EdgeWeight, &G1::EdgeWeight) -> bool,
+    NM: NodeMatcher<G0, G1>,
+    EM: EdgeMatcher<G0, G1>,
 {
     if g0.node_count() > g1.node_count() {
         return None.into_iter().flatten();
@@ -737,6 +737,7 @@ pub fn is_isomorphic_matching<G0, G1, NM, EM>(
     g1: G1,
     mut node_match: NM,
     mut edge_match: EM,
+    subgraph: bool,
 ) -> bool
 where
     G0: NodeCompactIndexable
@@ -751,15 +752,15 @@ where
         + IntoEdgesDirected,
     G0::NodeWeight: Copy,
     G1::NodeWeight: Copy,
-    NM: FnMut(&G0::NodeWeight, &G1::NodeWeight) -> bool,
-    EM: FnMut(&G0::EdgeWeight, &G1::EdgeWeight) -> bool,
+    NM: NodeMatcher<G0, G1>,
+    EM: EdgeMatcher<G0, G1>,
 {
-    if g0.node_count() != g1.node_count() {
+    if g0.node_count() != g1.node_count() && (!subgraph || g0.node_count() > g1.node_count()) {
         return false;
     }
 
     let mut st = (Vf2State::new(&g0), Vf2State::new(&g1));
-    self::matching::try_match(&mut st, &mut node_match, &mut edge_match, false).unwrap_or(false)
+    self::matching::try_match(&mut st, &mut node_match, &mut edge_match, subgraph).unwrap_or(false)
 }
 
 pub fn find_isomorphism_matching<G0, G1, NM, EM>(

@@ -26,7 +26,8 @@ fn glucose() {
         &canon,
         &isomer,
         &mut Atom::matches,
-        &mut PartialEq::eq
+        &mut PartialEq::eq,
+        false,
     ));
     let chirals = isomer
         .node_references()

@@ -12,7 +12,7 @@ pub struct BitSet<T, const N: usize> {
     offset: usize,
     minimum: usize,
 }
-impl<T: PrimInt + Zero, const N: usize> BitSet<T, N> {
+impl<T: PrimInt, const N: usize> BitSet<T, N> {
     pub const fn new() -> Self {
         Self {
             bits: SmallVec::new(),
@@ -165,6 +165,13 @@ impl<T: PrimInt + Zero, const N: usize> BitSet<T, N> {
         let curr = (blk & (mask - one)).count_ones() as usize;
         Some(prev + curr)
     }
+
+    pub fn iter(&self) -> Iter<'_, T, N> {
+        Iter {
+            bits: self,
+            next: 0,
+        }
+    }
 }
 
 impl<T: Binary, const N: usize> Debug for BitSet<T, N> {
@@ -192,11 +199,84 @@ impl<T: PrimInt + Default, const N: usize> FromIterator<usize> for BitSet<T, N> 
     }
 }
 
+impl<T: PrimInt, const N: usize> IntoIterator for BitSet<T, N> {
+    type IntoIter = IntoIter<T, N>;
+    type Item = usize;
+
+    fn into_iter(self) -> Self::IntoIter {
+        IntoIter {
+            bits: self,
+            next: 0,
+        }
+    }
+}
+
+impl<'a, T: PrimInt, const N: usize> IntoIterator for &'a BitSet<T, N> {
+    type IntoIter = Iter<'a, T, N>;
+    type Item = usize;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Iter {
+            bits: self,
+            next: 0,
+        }
+    }
+}
+
 impl<Ix: IndexType, T: PrimInt, const N: usize> VisitMap<NodeIndex<Ix>> for BitSet<T, N> {
     fn visit(&mut self, a: NodeIndex<Ix>) -> bool {
         self.set(a.0.index(), true)
     }
     fn is_visited(&self, a: &NodeIndex<Ix>) -> bool {
         self.get(a.0.index())
+    }
+}
+
+fn get_next<T: PrimInt, const N: usize>(bits: &BitSet<T, N>, next: &mut usize) -> Option<usize> {
+    let zero = T::zero();
+    let one = T::one();
+    let nbits = zero.leading_zeros() as usize;
+    let idx = *next / nbits;
+    let word = *bits.bits.get(idx)?;
+    let zeros = (word & !((one << (*next % nbits)) - one)).trailing_zeros() as usize;
+    if zeros < nbits {
+        let res = idx * nbits + zeros;
+        *next = res + 1;
+        return Some(bits.offset + res);
+    }
+    let Some((idx, &word)) = bits.bits[(idx + 1)..]
+        .iter()
+        .enumerate()
+        .find(|(_, n)| **n != zero)
+    else {
+        *next = usize::MAX;
+        return None;
+    };
+    let zeros = (word & !((one << (*next % nbits)) - one)).trailing_zeros() as usize;
+    let res = idx * nbits + zeros;
+    *next = res + 1;
+    Some(bits.offset + res)
+}
+
+pub struct Iter<'a, T, const N: usize> {
+    bits: &'a BitSet<T, N>,
+    next: usize,
+}
+impl<'a, T: PrimInt, const N: usize> Iterator for Iter<'a, T, N> {
+    type Item = usize;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        get_next(self.bits, &mut self.next)
+    }
+}
+pub struct IntoIter<T, const N: usize> {
+    bits: BitSet<T, N>,
+    next: usize,
+}
+impl<T: PrimInt, const N: usize> Iterator for IntoIter<T, N> {
+    type Item = usize;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        get_next(&self.bits, &mut self.next)
     }
 }

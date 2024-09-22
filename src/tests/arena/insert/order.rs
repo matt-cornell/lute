@@ -8,14 +8,18 @@ fn small_large() {
     let ether = arena.insert_mol(&smiles!("O&&"));
     let dimethyl_ether = arena.insert_mol(&smiles!("COC"));
     assert!(arena.contains_group(dimethyl_ether, ether));
+    arena.integrity_check();
 }
 
 #[test]
 fn large_small() {
+    trace_capture!();
     let mut arena = Arena::<u8>::new();
     let dimethyl_ether = arena.insert_mol(&smiles!("COC"));
     let ether = arena.insert_mol(&smiles!("O&&"));
+    println!("{:#?}", arena.expose_frags());
     assert!(arena.contains_group(dimethyl_ether, ether));
+    arena.integrity_check();
 }
 
 #[test]
@@ -32,6 +36,7 @@ fn small_med_large() {
     assert!(arena.contains_group(methyl_acetate, ether));
     assert!(arena.contains_group(methyl_acetate, ketone));
     assert!(arena.contains_group(methyl_acetate, ester));
+    arena.integrity_check();
 }
 
 #[test]
@@ -48,6 +53,7 @@ fn small_large_med() {
     assert!(arena.contains_group(methyl_acetate, ether));
     assert!(arena.contains_group(methyl_acetate, ketone));
     assert!(arena.contains_group(methyl_acetate, ester));
+    arena.integrity_check();
 }
 
 #[test]
@@ -64,6 +70,7 @@ fn large_med_small() {
     assert!(arena.contains_group(methyl_acetate, ether));
     assert!(arena.contains_group(methyl_acetate, ketone));
     assert!(arena.contains_group(methyl_acetate, ester));
+    arena.integrity_check();
 }
 
 #[test]
@@ -80,6 +87,7 @@ fn large_small_med() {
     assert!(arena.contains_group(methyl_acetate, ether));
     assert!(arena.contains_group(methyl_acetate, ketone));
     assert!(arena.contains_group(methyl_acetate, ester));
+    arena.integrity_check();
 }
 
 #[test]
@@ -96,4 +104,5 @@ fn large_small_med_small() {
     assert!(arena.contains_group(methyl_acetate, ether));
     assert!(arena.contains_group(methyl_acetate, ketone));
     assert!(arena.contains_group(methyl_acetate, ester));
+    arena.integrity_check();
 }

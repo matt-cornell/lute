@@ -375,7 +375,9 @@ fn index(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, ReplErro
     catch_panics(|| {
         let _timer = ctx.timings.then(Timer::new);
         let mut out = String::new();
-        let mol = ctx.arena.molecule(*args.get_one("mol").unwrap());
+        let mol = ctx
+            .arena
+            .molecule((*args.get_one::<u32>("mol").unwrap()).into());
         for idx in args.get_many("indices").unwrap() {
             if !out.is_empty() {
                 out.push('\n');
@@ -405,7 +407,9 @@ fn query(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, ReplErro
     catch_panics(|| {
         use petgraph::visit::*;
         let _timer = ctx.timings.then(Timer::new);
-        let mol = ctx.arena.molecule(*args.get_one("mol").unwrap());
+        let mol = ctx
+            .arena
+            .molecule((*args.get_one::<u32>("mol").unwrap()).into());
         let focus = args.get_many::<u32>("focus");
         let graph = args.get_one("graph").unwrap_or(&false);
         match args.get_one("query").unwrap() {
@@ -594,8 +598,12 @@ fn ism_check(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, Repl
             true
         }
         let _timer = ctx.timings.then(Timer::new);
-        let first = ctx.arena.molecule(*args.get_one("first").unwrap());
-        let second = ctx.arena.molecule(*args.get_one("second").unwrap());
+        let first = ctx
+            .arena
+            .molecule((*args.get_one::<u32>("first").unwrap()).into());
+        let second = ctx
+            .arena
+            .molecule((*args.get_one::<u32>("second").unwrap()).into());
         let sub = *args.get_one("sub").unwrap_or(&false);
         let weak = *args.get_one("match").unwrap_or(&false);
         let smatch = *args.get_one("noeq").unwrap_or(&false);
@@ -709,6 +717,15 @@ fn main() {
                     let mut out = Vec::new();
                     ctx.arena.optimize_layout(Some(&mut out));
                     Ok(Some(format!("{out:?}")))
+                })
+            },
+        )
+        .with_command(
+            Command::new("check").about("Check that the invariants hold"),
+            |_, ctx| {
+                catch_panics(|| {
+                    ctx.arena.integrity_check();
+                    Ok(None)
                 })
             },
         )

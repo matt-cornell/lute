@@ -4,6 +4,7 @@
 
 use super::*;
 use crate::graph::*;
+use misc::DataValueMap;
 use petgraph::graph::DefaultIx;
 use petgraph::prelude::*;
 use petgraph::visit::*;
@@ -11,8 +12,9 @@ use slab::Slab;
 use smallvec::SmallVec;
 use std::cell::{Cell, UnsafeCell};
 use std::collections::VecDeque;
-use std::fmt::{self, Debug, Display, Formatter};
+use std::fmt::{self, from_fn, Debug, Display, Formatter};
 use std::hash::Hash;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[macro_export]
 macro_rules! arena {
@@ -57,12 +59,13 @@ pub(crate) struct ModdedMol<Ix> {
     pub patch: SmallVec<(Ix, Atom), 4>,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum MolRepr<Ix: IndexType> {
     Atomic(BSType),
     Broken(BrokenMol<Ix>),
     Modify(ModdedMol<Ix>),
+    TempEmpty,
+    Empty,
 }
 
 /// Wrapper around the index of a molecule
@@ -96,15 +99,56 @@ impl<Ix: Display> Display for MolIndex<Ix> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Fragment<Ix: IndexType, D> {
     pub custom: D,
+    pub seen: bool,
     pub(crate) repr: MolRepr<Ix>,
     pub(crate) size: Ix,
+    refcnt: usize,
 }
 impl<Ix: IndexType, D> Fragment<Ix, D> {
     pub fn size(&self) -> usize {
         self.size.index()
+    }
+    pub fn tracked(&self) -> bool {
+        self.seen || self.size() >= 3
+    }
+}
+impl<Ix: IndexType, D: PartialEq> PartialEq for Fragment<Ix, D> {
+    fn eq(&self, other: &Self) -> bool {
+        self.size == other.size && self.repr == other.repr && self.custom == other.custom
+    }
+}
+
+struct AMatch<'a, Ix: IndexType> {
+    matched: &'a [Cell<(Ix, usize, bool, u8)>],
+    exact: bool,
+}
+impl<G0, G1: GraphBase, Ix: IndexType> NodeMatcher<G0, &GraphCompactor<G1>> for AMatch<'_, Ix>
+where
+    G0: DataValueMap<NodeWeight = Atom>,
+    G1: NodeIndexable,
+    GraphCompactor<G1>: DataValueMap<NodeId = G1::NodeId, NodeWeight = Atom>,
+{
+    fn enabled() -> bool {
+        true
+    }
+    fn eq(&mut self, g0: &G0, g1: &&GraphCompactor<G1>, n0: G0::NodeId, n1: G1::NodeId) -> bool {
+        let Some(l) = g0.node_weight(n0) else {
+            return false;
+        };
+        let Some(mut r) = g1.node_weight(n1) else {
+            return false;
+        };
+        let mat = self.matched[g1.graph.to_index(n1)].get();
+        r.single_to_unknown(mat.3)
+            .expect("Too many unknown groups would exist on this atom!");
+        if self.exact {
+            l == r
+        } else {
+            l.matches(&r)
+        }
     }
 }
 
@@ -114,12 +158,20 @@ impl<Ix: IndexType, D> Fragment<Ix, D> {
 pub struct Arena<Ix: IndexType = DefaultIx, D = ()> {
     graph: Graph<Ix>,
     pub(crate) frags: SmallVec<Fragment<Ix, D>, 16>,
+    next_vacant_frag: Ix,
+    ordered: bool,
+    contained: bool,
+    require_contained: bool,
 }
 impl<Ix: IndexType, D> Arena<Ix, D> {
     pub fn new() -> Self {
         Self {
             graph: Graph::default(),
             frags: SmallVec::new(),
+            next_vacant_frag: IndexType::max(),
+            contained: true,
+            ordered: true,
+            require_contained: true,
         }
     }
 
@@ -128,7 +180,20 @@ impl<Ix: IndexType, D> Arena<Ix, D> {
         &self.graph
     }
 
-    /// Get a reference to the fragments. For debugging purposes only.
+    /// Check if the fragments are ordered by containment, i.e. a fragment contained in another has a smaller index.
+    #[inline(always)]
+    pub fn is_ordered(&self) -> bool {
+        self.ordered
+    }
+
+    /// Check if every (seen) molecule that's been looked up will be tracked as contained in a molecule if it's subgraph isomorphic.
+    /// When false, `contained_group` may return false even when it should return true based on the structure.
+    #[inline(always)]
+    pub fn is_contained(&self) -> bool {
+        self.contained
+    }
+
+    /// Get a reference to the fragments.
     #[inline(always)]
     pub fn expose_frags(&self) -> &[Fragment<Ix, D>] {
         &self.frags
@@ -137,15 +202,52 @@ impl<Ix: IndexType, D> Arena<Ix, D> {
     #[inline]
     fn push_frag(&mut self, frag: Fragment<Ix, D>) -> Ix {
         let max = <Ix as IndexType>::max().index() - 1;
-        let idx = self.frags.len();
-        assert!(
-            idx < max,
-            "too many fragments in molecule: limit of {idx} reached!"
-        );
-        self.frags.push(frag);
-        Ix::new(idx)
+        if self.next_vacant_frag == IndexType::max() {
+            let idx = self.frags.len();
+            assert!(
+                idx < max,
+                "too many fragments in molecule: limit of {idx} reached!"
+            );
+            self.frags.push(frag);
+            Ix::new(idx)
+        } else {
+            let ret = self.next_vacant_frag;
+            let ni = ret.index();
+            self.frags[ni] = frag;
+            self.next_vacant_frag = self.frags[(ni + 1)..]
+                .iter()
+                .position(|f| f.repr == MolRepr::Empty)
+                .map_or_else(IndexType::max, |n| {
+                    let ret = n + ni;
+                    if ret < max {
+                        Ix::new(ret)
+                    } else {
+                        IndexType::max()
+                    }
+                });
+            ret
+        }
+    }
+    fn push_or_set_frag(&mut self, frag: Fragment<Ix, D>, to: Option<Ix>) -> Ix {
+        if let Some(idx) = to {
+            let old = &mut self.frags[idx.index()];
+            old.size = frag.size;
+            #[cfg(debug_assertions)]
+            {
+                let old = std::mem::replace(&mut old.repr, frag.repr);
+                debug_assert_eq!(old, MolRepr::TempEmpty);
+            }
+            #[cfg(not(debug_assertions))]
+            {
+                old.repr = frag.repr;
+            }
+            idx
+        } else {
+            self.push_frag(frag)
+        }
     }
 
+    /// Check if `mol` contains `group`
     #[instrument(level = "trace", skip(self))]
     pub fn contains_group(&self, mol: MolIndex<Ix>, group: MolIndex<Ix>) -> bool {
         let mut stack = SmallVec::<_, 3>::new();
@@ -153,7 +255,6 @@ impl<Ix: IndexType, D> Arena<Ix, D> {
         self.contains_group_impl(mol.0, group.0, &mut stack, &mut seen)
     }
 
-    /// Check if `mol` contains `group`
     fn contains_group_impl(
         &self,
         mol: Ix,
@@ -163,7 +264,7 @@ impl<Ix: IndexType, D> Arena<Ix, D> {
     ) -> bool {
         stack.clear();
         seen.clear();
-        if mol.index() < group.index() {
+        if mol.index() < group.index() && self.ordered {
             return false; // quirk of insertion order
         }
         if mol.index() >= self.frags.len() || group.index() >= self.frags.len() {
@@ -183,7 +284,7 @@ impl<Ix: IndexType, D> Arena<Ix, D> {
                 None => warn!(idx, "OOB node found when checking for membership"),
                 Some(MolRepr::Modify(ModdedMol { base: i, .. })) => stack.push(*i),
                 Some(MolRepr::Broken(BrokenMol { frags, .. })) => stack.extend_from_slice(frags),
-                Some(MolRepr::Atomic(_)) => {}
+                Some(MolRepr::Atomic(_) | MolRepr::TempEmpty | MolRepr::Empty) => {}
             }
         }
         false
@@ -194,14 +295,251 @@ impl<Ix: IndexType, D> Arena<Ix, D> {
     pub fn molecule(&self, mol: MolIndex<Ix>) -> Molecule<Ix, access::RefAcc<Ix, D>> {
         Molecule::from_arena(self, mol)
     }
+
+    /// Try to find a fragment in the arena. Unlike `insert_mol`, this is guaranteed to not (visibly) mutate the arena.
+    /// Note that this can still break invariants in some cases since we kinda ignore fragments that aren't seen.
+    pub fn lookup_mol<G>(&self, mol: G) -> Option<MolIndex<Ix>>
+    where
+        G: Data<NodeWeight = Atom, EdgeWeight = Bond>
+            + misc::DataValueMap
+            + GraphProp<EdgeType = Undirected>
+            + GetAdjacencyMatrix
+            + NodeCompactIndexable
+            + IntoEdgesDirected
+            + IntoNodeReferences,
+    {
+        (0..self.frags.len()).find_map(|i| {
+            let frag = &self.frags[i];
+            (frag.seen && frag.size() == mol.node_count()).then_some(())?;
+            let idx = MolIndex(Ix::new(i));
+            is_isomorphic_matching(self.molecule(idx), mol, PartialEq::eq, PartialEq::eq, false)
+                .then_some(idx)
+        })
+    }
+
+    /// Assert that all invariants requested hold.
+    /// This can be a very expensive operation, and should only be used for debugging.
+    pub fn integrity_check(&self) {
+        use crate::disp::smiles::generate_smiles_quick as gsq;
+        for i in 0..self.frags.len() {
+            for j in 0..self.frags.len() {
+                if i == j {
+                    continue;
+                }
+                let ii = Ix::new(i).into();
+                let ji = Ix::new(j).into();
+                let imol = self.molecule(ii);
+                let jmol = self.molecule(ji);
+                if is_isomorphic_matching(imol, jmol, PartialEq::eq, PartialEq::eq, false) {
+                    panic!(
+                        "fragments {i} and {j} are isomorphic (smiles: {:?})",
+                        gsq(imol)
+                    );
+                }
+                let sub_ism =
+                    is_isomorphic_matching(jmol, imol, Atom::matches, PartialEq::eq, true);
+                let contained = self.contains_group(ii, ji);
+                if self.contained && self.frags[j].seen && sub_ism && !contained {
+                    panic!("fragment {i} (smiles: {:?}) should contain fragment {j} (smiles: {:?}) but it does not", gsq(imol), gsq(jmol));
+                }
+                if self.ordered && contained && j > i {
+                    panic!("fragment {i} (smiles: {:?}) should have a lower index than fragment {j} (smiles: {:?}) but it does not", gsq(imol), gsq(jmol));
+                }
+            }
+        }
+    }
+
+    fn gc_from(&mut self, repr: &MolRepr<Ix>) {
+        let mut stack = SmallVec::<_, 3>::new();
+        match repr {
+            MolRepr::Atomic(b) => {
+                for i in b {
+                    self.graph.remove_node(Ix::new(i).into());
+                }
+            }
+            MolRepr::Broken(BrokenMol { frags, .. }) => stack.extend_from_slice(frags),
+            MolRepr::Modify(ModdedMol { base, .. }) => stack.push(*base),
+            _ => {}
+        }
+        while let Some(i) = stack.pop() {
+            let frag = &mut self.frags[i.index()];
+            frag.refcnt -= 1;
+            if frag.seen || frag.refcnt > 0 || frag.repr == MolRepr::TempEmpty {
+                continue;
+            }
+            if i.index() < self.next_vacant_frag.index() {
+                self.next_vacant_frag = i;
+            }
+            match std::mem::replace(&mut frag.repr, MolRepr::Empty) {
+                MolRepr::Atomic(b) => {
+                    for i in &b {
+                        self.graph.remove_node(Ix::new(i).into());
+                    }
+                }
+                MolRepr::Broken(BrokenMol { frags, .. }) => stack.extend_from_slice(&frags),
+                MolRepr::Modify(ModdedMol { base, .. }) => stack.push(base),
+                _ => {}
+            }
+        }
+    }
+
+    /// Cleanup unused fragments. Probably doesn't need to be called.
+    pub fn gc(&mut self) {
+        let mut stack = SmallVec::<_, 3>::new();
+        for frag in &mut self.frags {
+            if frag.seen || frag.refcnt > 0 {
+                continue;
+            }
+            match std::mem::replace(&mut frag.repr, MolRepr::Empty) {
+                MolRepr::Atomic(b) => {
+                    for i in &b {
+                        self.graph.remove_node(Ix::new(i).into());
+                    }
+                }
+                MolRepr::Broken(BrokenMol { frags, .. }) => stack.extend_from_slice(&frags),
+                MolRepr::Modify(ModdedMol { base, .. }) => stack.push(base),
+                _ => {}
+            }
+        }
+        while let Some(i) = stack.pop() {
+            let frag = &mut self.frags[i.index()];
+            frag.refcnt -= 1;
+            if frag.seen || frag.refcnt > 0 {
+                continue;
+            }
+            match std::mem::replace(&mut frag.repr, MolRepr::Empty) {
+                MolRepr::Atomic(b) => {
+                    for i in &b {
+                        self.graph.remove_node(Ix::new(i).into());
+                    }
+                }
+                MolRepr::Broken(BrokenMol { frags, .. }) => stack.extend_from_slice(&frags),
+                MolRepr::Modify(ModdedMol { base, .. }) => stack.push(base),
+                _ => {}
+            }
+        }
+    }
 }
 impl<Ix: IndexType, D: Default> Arena<Ix, D> {
+    /// Enforce that the arena is ordered.
+    /// See `is_ordered` for what this means.
+    pub fn make_ordered(&mut self) {
+        if !self.ordered {
+            self.optimize_layout(None);
+        }
+    }
+
+    /// Enforce that all arena fragments are contained properly.
+    /// See `is_contained` for what this means.
+    pub fn make_contained(&mut self) {
+        if !self.contained {
+            self.optimize_layout(None);
+        }
+        self.require_contained = true;
+    }
+
+    fn fix_frags_containing(&mut self, idx: Ix) {
+        let _guard = debug_span!("fixing fragments", fixing = idx.index()).entered();
+        let mut queue = Vec::new();
+        let mut graph = UnGraph::<Atom, Bond, Ix>::default();
+        let mut base = 0;
+        let node_count = self.frags[idx.index()].size();
+        let frags = {
+            let mut scratch = Vec::new();
+            let (mut src, mut frags) = self
+                .frags
+                .iter()
+                .enumerate()
+                .filter_map(|(n, frag)| {
+                    let children = match &frag.repr {
+                        MolRepr::TempEmpty | MolRepr::Empty => None?,
+                        MolRepr::Atomic(_) => &[] as &[_],
+                        MolRepr::Broken(b) => &b.frags,
+                        MolRepr::Modify(m) => std::slice::from_ref(&m.base),
+                    };
+                    (frag.size() >= node_count && n != idx.index())
+                        .then_some((Ix::new(n), unsafe { &*(children as *const [Ix]) }))
+                })
+                .partition::<Vec<_>, _>(|v| {
+                    v.1.iter().any(|n| {
+                        let frag = &self.frags[n.index()];
+                        frag.size() >= node_count && *n != idx
+                    })
+                });
+            let mut edge = frags.iter().map(|i| i.0).collect::<Vec<_>>();
+            frags.reserve(src.len());
+
+            while !edge.is_empty() {
+                for (i, subs) in &mut src {
+                    if *i == IndexType::max() {
+                        continue;
+                    }
+                    {
+                        if !subs.iter().any(|n| edge.contains(n)) {
+                            continue;
+                        }
+                    }
+                    scratch.push(*i);
+                    frags.push((*i, *subs));
+                    *i = IndexType::max();
+                }
+                std::mem::swap(&mut edge, &mut scratch);
+                if !edge.is_empty() {
+                    scratch.clear();
+                }
+            }
+            debug_assert!(
+                src.iter().all(|i| i.0 == IndexType::max()),
+                "cycle detected in arena fragments?"
+            );
+            trace!(?frags, "topo-sorted fragments");
+            frags
+        };
+        for (frag, children) in frags {
+            let mol = self.molecule(idx.into());
+            let m2 = self.molecule(frag.into());
+            if !(queue.iter().rev().any(|(q, _)| children.contains(q))
+                || (is_isomorphic_matching(mol, m2, Atom::matches, PartialEq::eq, true)
+                    && !self.contains_group(frag.into(), idx.into())))
+            {
+                trace!(frag = frag.index(), "pruning fragment");
+                continue;
+            }
+            trace!(frag = frag.index(), "adding fragment to graph");
+            for atom in m2.node_references() {
+                graph.add_node(*atom.weight());
+            }
+            for edge in m2.edge_references() {
+                graph.add_edge(
+                    IndexType::new(edge.source().0.index() + base),
+                    IndexType::new(edge.target().0.index() + base),
+                    *edge.weight(),
+                );
+            }
+            base += m2.node_count();
+            queue.push((frag, base));
+        }
+        self.ordered &= !queue.is_empty();
+        for frag in &queue {
+            let old = std::mem::replace(&mut self.frags[frag.0.index()].repr, MolRepr::TempEmpty);
+            self.gc_from(&old);
+        }
+        base = 0;
+        for (f, end) in queue {
+            debug!(frag = f.index(), "re-inserting fragment");
+            let new_mol = RangeFiltered::new(&graph, base, end);
+            self.insert_mol_impl(&new_mol, 0, None, Some(f), 0);
+            base = end;
+        }
+    }
+
     /// Insert a molecule into the arena, deduplicating common parts.
     fn insert_mol_impl<G>(
         &mut self,
         mol: G,
         isms_from: usize,
         bits: Option<(&mut BSType, usize)>,
+        to: Option<Ix>,
         depth: usize,
     ) -> (Ix, Vec<usize>)
     where
@@ -214,16 +552,59 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
             + IntoNodeReferences,
         G::NodeId: Hash + Eq,
     {
+        let _guard = (depth == 0).then(|| {
+            info_span!(
+                "inserting molecule",
+                id = INSERT_ID.fetch_add(1, Ordering::Relaxed),
+            )
+            .entered()
+        });
+
         let node_count = if let Some((_, count)) = &bits {
             *count
         } else {
             mol.node_count()
         };
-        trace!(?bits, depth, "entering impl");
+        if node_count == 0 {
+            debug!("handling special case for empty molecule");
+            if let Some(f) = self.frags.iter().position(|f| f.size() == 0) {
+                return (Ix::new(f), Vec::new());
+            } else {
+                let idx = self.push_or_set_frag(
+                    Fragment {
+                        custom: D::default(),
+                        repr: MolRepr::TempEmpty,
+                        size: Ix::new(0),
+                        seen: false,
+                        refcnt: 0,
+                    },
+                    to,
+                );
+                return (idx, Vec::new());
+            }
+        }
+
+        debug!(
+            depth,
+            bits = ?bits.as_ref().map(|i| &i.0),
+            smiles = event_enabled!(Level::TRACE, "entering impl")
+                .then(|| {
+                    use crate::disp::smiles::generate_smiles_quick as smiles;
+                    if let Some((bits, _)) = &bits {
+                        smiles(&BitFiltered::<_, _, ATOM_BIT_STORAGE, false>::new(
+                            mol,
+                            (**bits).clone(),
+                        ))
+                    } else {
+                        smiles(mol)
+                    }
+                }),
+            "entering impl"
+        );
         struct OnExit(usize);
         impl Drop for OnExit {
             fn drop(&mut self) {
-                trace!(depth = self.0, "exiting impl");
+                debug!(depth = self.0, "exiting impl");
             }
         }
         let _guard = OnExit(depth);
@@ -234,18 +615,30 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
         );
         let mut scratch = Vec::new();
         let mut frags = {
-            let (frags, mut src) = self.frags[isms_from..]
+            let (mut src, frags) = self
+                .frags
                 .iter()
                 .enumerate()
                 .filter_map(|(n, frag)| {
                     let children = match &frag.repr {
+                        MolRepr::TempEmpty | MolRepr::Empty => None?,
                         MolRepr::Atomic(_) => &[] as &[_],
                         MolRepr::Broken(b) => &b.frags,
                         MolRepr::Modify(m) => std::slice::from_ref(&m.base),
                     };
-                    (frag.size() <= node_count).then_some((n + isms_from, children))
+                    (frag.size() == node_count
+                        || (frag.size() < node_count && n >= isms_from && frag.tracked()))
+                    .then_some((n, children))
                 })
-                .partition::<Vec<_>, _>(|v| v.1.is_empty());
+                .partition::<Vec<_>, _>(|v| {
+                    v.1.iter().any(|n| {
+                        let frag = &self.frags[n.index()];
+                        frag.size() == node_count
+                            || (frag.size() < node_count
+                                && n.index() >= isms_from
+                                && frag.tracked())
+                    })
+                });
             let mut frags = VecDeque::from(frags);
             let mut edge = frags.iter().map(|i| i.0).collect::<Vec<_>>();
             frags.reserve(src.len());
@@ -270,13 +663,14 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
             }
             debug_assert!(
                 src.iter().all(|i| i.0 == usize::MAX),
-                "cycle detected in arena fragments?"
+                "cycle detected in arena fragments?\nsrc: {src:?}"
             );
-            debug!(?frags, "topo-sorted fragments");
+            trace!(?frags, "topo-sorted fragments");
             frags
         };
+        let default = (<Ix as IndexType>::max(), usize::MAX, false, 0u8);
         // vec of (index in frags, index in parts, perfect match)
-        let mut matched = vec![(IndexType::max(), usize::MAX, false, 0u8); mol.node_count()]; // this may be inefficient for matching small fragments
+        let mut matched = vec![default; mol.node_count()]; // this may be inefficient for matching small fragments
         if let Some((bits, _)) = &bits {
             for (n, (_, _, _, i)) in matched.iter_mut().enumerate() {
                 if !bits.get(n) {
@@ -295,9 +689,8 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
         let pred_buf = UnsafeCell::new(SmallVec::new());
         let mut prune_buf = Vec::new();
         let mut found = Slab::new();
-        while let Some((i, _)) = frags.pop_front() {
-            trace!(i, "checking for isomorphisms");
-            let i = Ix::new(i);
+        while let Some((i_, _)) = frags.pop_front() {
+            let i = Ix::new(i_);
             let matched = Cell::from_mut(&mut *matched).as_slice_of_cells();
             let filtered = NodeFilter::new(mol, |n| {
                 let idx = mol.to_index(n);
@@ -307,21 +700,34 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
                     }
                 }
                 let v = matched[idx].get();
+                if v.0 == IndexType::max() {
+                    return true;
+                }
+                let f1 = &self.frags[i.index()];
+                let f2 = &self.frags[v.0.index()];
                 // SAFETY: the UnsafeCells' data doesn't escape the call
-                unsafe {
-                    v.0 == IndexType::max()
-                        || (i != v.0
+                f1.seen.cmp(&f2.seen).then(f1.size().cmp(&f2.size())) == std::cmp::Ordering::Greater
+                    || unsafe {
+                        i != v.0
                             && self.contains_group_impl(
                                 i,
                                 v.0,
                                 &mut *pred_buf.get(),
                                 &mut *seen_buf.get(),
-                            ))
-                }
+                            )
+                    }
             });
+            trace!(
+                i = i.index(),
+                filtered = ?from_fn(|f| f.debug_list().entries(filtered.node_identifiers().map(|i| mol.to_index(i))).finish()),
+                "checking for isomorphisms"
+            );
             let compacted = GraphCompactor::<NodeFilter<G, _>>::new(filtered);
             let frag = self.molecule(i.into());
-            let mut amatch = Atom::matches;
+            let mut amatch = AMatch {
+                matched,
+                exact: i_ < isms_from.index() || !self.frags[i_].tracked(),
+            };
             let mut bmatch = PartialEq::eq;
             let mut found_any = false;
             'isms: for mut ism in
@@ -351,11 +757,20 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
                     prune_buf.push((Ix::new(new), matches));
                 }
                 let idx = found.insert((i, ism));
+                scratch.clear();
                 for &(p, m) in &prune_buf {
                     let c = &matched[p.index()];
                     let u = c.get().3;
                     let old_idx = c.replace((i, idx, m, u)).1;
-                    found.try_remove(old_idx);
+                    let res = found.try_remove(old_idx).is_some();
+                    if res {
+                        scratch.push(old_idx);
+                    }
+                }
+                for c in matched {
+                    if scratch.contains(&c.get().1) {
+                        c.set(default);
+                    }
                 }
                 found_any = true;
             }
@@ -422,14 +837,16 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
             if patch.is_empty() {
                 continue;
             }
+            self.frags[i.index()].refcnt += 1;
             *i = self.push_frag(Fragment {
                 custom: D::default(),
                 repr: MolRepr::Modify(ModdedMol { base: *i, patch }),
                 size: Ix::new(ism.len()),
+                seen: ism.len() >= 3,
+                refcnt: 0,
             });
         }
         if found.is_empty() {
-            debug!("no fragments found, inserting molecule");
             let mut mapping = vec![(IndexType::max(), 0); mol.node_count()];
             let mut count = 0;
             for n in mol.node_references() {
@@ -458,16 +875,24 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
                 .into_iter()
                 .filter_map(|x| (x.0 != IndexType::max()).then_some((x.0.index(), x.1)))
                 .unzip();
-            let idx = self.push_frag(Fragment {
-                custom: D::default(),
-                repr: MolRepr::Atomic(new_bits),
-                size: Ix::new(count),
-            });
+            let idx = self.push_or_set_frag(
+                Fragment {
+                    custom: D::default(),
+                    repr: MolRepr::Atomic(new_bits),
+                    size: Ix::new(count),
+                    seen: false,
+                    refcnt: 0,
+                },
+                to,
+            );
+            debug!(idx = idx.index(), "no fragments found, inserting molecule");
             return (idx, new_map);
         } else if found.len() == 1 {
             let (n, (_, ism)) = found.iter().next().unwrap();
             if ism.len() == mol.node_count() {
-                return found.remove(n);
+                let res = found.remove(n);
+                debug!(idx = res.0.index(), "found a single fragment");
+                return res;
             }
         }
         let old_start = self.frags.len();
@@ -483,8 +908,13 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
             let mut ism_buf = Vec::new();
             while let Some(count) = cgi.step(&filtered, &mut bits) {
                 trace!(size = count.get(), "inserting fragment");
-                let (i, ism) =
-                    self.insert_mol_impl(mol, old_start, Some((&mut bits, count.get())), depth + 1);
+                let (i, ism) = self.insert_mol_impl(
+                    mol,
+                    old_start,
+                    Some((&mut bits, count.get())),
+                    None,
+                    depth + 1,
+                );
                 ism_buf.clone_from(&ism);
                 let idx = found.insert((i, ism));
                 for ni in ism_buf.drain(..) {
@@ -503,7 +933,25 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
             true
         });
         if found.len() == 1 {
-            return found.into_iter().next().unwrap().1;
+            let frag = found.into_iter().next().unwrap().1;
+            debug!(idx = frag.0.index(), "inserted a single fragment");
+            if let Some(idx) = to {
+                if idx == frag.0 {
+                    return frag;
+                }
+                let [old, new] = self
+                    .frags
+                    .get_many_mut([frag.0.index(), idx.index()])
+                    .unwrap();
+                std::mem::swap(&mut old.repr, &mut new.repr);
+                std::mem::swap(&mut old.size, &mut new.size);
+                if frag.0.index() + 1 == self.frags.len() {
+                    self.frags.pop();
+                }
+                return (idx, frag.1);
+            } else {
+                return frag;
+            }
         }
         let mut bonds = SmallVec::with_capacity(found.len().saturating_sub(1));
         for e in mol.edge_references() {
@@ -537,16 +985,26 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
         } else {
             Vec::new()
         };
-        let frags = found.into_iter().map(|f| f.1 .0).collect();
-        let idx = self.push_frag(Fragment {
+        let frags = found
+            .into_iter()
+            .map(|f| {
+                let res = f.1 .0;
+                self.frags[res.index()].refcnt += 1;
+                res
+            })
+            .collect();
+        let frag = Fragment {
             custom: D::default(),
             repr: MolRepr::Broken(BrokenMol { frags, bonds }),
             size: Ix::new(node_count),
-        });
+            seen: false,
+            refcnt: 0,
+        };
+        let idx = self.push_or_set_frag(frag, to);
+        debug!(idx = idx.index(), "returning a new broken fragment");
         (idx, out_map)
     }
-    #[inline(always)]
-    #[instrument(skip(self, mol), fields(size = mol.node_count()))]
+
     pub fn insert_mol<G>(&mut self, mol: G) -> MolIndex<Ix>
     where
         G: Data<NodeWeight = Atom, EdgeWeight = Bond>
@@ -558,7 +1016,20 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
             + IntoNodeReferences,
         G::NodeId: Hash + Eq,
     {
-        self.insert_mol_impl(mol, 0, None, 0).0.into()
+        debug!(
+            size = mol.node_count(),
+            smiles = event_enabled!(Level::TRACE, "entering impl")
+                .then(|| crate::disp::smiles::generate_smiles_quick(mol)),
+            "top-level insertion"
+        );
+        let res = self.insert_mol_impl(mol, 0, None, None, 0).0;
+        self.frags[res.index()].seen = true;
+        if self.require_contained {
+            self.fix_frags_containing(res);
+        } else {
+            self.contained = false;
+        }
+        res.into()
     }
 
     /// Optimize the layout, ensuring that all elements are inserted optimally.
@@ -566,6 +1037,8 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
     #[instrument(skip_all, fields(perm = perm.is_some()))]
     pub fn optimize_layout(&mut self, mut perm: Option<&mut Vec<MolIndex<Ix>>>) {
         if self.frags.is_empty() {
+            self.ordered = true;
+            self.contained = true;
             return;
         }
         if let Some(perm) = &mut perm {
@@ -576,19 +1049,21 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
         let mut graph_indices = Vec::with_capacity(self.frags.len());
         let mut base = 0;
         for i in 0..self.frags.len() {
-            trace!(i, "adding fragment to graph");
-            let mol = self.molecule(Ix::new(i).into());
-            mol.node_references().for_each(|n| {
-                graph.add_node(n.atom);
-            });
-            mol.edge_references().for_each(|e| {
-                graph.add_edge(
-                    Ix::new(e.source().0.index() + base).into(),
-                    Ix::new(e.target().0.index() + base).into(),
-                    *e.weight(),
-                );
-            });
-            base += mol.node_count();
+            if self.frags[i].tracked() {
+                trace!(i, "adding fragment to graph");
+                let mol = self.molecule(Ix::new(i).into());
+                mol.node_references().for_each(|n| {
+                    graph.add_node(n.atom);
+                });
+                mol.edge_references().for_each(|e| {
+                    graph.add_edge(
+                        Ix::new(e.source().0.index() + base).into(),
+                        Ix::new(e.target().0.index() + base).into(),
+                        *e.weight(),
+                    );
+                });
+                base += mol.node_count();
+            }
             graph_indices.push(base);
         }
         debug!(
@@ -601,7 +1076,10 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
             .frags
             .iter()
             .enumerate()
-            .map(|(n, s)| (Ix::new(n), s.size()))
+            .map(|(n, s)| {
+                let seen = s.tracked();
+                (Ix::new(n), if seen { s.size() } else { 0 }, seen)
+            })
             .collect::<Vec<_>>();
         frags.sort_by_key(|x| x.1);
         let mut start_ = Some(0);
@@ -617,8 +1095,11 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
                 &mut frags[start..]
             };
             start_ = len.map(|l| start + l);
+            if base == 0 {
+                continue;
+            }
             scratch.clear();
-            scratch.extend(slice.iter().map(|s| (s.0, Vec::new())));
+            scratch.extend(slice.iter().map(|s| (s.0, Vec::new(), s.2)));
             for i in 0..scratch.len() {
                 for j in 0..scratch.len() {
                     if i == j {
@@ -647,8 +1128,13 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
                         },
                         graph_indices[frag_1],
                     );
-                    let res =
-                        is_isomorphic_matching(&range_0, &range_1, Atom::matches, PartialEq::eq);
+                    let res = is_isomorphic_matching(
+                        &range_0,
+                        &range_1,
+                        Atom::matches,
+                        PartialEq::eq,
+                        true,
+                    );
                     if res {
                         scratch[j].1.push(Ix::new(frag_0));
                     }
@@ -657,22 +1143,25 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
             let mut i = 0;
             while !scratch.is_empty() {
                 prune_buf.clear();
-                scratch.retain(|(n, c)| {
+                scratch.retain(|(n, c, s)| {
                     !c.is_empty() || {
-                        slice[i] = (*n, 0);
+                        slice[i] = (*n, 0, *s);
                         i += 1;
                         prune_buf.push(*n);
                         false
                     }
                 });
-                for (_, c) in &mut scratch {
+                for (_, c, _) in &mut scratch {
                     c.retain(|n| !prune_buf.contains(n));
                 }
             }
         }
         self.graph.clear();
         self.frags.clear();
-        for &(n, _) in &frags {
+        for &(n, _, s) in &frags {
+            if !s {
+                continue;
+            }
             let frag = n.index();
             trace!(frag, "re-inserting fragment");
             let range = RangeFiltered::new(
@@ -684,12 +1173,14 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
                 },
                 graph_indices[frag],
             );
-            let idx = self.insert_mol(&range);
+            let idx = self.insert_mol_impl(&range, 0, None, None, 0).0;
             debug!(old = frag, new = idx.index(), "re-inserting fragment");
             if let Some(perm) = &mut perm {
-                perm[frag] = idx;
+                perm[frag] = idx.into();
             }
         }
+        self.ordered = true;
+        self.contained = true;
     }
 }
 impl<Ix: IndexType, D> Default for Arena<Ix, D> {
@@ -697,3 +1188,5 @@ impl<Ix: IndexType, D> Default for Arena<Ix, D> {
         Self::new()
     }
 }
+
+static INSERT_ID: AtomicUsize = AtomicUsize::new(0);
