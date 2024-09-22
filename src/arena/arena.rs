@@ -440,6 +440,7 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
             debug!(frag = f.index(), "re-inserting fragment");
             let new_mol = RangeFiltered::new(&graph, base, end);
             self.insert_mol_impl(&new_mol, 0, None, Some(f), 0);
+            base = end;
         }
         self.invariants = match self.invariants {
             InvariantState::AllFragments | InvariantState::AllOrdered => {
