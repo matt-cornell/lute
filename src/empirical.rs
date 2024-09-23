@@ -51,7 +51,7 @@ impl EmpiricalFormula {
     pub fn new() -> Self {
         Self::default()
     }
-    /// Parse an input, for example `C2H3O2-` for an acetation anion.
+    /// Parse an input, for example `C2H3O2-` for an acetate anion.
     /// It's forgiving as far as orders an repeated inputs go, so `CH3COO-` would also be accepted.
     pub fn parse_str(s: impl AsRef<[u8]>) -> Result<Self, EmpiricalError> {
         use atoi::FromRadix10;
