@@ -63,23 +63,16 @@ pub trait ArenaAccessorMut: ArenaAccessor {
     ) -> Self::MappedRefMut<'a, U>;
 }
 
-/// This trait allows access to a backing arena.
+/// Allow access to an arena.
+///
+/// The purpose of this type is to allow `RefCell`s and similar types to be passed to things expecting mutability.
 pub trait ArenaAccessible {
     type Ix: IndexType;
-    type Access<'a>: ArenaAccessor<Ix = Self::Ix> + 'a
+    type Access<'a>: ArenaAccessor<Ix = Self::Ix>
     where
         Self: 'a;
 
     fn get_accessor(&self) -> Self::Access<'_>;
-}
-
-/// This trait also allows access to a graph through an internally mutable type.
-pub trait ArenaAccessibleMut: ArenaAccessible {
-    type AccessMut<'a>: ArenaAccessorMut<Ix = Self::Ix> + 'a
-    where
-        Self: 'a;
-
-    fn get_accessor_mut(&self) -> Self::AccessMut<'_>;
 }
 
 impl<T: ArenaAccessible> ArenaAccessible for &T {
@@ -88,13 +81,6 @@ impl<T: ArenaAccessible> ArenaAccessible for &T {
 
     fn get_accessor(&self) -> Self::Access<'_> {
         T::get_accessor(self)
-    }
-}
-impl<T: ArenaAccessibleMut> ArenaAccessibleMut for &T {
-    type AccessMut<'a> = T::AccessMut<'a> where Self: 'a;
-
-    fn get_accessor_mut(&self) -> Self::AccessMut<'_> {
-        T::get_accessor_mut(self)
     }
 }
 
@@ -188,13 +174,6 @@ impl<Ix: IndexType, D> ArenaAccessible for ArenaPtr<Ix, D> {
     type Access<'a> = PtrAcc<Ix, D> where D: 'a;
 
     fn get_accessor(&self) -> PtrAcc<Ix, D> {
-        PtrAcc(self.0)
-    }
-}
-impl<Ix: IndexType, D> ArenaAccessibleMut for ArenaPtr<Ix, D> {
-    type AccessMut<'a> = PtrAcc<Ix, D> where D: 'a;
-
-    fn get_accessor_mut(&self) -> PtrAcc<Ix, D> {
         PtrAcc(self.0)
     }
 }
@@ -330,13 +309,6 @@ impl<Ix: IndexType, D> ArenaAccessible for RefCell<Arena<Ix, D>> {
         RefCellAcc(self)
     }
 }
-impl<Ix: IndexType, D> ArenaAccessibleMut for RefCell<Arena<Ix, D>> {
-    type AccessMut<'a> = RefCellAcc<'a, Ix, D> where D: 'a;
-
-    fn get_accessor_mut(&self) -> RefCellAcc<Ix, D> {
-        RefCellAcc(self)
-    }
-}
 
 #[doc(hidden)]
 #[derive(Debug)]
@@ -419,13 +391,6 @@ impl<Ix: IndexType, D, R: RawRwLock> ArenaAccessible for RwLock<R, Arena<Ix, D>>
         RwLockAcc(self)
     }
 }
-impl<Ix: IndexType, D, R: RawRwLock> ArenaAccessibleMut for RwLock<R, Arena<Ix, D>> {
-    type AccessMut<'a> = RwLockAcc<'a, Ix, D, R> where R: 'a, D: 'a;
-
-    fn get_accessor_mut(&self) -> RwLockAcc<Ix, D, R> {
-        RwLockAcc(self)
-    }
-}
 
 impl<T: ArenaAccessible> ArenaAccessible for Rc<T> {
     type Ix = T::Ix;
@@ -435,13 +400,6 @@ impl<T: ArenaAccessible> ArenaAccessible for Rc<T> {
         T::get_accessor(self)
     }
 }
-impl<T: ArenaAccessibleMut> ArenaAccessibleMut for Rc<T> {
-    type AccessMut<'a> = T::AccessMut<'a> where T: 'a;
-
-    fn get_accessor_mut(&self) -> Self::AccessMut<'_> {
-        T::get_accessor_mut(&**self)
-    }
-}
 
 impl<T: ArenaAccessible> ArenaAccessible for Arc<T> {
     type Ix = T::Ix;
@@ -449,12 +407,5 @@ impl<T: ArenaAccessible> ArenaAccessible for Arc<T> {
 
     fn get_accessor(&self) -> Self::Access<'_> {
         T::get_accessor(self)
-    }
-}
-impl<T: ArenaAccessibleMut> ArenaAccessibleMut for Arc<T> {
-    type AccessMut<'a> = T::AccessMut<'a> where T: 'a;
-
-    fn get_accessor_mut(&self) -> Self::AccessMut<'_> {
-        T::get_accessor_mut(&**self)
     }
 }

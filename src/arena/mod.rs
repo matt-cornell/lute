@@ -6,7 +6,7 @@ pub mod access;
 pub mod arena;
 pub mod molecule;
 
-pub use access::{ArenaAccessible, ArenaAccessibleMut, ArenaAccessor, ArenaAccessorMut};
+pub use access::{ArenaAccessible, ArenaAccessor, ArenaAccessorMut};
 pub use arena::Arena;
 pub use molecule::Molecule;
 

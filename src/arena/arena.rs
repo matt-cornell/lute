@@ -81,12 +81,6 @@ impl<Ix: IndexType> MolIndex<Ix> {
     ) -> Molecule<Ix, R::Access<'a>> {
         Molecule::from_arena(arena, *self)
     }
-    pub fn in_mut_arena<'a, 'b: 'a, R: ArenaAccessibleMut<Ix = Ix>>(
-        &self,
-        arena: &'b R,
-    ) -> Molecule<Ix, R::AccessMut<'a>> {
-        Molecule::from_mut_arena(arena, *self)
-    }
 }
 impl<Ix> From<Ix> for MolIndex<Ix> {
     fn from(value: Ix) -> Self {

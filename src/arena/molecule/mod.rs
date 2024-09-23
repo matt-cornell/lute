@@ -28,19 +28,6 @@ impl<Ix, R> Molecule<Ix, R> {
         }
     }
 
-    pub fn from_mut_arena<'a, 'b: 'a, A: ArenaAccessibleMut<Ix = Ix, AccessMut<'a> = R> + 'a>(
-        arena: &'b A,
-        index: MolIndex<Ix>,
-    ) -> Self
-    where
-        Self: 'a,
-    {
-        Self {
-            arena: arena.get_accessor_mut(),
-            index,
-        }
-    }
-
     pub fn arena(&self) -> R::Ref<'_>
     where
         R: ArenaAccessor<Ix = Ix>,
