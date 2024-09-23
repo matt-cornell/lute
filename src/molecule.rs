@@ -1,12 +1,14 @@
 use crate::core::*;
 use crate::empirical::*;
 use crate::graph::misc::DataValueMap;
+use crate::prelude::*;
 use modular_bitfield::prelude::*;
 use petgraph::visit::*;
 use smallvec::{smallvec, SmallVec};
 use std::cell::UnsafeCell;
 use std::cmp::Ordering;
 use std::fmt::{self, Debug, Formatter};
+use std::hash::Hash;
 
 const ELECTRON_COUNTS: &[u8] = &[0, 2, 10, 18, 30, 36, 54, 86, 118];
 
@@ -277,6 +279,7 @@ where
             .sum()
     }
 
+    /// Get the empirical formula of this molecule.
     fn empirical(&'a self) -> EmpiricalFormula
     where
         &'a Self: IntoNodeReferences,
@@ -325,6 +328,31 @@ where
         Self: Visitable + Sized,
     {
         CipPriority::on_branch(self, atom, center)
+    }
+
+    /// Format this molecule as SMILES
+    fn smiles(&'a self, cfg: SmilesConfig) -> String
+    where
+        &'a Self: DataValueMap + IntoNodeReferences + IntoEdges + NodeCount + Visitable,
+        <&'a Self as GraphBase>::NodeId: Hash + Eq,
+    {
+        generate_smiles(self, cfg)
+    }
+
+    /// A lighter way to format this molecule as SMILES, ignoring chirality and canonicalization.
+    /// Smaller, faster, and has weaker trait requirements.
+    fn lightweight_smiles(&'a self) -> String
+    where
+        &'a Self: IntoNodeReferences + IntoEdges + NodeCount,
+        <&'a Self as GraphBase>::NodeId: Hash + Eq,
+    {
+        generate_smiles_quick(self)
+    }
+
+    /// Render this molecule to an SVG.
+    #[cfg(feature = "coordgen")]
+    fn svg(&'a self) -> SvgFormatter<&'a Self> {
+        SvgFormatter::new(self)
     }
 }
 

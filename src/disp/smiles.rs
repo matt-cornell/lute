@@ -489,10 +489,7 @@ where
 #[tracing::instrument(skip(graph))]
 pub fn generate_smiles_quick<G>(graph: G) -> String
 where
-    G: DataValueMap<NodeWeight = Atom, EdgeWeight = Bond>
-        + IntoNodeReferences
-        + IntoEdges
-        + NodeCount,
+    G: Data<NodeWeight = Atom, EdgeWeight = Bond> + IntoNodeReferences + IntoEdges + NodeCount,
     G::NodeId: Hash + Eq,
 {
     if graph.node_count() == 0 {
