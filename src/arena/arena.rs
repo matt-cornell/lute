@@ -49,8 +49,8 @@ pub(crate) struct InterFragBond<Ix> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct BrokenMol<Ix> {
-    pub frags: SmallVec<Ix, 4>,
-    pub bonds: SmallVec<InterFragBond<Ix>, 4>,
+    pub frags: SmallVec<Ix, 2>,
+    pub bonds: SmallVec<InterFragBond<Ix>, 2>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -80,12 +80,6 @@ impl<Ix: IndexType> MolIndex<Ix> {
         arena: &'b R,
     ) -> Molecule<Ix, R::Access<'a>> {
         Molecule::from_arena(arena, *self)
-    }
-    pub fn in_mut_arena<'a, 'b: 'a, R: ArenaAccessibleMut<Ix = Ix>>(
-        &self,
-        arena: &'b R,
-    ) -> Molecule<Ix, R::AccessMut<'a>> {
-        Molecule::from_mut_arena(arena, *self)
     }
 }
 impl<Ix> From<Ix> for MolIndex<Ix> {
@@ -157,7 +151,7 @@ where
 #[derive(Debug, Clone)]
 pub struct Arena<Ix: IndexType = DefaultIx, D = ()> {
     graph: Graph<Ix>,
-    pub(crate) frags: SmallVec<Fragment<Ix, D>, 16>,
+    pub(crate) frags: SmallVec<Fragment<Ix, D>, 8>,
     next_vacant_frag: Ix,
     ordered: bool,
     contained: bool,
@@ -187,6 +181,7 @@ impl<Ix: IndexType, D> Arena<Ix, D> {
     }
 
     /// Check if every (seen) molecule that's been looked up will be tracked as contained in a molecule if it's subgraph isomorphic.
+    ///
     /// When false, `contained_group` may return false even when it should return true based on the structure.
     #[inline(always)]
     pub fn is_contained(&self) -> bool {
@@ -297,6 +292,7 @@ impl<Ix: IndexType, D> Arena<Ix, D> {
     }
 
     /// Try to find a fragment in the arena. Unlike `insert_mol`, this is guaranteed to not (visibly) mutate the arena.
+    ///
     /// Note that this can still break invariants in some cases since we kinda ignore fragments that aren't seen.
     pub fn lookup_mol<G>(&self, mol: G) -> Option<MolIndex<Ix>>
     where
@@ -318,6 +314,7 @@ impl<Ix: IndexType, D> Arena<Ix, D> {
     }
 
     /// Assert that all invariants requested hold.
+    ///
     /// This can be a very expensive operation, and should only be used for debugging.
     pub fn integrity_check(&self) {
         use crate::disp::smiles::generate_smiles_quick as gsq;

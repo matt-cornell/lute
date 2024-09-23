@@ -10,7 +10,7 @@ fn atom_check() {
     // roh
     let mut atom2 = Atom::new(8);
     atom2.add_hydrogens(1).unwrap();
-    atom2.add_rs(1).unwrap();
+    atom2.add_unknown(1).unwrap();
     // -oh (in a molecule)
     let mut atom3 = Atom::new(8);
     atom3.add_hydrogens(1).unwrap();
@@ -18,7 +18,7 @@ fn atom_check() {
 
     // ror
     let mut atom4 = Atom::new(8);
-    atom4.add_rs(2).unwrap();
+    atom4.add_unknown(2).unwrap();
 
     assert_ne!(atom1, atom2);
     assert!(!atom1.matches(&atom2));
@@ -32,6 +32,6 @@ fn atom_check() {
 fn atom_eq_check() {
     let mut atom = Atom::new(6);
     atom.add_hydrogens(3).unwrap();
-    atom.add_rs(1).unwrap();
+    atom.add_unknown(1).unwrap();
     assert_eq!(atom, atom);
 }

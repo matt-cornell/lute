@@ -1,6 +1,8 @@
 use std::fmt::{self, Debug, Display, Formatter};
 
-/// Stack-allocated char-like type, for use with errors
+/// Stack-allocated char-like type, for use with errors.
+///
+/// This can hold either a single character or a short string.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EChar<const N: usize = 4> {
     buf: [u8; N],
@@ -24,21 +26,26 @@ impl<const N: usize> Display for EChar<N> {
     }
 }
 
+/// A wrapper around a byte that prints escape codes.
+///
+/// The `Display` impl substitutes `\n`, `\r`, `\t`, and hex codes, and wraps the output in single quotes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TextByte(pub u8);
 impl Display for TextByte {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self.0 {
             c @ 32..=127 => write!(f, "'{}'", c as char),
-            b'\n' => f.write_str("\\n"),
-            b'\r' => f.write_str("\\r"),
-            b'\t' => f.write_str("\\t"),
+            b'\n' => f.write_str("'\\n'"),
+            b'\r' => f.write_str("'\\r'"),
+            b'\t' => f.write_str("'\\t'"),
             _ => write!(f, "'\\x{:0>2x}'", self.0),
         }
     }
 }
 
-/// Simple intermediate for index printer that doesn't allocate
+/// Simple intermediate for index printer that doesn't allocate.
+///
+/// If it holds `usize::MAX`, prints "unknown index", else "byte {n}"
 pub struct IdxPrint(pub usize);
 impl Display for IdxPrint {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {

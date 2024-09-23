@@ -15,6 +15,7 @@ macro_rules! empirical {
     };
 }
 
+/// An error that occurred when parsing an empirical formula.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Error)]
 pub enum EmpiricalErrorKind {
     #[error("unknown atom {0}")]
@@ -24,6 +25,7 @@ pub enum EmpiricalErrorKind {
     #[error("unexpected character: {0}")]
     UnexpectedChar(EChar),
 }
+/// An error that occurred when parsing an empirical formula.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Error)]
 #[error("error at {} in empirical formula: {kind}", IdxPrint(*.idx))]
 pub struct EmpiricalError {
@@ -36,6 +38,9 @@ impl EmpiricalError {
     }
 }
 
+/// Empirical formula of a molecule, just a map of atoms to their counts.
+///
+/// The primary intended use of the molecule is its `Display` impl. The default output gives an ASCII output, while the alternate uses unicode super- and subscripts.
 #[derive(Default, Clone, PartialEq, Eq, Hash)]
 pub struct EmpiricalFormula {
     lower: [usize; 18],
@@ -46,6 +51,8 @@ impl EmpiricalFormula {
     pub fn new() -> Self {
         Self::default()
     }
+    /// Parse an input, for example `C2H3O2-` for an acetate anion.
+    /// It's forgiving as far as orders an repeated inputs go, so `CH3COO-` would also be accepted.
     pub fn parse_str(s: impl AsRef<[u8]>) -> Result<Self, EmpiricalError> {
         use atoi::FromRadix10;
         use EmpiricalErrorKind::*;
@@ -113,6 +120,7 @@ impl EmpiricalFormula {
         }
     }
 
+    /// Get the amount of an atom in the molecule. Defaults to 0 if that atom isn't present.
     pub fn get_atom(&mut self, atom: u8) -> usize {
         if atom < 18 {
             self.lower[atom as usize]
@@ -120,6 +128,7 @@ impl EmpiricalFormula {
             self.spill.get(&atom).copied().unwrap_or(0)
         }
     }
+    /// Set the number of an atom in the molecule.
     pub fn set_atom(&mut self, atom: u8, count: usize) {
         if atom < 18 {
             self.lower[atom as usize] = count;
@@ -129,6 +138,7 @@ impl EmpiricalFormula {
             self.spill.insert(atom, count);
         }
     }
+    /// Adds to the number of an atom in the molecule.
     pub fn add_atom(&mut self, atom: u8, count: usize) {
         if atom < 18 {
             self.lower[atom as usize] += count;

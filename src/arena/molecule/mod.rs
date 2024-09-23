@@ -7,12 +7,11 @@ pub mod graph_traits;
 mod node_impls;
 pub use node_impls::*;
 
-/// A `Molecule` acts like a graph, and can have graph algorithms used on it. It's immutable, with all
-/// mutations making (efficient) copies.
+/// Main API to access molecules and fragments stored in an arena.
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct Molecule<Ix, R> {
-    arena: R,
+    pub arena: R,
     pub index: MolIndex<Ix>,
 }
 impl<Ix, R> Molecule<Ix, R> {
@@ -25,19 +24,6 @@ impl<Ix, R> Molecule<Ix, R> {
     {
         Self {
             arena: arena.get_accessor(),
-            index,
-        }
-    }
-
-    pub fn from_mut_arena<'a, 'b: 'a, A: ArenaAccessibleMut<Ix = Ix, AccessMut<'a> = R> + 'a>(
-        arena: &'b A,
-        index: MolIndex<Ix>,
-    ) -> Self
-    where
-        Self: 'a,
-    {
-        Self {
-            arena: arena.get_accessor_mut(),
             index,
         }
     }
@@ -69,6 +55,16 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
             &mut a.frags[self.index.index()].custom
         })
     }
+
+    pub fn fragment(&self) -> R::MappedRef<'_, Fragment<Ix, R::Data>> {
+        R::map_ref(self.arena(), |a| &a.frags[self.index.index()])
+    }
+    pub fn fragment_mut(&self) -> R::MappedRefMut<'_, Fragment<Ix, R::Data>>
+    where
+        R: ArenaAccessorMut,
+    {
+        R::map_ref_mut(self.arena_mut(), |a| &mut a.frags[self.index.index()])
+    }
 }
 
 impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
@@ -78,6 +74,7 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
     }
 
     /// Get an atom, along with the corresponding node index in the underlying graph.
+    ///
     /// Slower than `get_atom` because it can't short-circuit at `MolRepr::Modify`s.
     #[inline]
     #[instrument(level = "debug", skip_all, fields(mol_idx = self.index.0.index(), idx))]

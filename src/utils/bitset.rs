@@ -1,11 +1,13 @@
+use crate::arena::molecule::NodeIndex;
 use num_traits::*;
 use petgraph::graph::IndexType;
 use petgraph::visit::VisitMap;
 use smallvec::SmallVec;
 use std::fmt::{self, Binary, Debug, Formatter};
 
-use crate::arena::molecule::NodeIndex;
-
+/// A `BitSet` acts as a set of `usize`, but is implemented using bits.
+///
+/// It wraps a `SmallVec` of an integer, but also can hold an offset to track a compact set of high-valued numbers efficiently.
 #[derive(Default, Clone, PartialEq, Eq)]
 pub struct BitSet<T, const N: usize> {
     bits: SmallVec<T, N>,
@@ -21,12 +23,14 @@ impl<T: PrimInt, const N: usize> BitSet<T, N> {
         }
     }
 
+    /// Get the bit at a specified index, defaulting to false.
     pub fn get(&self, idx: usize) -> bool {
         let bits = T::zero().leading_zeros() as usize;
         self.bits
             .get(idx / bits - self.offset)
             .map_or(false, |&i| i & (T::one() << (idx % bits)) != T::zero())
     }
+    /// Set the bit at an index, returning the previous value.
     pub fn set(&mut self, idx: usize, bit: bool) -> bool {
         let zero = T::zero();
         let bits = zero.leading_zeros() as usize;
@@ -80,24 +84,28 @@ impl<T: PrimInt, const N: usize> BitSet<T, N> {
             }
         }
     }
+    /// Clear all of the bits in this set.
     pub fn clear(&mut self) {
-        for i in &mut self.bits {
-            *i = T::zero();
-        }
+        self.bits.clear();
         self.minimum = usize::MAX;
     }
 
+    /// Check if this set is "empty".
+    ///
+    /// This isn't necessarily a cheap operation since it doesn't store the size by itself.
     pub fn all_zero(&self) -> bool {
         let zero = T::zero();
         self.bits.iter().all(|&i| i == zero)
     }
-    pub fn all_ones(&self) -> bool {
-        let ones = !T::zero();
-        self.offset == 0 && self.bits.iter().all(|&i| i == ones)
-    }
+
+    /// Count the number of set bits in this set.
+    ///
+    /// Just like `all_zero`, this isn't cheap because it doesn't store its size.
     pub fn count_ones(&self) -> usize {
         self.bits.iter().map(|i| i.count_ones() as usize).sum()
     }
+
+    /// Get the highest bit set, or `None` if there are none.
     pub fn max_set(&self) -> Option<usize> {
         let mut i = self.bits.len() - 1;
         let zero = T::zero();
@@ -112,6 +120,8 @@ impl<T: PrimInt, const N: usize> BitSet<T, N> {
             Some((i + self.offset) * bits + (bits - v.leading_zeros() as usize))
         }
     }
+
+    /// Get the nth set bit.
     pub fn nth(&self, mut idx: usize) -> Option<usize> {
         use std::cmp::Ordering;
         idx += 1;
@@ -143,11 +153,18 @@ impl<T: PrimInt, const N: usize> BitSet<T, N> {
         }
         None
     }
+
+    /// Get many bits by there indices.
+    ///
+    /// This method could be optimized to only loop over the underlying vector once, but as of right now it does it separately.
     pub fn nth_many<const O: usize>(&self, idx: [usize; O]) -> [Option<usize>; O] {
         // TODO: optimize
         idx.map(|i| self.nth(i))
     }
 
+    /// Get the index of a set bit, returning `None` if out of range or unset.
+    ///
+    /// This is the inverse operation of `nth`.
     pub fn index(&self, bit: usize) -> Option<usize> {
         let zero = T::zero();
         let one = T::one();
@@ -166,6 +183,7 @@ impl<T: PrimInt, const N: usize> BitSet<T, N> {
         Some(prev + curr)
     }
 
+    /// Iterate over the set bits by reference.
     pub fn iter(&self) -> Iter<'_, T, N> {
         Iter {
             bits: self,
@@ -232,6 +250,7 @@ impl<Ix: IndexType, T: PrimInt, const N: usize> VisitMap<NodeIndex<Ix>> for BitS
     }
 }
 
+/// Common iterator logic, since `Iter` and `IntoIter` do the same thing.
 fn get_next<T: PrimInt, const N: usize>(bits: &BitSet<T, N>, next: &mut usize) -> Option<usize> {
     let zero = T::zero();
     let one = T::one();
@@ -258,6 +277,7 @@ fn get_next<T: PrimInt, const N: usize>(bits: &BitSet<T, N>, next: &mut usize) -
     Some(bits.offset + res)
 }
 
+#[derive(Clone)]
 pub struct Iter<'a, T, const N: usize> {
     bits: &'a BitSet<T, N>,
     next: usize,
@@ -269,6 +289,8 @@ impl<'a, T: PrimInt, const N: usize> Iterator for Iter<'a, T, N> {
         get_next(self.bits, &mut self.next)
     }
 }
+
+#[derive(Clone)]
 pub struct IntoIter<T, const N: usize> {
     bits: BitSet<T, N>,
     next: usize,
