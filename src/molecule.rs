@@ -2,7 +2,6 @@ use crate::core::*;
 use crate::empirical::*;
 use crate::graph::misc::DataValueMap;
 use modular_bitfield::prelude::*;
-use petgraph::data::*;
 use petgraph::visit::*;
 use smallvec::{smallvec, SmallVec};
 use std::cell::UnsafeCell;
@@ -326,15 +325,6 @@ where
         Self: Visitable + Sized,
     {
         CipPriority::on_branch(self, atom, center)
-    }
-
-    /// Resolve tautomers. This also ensures that aromaticicty is tracked, and rings have the
-    /// "correct" conjugation.
-    fn resolve_tautomer(&'a mut self)
-    where
-        Self: IntoEdges + DataMapMut,
-    {
-        todo!()
     }
 }
 

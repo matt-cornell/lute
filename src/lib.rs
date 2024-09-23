@@ -22,7 +22,7 @@ pub mod utils;
 pub mod rand;
 
 pub mod prelude {
-    pub use crate::arena::{Arena, Container, Molecule};
+    pub use crate::arena::{Arena, Molecule};
     pub use crate::core::{Atom, Bond, Chirality};
     pub use crate::disp::fmt_as_dot;
     pub use crate::disp::smiles::*;

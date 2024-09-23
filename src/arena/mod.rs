@@ -4,12 +4,10 @@
 
 pub mod access;
 pub mod arena;
-pub mod container;
 pub mod molecule;
 
 pub use access::{ArenaAccessible, ArenaAccessibleMut, ArenaAccessor, ArenaAccessorMut};
 pub use arena::Arena;
-pub use container::Container;
 pub use molecule::Molecule;
 
 use crate::core::*;
