@@ -70,7 +70,9 @@ impl From<TooManyBonds> for SmilesError {
 }
 
 #[derive(Debug, Clone)]
-/// Parser for a SMILES string
+/// Parser for a SMILES string.
+///
+/// Parsing is single-use, with this type acting somewhat like a builder in its API.
 pub struct SmilesParser<'a> {
     // use byte slice because SMILES shouldn't have non-ASCII data
     pub input: &'a [u8],
@@ -192,7 +194,7 @@ impl<'a> SmilesParser<'a> {
                     return Ok(Some((first_atom, first_bond.0, first_bond.1)));
                 }
                 Some(&b'&') => {
-                    self.graph[last_atom].add_rs(1)?;
+                    self.graph[last_atom].add_unknown(1)?;
                     self.index += 1;
                 }
                 Some(_) => {

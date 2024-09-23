@@ -1,3 +1,5 @@
+//! Molecular output utilities of various types.
+
 pub mod dot;
 #[cfg(feature = "coordgen")]
 pub mod svg;

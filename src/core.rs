@@ -13,6 +13,7 @@ use thiserror::Error;
 const PROTON_MASS: f32 = 1.00727647;
 const NEUTRON_MASS: f32 = 1.008665;
 const ELECTRON_MASS: f32 = 0.00054858;
+const HYDROGEN_MASS: f32 = 1.00784;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TooMany {
@@ -37,6 +38,9 @@ impl Display for TooMany {
     }
 }
 
+/// An error type for when atom values are out of range.
+///
+/// Four-bit values are used for neighbor counts, so the maximum is 16.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Error)]
 #[error("too many {0} bonds: attempted to set {1}, the max is 16")]
 pub struct TooManyBonds(pub TooMany, pub usize);
@@ -72,12 +76,14 @@ pub struct AtomData {
     pub scratch: B6,
 }
 impl AtomData {
-    /// Count the total number of bonded atoms
+    /// Count the total number of bonded atoms.
     #[inline(always)]
     pub fn total_bonds(self) -> u8 {
         self.hydrogen() + self.unknown() + self.single() + self.other()
     }
-    /// Check if two bonding layouts are compatible
+    /// Check if two bonding layouts are compatible.
+    ///
+    /// The `unknown` fields in either molecule can be used to replace hydrogens and single bonds in the other.
     pub fn is_compatible(self, other: Self) -> bool {
         let h1 = self.hydrogen();
         let o1 = self.single();
@@ -122,6 +128,7 @@ impl AtomData {
         true
     }
 
+    /// Check for compatibility, but only if this molecule's unknowns can be used to replace the other molecule's.
     pub fn compatible_one_way(self, other: Self) -> bool {
         let Some(mut u) = self.unknown().checked_sub(other.unknown()) else {
             return false;
@@ -217,7 +224,7 @@ impl Atom {
             Err(TooManyBonds(TooMany::H, h as _))
         }
     }
-    pub fn add_rs(&mut self, r: u8) -> Result<(), TooManyBonds> {
+    pub fn add_unknown(&mut self, r: u8) -> Result<(), TooManyBonds> {
         let r = self.data.unknown() + r;
         if r < 16 {
             self.data.set_unknown(r);
@@ -290,10 +297,11 @@ impl Atom {
             PROTON_MASS * self.protons as f32
                 + NEUTRON_MASS * (self.isotope as f32 - self.protons as f32)
         };
-        base - ELECTRON_MASS * self.charge as f32
+        base - ELECTRON_MASS * self.charge as f32 + HYDROGEN_MASS * self.data.hydrogen() as f32
     }
 
     /// The first atom, used in a pattern, could refer to the second.
+    ///
     /// If the first atom has no isotope or chirality and the second does, this can still return true.
     pub fn matches(&self, other: &Self) -> bool {
         if self.data.chirality() != Chirality::None
