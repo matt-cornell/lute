@@ -49,8 +49,8 @@ pub(crate) struct InterFragBond<Ix> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct BrokenMol<Ix> {
-    pub frags: SmallVec<Ix, 4>,
-    pub bonds: SmallVec<InterFragBond<Ix>, 4>,
+    pub frags: SmallVec<Ix, 2>,
+    pub bonds: SmallVec<InterFragBond<Ix>, 2>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -151,7 +151,7 @@ where
 #[derive(Debug, Clone)]
 pub struct Arena<Ix: IndexType = DefaultIx, D = ()> {
     graph: Graph<Ix>,
-    pub(crate) frags: SmallVec<Fragment<Ix, D>, 16>,
+    pub(crate) frags: SmallVec<Fragment<Ix, D>, 8>,
     next_vacant_frag: Ix,
     ordered: bool,
     contained: bool,
