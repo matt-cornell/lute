@@ -1,4 +1,4 @@
-use super::misc::DataValueMap;
+use crate::prelude::DataValueMap;
 use crate::utils::bitset::BitSet;
 use num_traits::PrimInt;
 use petgraph::data::*;

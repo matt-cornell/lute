@@ -1,4 +1,4 @@
-use super::misc::DataValueMap;
+use crate::prelude::DataValueMap;
 use petgraph::data::*;
 use petgraph::visit::*;
 use petgraph::Direction;

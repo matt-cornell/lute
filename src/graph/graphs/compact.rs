@@ -1,11 +1,10 @@
 //! Create a compact indexable form of a graph.
 
+use crate::prelude::DataValueMap;
+use ahash::*;
 use petgraph::data::*;
 use petgraph::prelude::*;
 use petgraph::visit::*;
-
-use super::misc::DataValueMap;
-use ahash::*;
 use std::hash::Hash;
 
 /// Override `NodeIndexable` so that they're always compact
