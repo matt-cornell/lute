@@ -271,12 +271,7 @@ where
     where
         &'a Self: IntoNodeReferences,
     {
-        self.node_references()
-            .map(|a| {
-                a.weight().mass()
-                    + a.weight().data.hydrogen() as f32 * crate::atom_info::ATOM_DATA[1].mass
-            })
-            .sum()
+        self.node_references().map(|a| a.weight().mass()).sum()
     }
 
     /// Get the empirical formula of this molecule.
