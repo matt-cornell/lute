@@ -1,7 +1,6 @@
 use super::arena::*;
 use super::*;
 use petgraph::visit::IntoNodeReferences;
-use small_map::ASmallMap;
 
 pub mod graph_traits;
 mod node_impls;
@@ -226,7 +225,7 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
                     return Some(g[g.find_edge(Ix::new(i0).into(), Ix::new(i1).into())?]);
                 }
                 MolRepr::Broken(b) => {
-                    let mut ibs = ASmallMap::<8, InterFragBond<Ix>, ()>::new();
+                    let mut ibs = ahash::AHashMap::<InterFragBond<Ix>, ()>::new();
                     for i in &b.bonds {
                         ibs.insert(*i, ());
                     }
