@@ -1,5 +1,6 @@
 use super::arena::*;
 use super::*;
+use petgraph::graph::NodeIndex as PetIndex;
 use petgraph::visit::IntoNodeReferences;
 
 pub mod graph_traits;
@@ -105,7 +106,7 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
                     let i = b.nth(idx)?;
                     return Some((
                         Ix::new(i),
-                        oride.unwrap_or_else(|| arena.graph()[petgraph::graph::NodeIndex::new(i)]),
+                        oride.unwrap_or_else(|| arena.graph().inner[PetIndex::new(i)]),
                     ));
                 }
                 MolRepr::Broken(b) => {
@@ -157,7 +158,7 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
                 }
                 MolRepr::Atomic(b) => {
                     let i = b.nth(idx)?;
-                    let mut atom = arena.graph()[petgraph::graph::NodeIndex::new(i)];
+                    let mut atom = arena.graph().inner[PetIndex::new(i)];
                     let _ = atom.unknown_to_single(cvt_singles);
                     return Some(atom);
                 }
@@ -221,8 +222,8 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
                     let i0 = b.nth(idx0)?;
                     let i1 = b.nth(idx1)?;
                     // let [i0, i1] = b.nth_many_short([idx0, idx1])?;
-                    let g = arena.graph();
-                    return Some(g[g.find_edge(Ix::new(i0).into(), Ix::new(i1).into())?]);
+                    let g = &arena.graph().inner;
+                    return Some(g[g.find_edge(PetIndex::new(i0), PetIndex::new(i1))?]);
                 }
                 MolRepr::Broken(b) => {
                     let mut ibs = ahash::AHashMap::<InterFragBond<Ix>, ()>::new();

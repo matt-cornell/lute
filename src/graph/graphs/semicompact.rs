@@ -1,6 +1,5 @@
 use itertools::Itertools;
 use petgraph::graph::{EdgeIndex, Graph, IndexType, NodeIndex};
-use petgraph::visit::NodeCount;
 use petgraph::{Direction, EdgeType};
 
 /// A trait for types acting like `Option`. Mostly here for its special impl for `Atom`, which uses a scratch bit.

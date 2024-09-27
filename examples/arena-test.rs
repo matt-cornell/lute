@@ -49,7 +49,7 @@ fn main() {
         eprintln!("arena: {:#?}", arena.expose_frags());
     }
 
-    let graph = lute::graph::GraphCompactor::<&StableUnGraph<Atom, Bond, u16>>::new(arena.graph());
+    let graph = lute::graph::GraphCompactor::<&UnGraph<Atom, Bond, u16>>::new(&arena.graph().inner);
 
     match cli.fmt {
         OutputType::None => {}

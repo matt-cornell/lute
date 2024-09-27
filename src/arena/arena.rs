@@ -8,6 +8,7 @@ use misc::DataValueMap;
 use petgraph::graph::DefaultIx;
 use petgraph::prelude::*;
 use petgraph::visit::*;
+use semicompact::GraphNodeAlloc;
 use slab::Slab;
 use smallvec::SmallVec;
 use std::cell::{Cell, UnsafeCell};
@@ -34,8 +35,31 @@ macro_rules! arena {
     };
 }
 
+/// Temporary polyfill to mimic a bitset
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct RangePolyfill<Ix>(pub Ix, pub Ix);
+impl<Ix: IndexType> RangePolyfill<Ix> {
+    pub fn from_start_len(start: usize, len: usize) -> Self {
+        Self(Ix::new(start), Ix::new(start + len))
+    }
+    pub fn start(&self) -> usize {
+        self.0.index()
+    }
+    pub fn end(&self) -> usize {
+        self.1.index()
+    }
+    pub fn nth(&self, val: usize) -> Option<usize> {
+        let out = self.0.index() + val;
+        (out < self.1.index()).then_some(out)
+    }
+    pub fn index(&self, val: usize) -> Option<usize> {
+        (val < self.1.index()).then_some(())?;
+        val.checked_sub(self.0.index())
+    }
+}
+
 const ATOM_BIT_STORAGE: usize = 2;
-type Graph<Ix> = StableGraph<Atom, Bond, Undirected, Ix>;
+type Graph<Ix> = GraphNodeAlloc<Atom, Bond, Undirected, Ix>;
 type BSType = crate::utils::bitset::BitSet<u16, ATOM_BIT_STORAGE>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -47,21 +71,21 @@ pub(crate) struct InterFragBond<Ix> {
     pub bi: Ix,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct BrokenMol<Ix> {
     pub frags: SmallVec<Ix, 2>,
     pub bonds: SmallVec<InterFragBond<Ix>, 2>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ModdedMol<Ix> {
     pub base: Ix,
     pub patch: SmallVec<(Ix, Atom), 4>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum MolRepr<Ix: IndexType> {
-    Atomic(BSType),
+    Atomic(RangePolyfill<Ix>),
     Broken(BrokenMol<Ix>),
     Modify(ModdedMol<Ix>),
     TempEmpty,
@@ -349,11 +373,7 @@ impl<Ix: IndexType, D> Arena<Ix, D> {
     fn gc_from(&mut self, repr: &MolRepr<Ix>) {
         let mut stack = SmallVec::<_, 3>::new();
         match repr {
-            MolRepr::Atomic(b) => {
-                for i in b {
-                    self.graph.remove_node(Ix::new(i).into());
-                }
-            }
+            MolRepr::Atomic(b) => self.graph.free_range(b.start(), b.end()),
             MolRepr::Broken(BrokenMol { frags, .. }) => stack.extend_from_slice(frags),
             MolRepr::Modify(ModdedMol { base, .. }) => stack.push(*base),
             _ => {}
@@ -368,11 +388,7 @@ impl<Ix: IndexType, D> Arena<Ix, D> {
                 self.next_vacant_frag = i;
             }
             match std::mem::replace(&mut frag.repr, MolRepr::Empty) {
-                MolRepr::Atomic(b) => {
-                    for i in &b {
-                        self.graph.remove_node(Ix::new(i).into());
-                    }
-                }
+                MolRepr::Atomic(b) => self.graph.free_range(b.start(), b.end()),
                 MolRepr::Broken(BrokenMol { frags, .. }) => stack.extend_from_slice(&frags),
                 MolRepr::Modify(ModdedMol { base, .. }) => stack.push(base),
                 _ => {}
@@ -388,11 +404,7 @@ impl<Ix: IndexType, D> Arena<Ix, D> {
                 continue;
             }
             match std::mem::replace(&mut frag.repr, MolRepr::Empty) {
-                MolRepr::Atomic(b) => {
-                    for i in &b {
-                        self.graph.remove_node(Ix::new(i).into());
-                    }
-                }
+                MolRepr::Atomic(b) => self.graph.free_range(b.start(), b.end()),
                 MolRepr::Broken(BrokenMol { frags, .. }) => stack.extend_from_slice(&frags),
                 MolRepr::Modify(ModdedMol { base, .. }) => stack.push(base),
                 _ => {}
@@ -405,11 +417,7 @@ impl<Ix: IndexType, D> Arena<Ix, D> {
                 continue;
             }
             match std::mem::replace(&mut frag.repr, MolRepr::Empty) {
-                MolRepr::Atomic(b) => {
-                    for i in &b {
-                        self.graph.remove_node(Ix::new(i).into());
-                    }
-                }
+                MolRepr::Atomic(b) => self.graph.free_range(b.start(), b.end()),
                 MolRepr::Broken(BrokenMol { frags, .. }) => stack.extend_from_slice(&frags),
                 MolRepr::Modify(ModdedMol { base, .. }) => stack.push(base),
                 _ => {}
@@ -846,36 +854,44 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
         if found.is_empty() {
             let mut mapping = vec![(IndexType::max(), 0); mol.node_count()];
             let mut count = 0;
-            for n in mol.node_references() {
-                let mi = mol.to_index(n.id());
-                if let Some(b) = &bits {
-                    if !b.0.get(mi) {
-                        continue;
+            let mut it = mol.node_references();
+            let start = self.graph.allocate_range(node_count, || {
+                it.find_map(|n| {
+                    let mi = mol.to_index(n.id());
+                    if let Some(b) = &bits {
+                        if !b.0.get(mi) {
+                            return None;
+                        }
                     }
-                }
-                let mut a = *n.weight();
-                let _ = a.single_to_unknown(matched[mi].3);
-                let gi = self.graph.add_node(a);
-                mapping[mi] = (gi, mi);
-                count += 1;
-            }
+                    let mut a = *n.weight();
+                    let _ = a.single_to_unknown(matched[mi].3);
+                    mapping[mi] = (count, mi);
+                    count += 1;
+                    Some(a)
+                })
+                .unwrap()
+            });
             for e in mol.edge_references() {
                 let a = mapping[mol.to_index(e.source())].0;
                 let b = mapping[mol.to_index(e.target())].0;
                 if a == IndexType::max() || b == IndexType::max() {
                     continue;
                 }
-                self.graph.add_edge(a, b, *e.weight());
+                self.graph.inner.add_edge(
+                    NodeIndex::new(start + a),
+                    NodeIndex::new(start + b),
+                    *e.weight(),
+                );
             }
             mapping.sort_unstable_by(|a, b| a.0.cmp(&b.0));
-            let (new_bits, new_map) = mapping
+            let new_map = mapping
                 .into_iter()
-                .filter_map(|x| (x.0 != IndexType::max()).then_some((x.0.index(), x.1)))
-                .unzip();
+                .filter_map(|x| (x.0 != IndexType::max()).then_some(x.1))
+                .collect();
             let idx = self.push_or_set_frag(
                 Fragment {
                     custom: D::default(),
-                    repr: MolRepr::Atomic(new_bits),
+                    repr: MolRepr::Atomic(RangePolyfill::from_start_len(start, node_count)),
                     size: Ix::new(count),
                     seen: false,
                     refcnt: 0,
