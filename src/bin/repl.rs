@@ -5,6 +5,7 @@ use petgraph::data::FromElements;
 use petgraph::prelude::*;
 use reedline_repl_rs::{self as rlr, Repl};
 use rlr::clap::{self, Arg, ArgAction, ArgMatches, Command, Parser, ValueEnum};
+use semisparse::SemiSparseGraph;
 use std::env;
 use std::ffi::OsStr;
 use std::fmt::Write;
@@ -99,7 +100,7 @@ impl clap::builder::TypedValueParser for SetParser {
         let val = value
             .to_str()
             .ok_or_else(|| Error::new(ErrorKind::InvalidUtf8).with_cmd(cmd))?;
-        let mode = match val.as_bytes().get(0) {
+        let mode = match val.as_bytes().first() {
             Some(&b'+') => FlagKind::Enable,
             Some(&b'-') => FlagKind::Disable,
             Some(&b'?') => FlagKind::Query,
@@ -287,7 +288,7 @@ fn dump(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, ReplError
                     generate_smiles(ctx.arena.graph(), cfg)
                 };
                 if let Some(p) = path {
-                    std::fs::write(&p, s)?;
+                    std::fs::write(p, s)?;
                     Ok(Some(format!("saved to {}", p.display())))
                 } else {
                     Ok(Some(s))
@@ -323,7 +324,7 @@ fn dump(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, ReplError
                     .to_string()
                 } else {
                     SvgFormatter {
-                        graph: &GraphCompactor::<&StableUnGraph<Atom, Bond>>::new(
+                        graph: &GraphCompactor::<&SemiSparseGraph<_, _, _, _>>::new(
                             ctx.arena.graph(),
                         ),
                         mode,
@@ -331,7 +332,7 @@ fn dump(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, ReplError
                     .to_string()
                 };
                 if let Some(p) = path {
-                    std::fs::write(&p, s)?;
+                    std::fs::write(p, s)?;
                     Ok(Some(format!("saved to {}", p.display())))
                 } else {
                     Ok(Some(s))
@@ -353,7 +354,7 @@ fn dump(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, ReplError
                     .render(None)
                 } else {
                     SvgFormatter {
-                        graph: &GraphCompactor::<&StableUnGraph<Atom, Bond>>::new(
+                        graph: &GraphCompactor::<&SemiSparseGraph<_, _, _, _>>::new(
                             ctx.arena.graph(),
                         ),
                         mode,
@@ -361,7 +362,7 @@ fn dump(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, ReplError
                     .render(None)
                 };
                 if let Some(p) = path {
-                    s.save_png(&p).map_err(Box::from)?;
+                    s.save_png(p).map_err(Box::from)?;
                     Ok(Some(format!("saved to {}", p.display())))
                 } else {
                     Err(ReplError::PngToStdout)
@@ -653,7 +654,6 @@ fn adjust_settings(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>
     })
 }
 
-///
 #[derive(Debug, Parser)]
 struct Cli {
     /// File to load for command history

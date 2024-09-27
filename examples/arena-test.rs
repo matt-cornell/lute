@@ -1,6 +1,6 @@
 use clap::Parser;
+use lute::graph::semisparse::SemiSparseGraph;
 use lute::prelude::*;
-use petgraph::prelude::*;
 use std::path::PathBuf;
 
 mod common;
@@ -49,7 +49,8 @@ fn main() {
         eprintln!("arena: {:#?}", arena.expose_frags());
     }
 
-    let graph = lute::graph::GraphCompactor::<&StableUnGraph<Atom, Bond, u16>>::new(arena.graph());
+    let graph =
+        lute::graph::GraphCompactor::<&SemiSparseGraph<Atom, Bond, _, u16>>::new(arena.graph());
 
     match cli.fmt {
         OutputType::None => {}

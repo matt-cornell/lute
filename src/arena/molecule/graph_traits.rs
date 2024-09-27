@@ -142,7 +142,7 @@ impl<Ix: IndexType + Ord, R> Visitable for Molecule<Ix, R> {
 
 pub mod iter {
     use super::*;
-    use petgraph::stable_graph::WalkNeighbors;
+    use petgraph::graph::WalkNeighbors;
     use smallvec::{smallvec, SmallVec};
     use std::fmt::{self, Debug, Formatter};
 
@@ -219,7 +219,7 @@ pub mod iter {
                     }
                     MolRepr::Atomic(ref b) => {
                         let offset = off.index();
-                        let mut it = arena.graph().edge_references().filter_map(|e| {
+                        let mut it = arena.graph().graph().edge_references().filter_map(|e| {
                             let s = b.index(e.source().index())?;
                             let t = b.index(e.target().index())?;
                             Some(EdgeReference::with_weight(
@@ -300,14 +300,14 @@ pub mod iter {
                         if !matches!(self.state, State::Atomic(_)) {
                             let i = b.nth(self.atom_idx.index())?;
                             trace!(id = i, "initializing walker at atomic level");
-                            let w = arena.graph().neighbors(Ix::new(i).into()).detach();
+                            let w = arena.graph().graph().neighbors(PetIndex::new(i)).detach();
                             self.state = State::Atomic(w);
                         }
                         let State::Atomic(w) = &mut self.state else {
                             unreachable!()
                         };
 
-                        while let Some((e, n)) = w.next(arena.graph()) {
+                        while let Some((e, n)) = w.next(arena.graph().graph()) {
                             let Some(idx) = b.index(n.index()) else {
                                 continue;
                             };
