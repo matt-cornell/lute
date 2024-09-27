@@ -882,7 +882,7 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
                 if a == IndexType::max() || b == IndexType::max() {
                     continue;
                 }
-                self.graph.inner.add_edge(
+                self.graph.add_edge(
                     NodeIndex::new(start + a),
                     NodeIndex::new(start + b),
                     *e.weight(),

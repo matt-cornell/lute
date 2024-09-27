@@ -5,6 +5,7 @@ use petgraph::data::FromElements;
 use petgraph::prelude::*;
 use reedline_repl_rs::{self as rlr, Repl};
 use rlr::clap::{self, Arg, ArgAction, ArgMatches, Command, Parser, ValueEnum};
+use semicompact::GraphNodeAlloc;
 use std::env;
 use std::ffi::OsStr;
 use std::fmt::Write;
@@ -284,7 +285,7 @@ fn dump(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, ReplError
                         cfg,
                     )
                 } else {
-                    generate_smiles(&ctx.arena.graph().inner, cfg)
+                    generate_smiles(ctx.arena.graph(), cfg)
                 };
                 if let Some(p) = path {
                     std::fs::write(p, s)?;
@@ -323,7 +324,9 @@ fn dump(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, ReplError
                     .to_string()
                 } else {
                     SvgFormatter {
-                        graph: &ctx.arena.graph().inner,
+                        graph: &GraphCompactor::<&GraphNodeAlloc<_, _, _, _>>::new(
+                            ctx.arena.graph(),
+                        ),
                         mode,
                     }
                     .to_string()
@@ -351,7 +354,9 @@ fn dump(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, ReplError
                     .render(None)
                 } else {
                     SvgFormatter {
-                        graph: &ctx.arena.graph().inner,
+                        graph: &GraphCompactor::<&GraphNodeAlloc<_, _, _, _>>::new(
+                            ctx.arena.graph(),
+                        ),
                         mode,
                     }
                     .render(None)

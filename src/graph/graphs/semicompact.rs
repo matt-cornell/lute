@@ -1,6 +1,10 @@
+use crate::graph::misc::DataValueMap;
 use itertools::Itertools;
-use petgraph::graph::{EdgeIndex, Graph, IndexType, NodeIndex};
+use petgraph::data::*;
+use petgraph::graph::*;
+use petgraph::visit::*;
 use petgraph::{Direction, EdgeType};
+use std::ops::{Index, IndexMut};
 
 /// A trait for types acting like `Option`. Mostly here for its special impl for `Atom`, which uses a scratch bit.
 pub trait Optional {
@@ -61,9 +65,10 @@ impl<T> Optional for Option<T> {
 #[derive(Debug, Clone)]
 pub struct GraphNodeAlloc<N, E, Ty: EdgeType, Ix: IndexType> {
     /// The underlying graph we use for storage
-    pub inner: Graph<N, E, Ty, Ix>,
+    inner: Graph<N, E, Ty, Ix>,
     /// Holes we've created in the graph
     holes: [[Ix; 2]; 8],
+    node_count: usize,
 }
 impl<N, E, Ty: EdgeType, Ix: IndexType> GraphNodeAlloc<N, E, Ty, Ix> {
     pub fn new() -> Self {
@@ -75,12 +80,14 @@ impl<N, E, Ty: EdgeType, Ix: IndexType> GraphNodeAlloc<N, E, Ty, Ix> {
         Self {
             inner: Graph::with_capacity(nodes, edges),
             holes: [[IndexType::max(); 2]; 8],
+            node_count: 0,
         }
     }
 
     /// Create a new semi-connected graph from an underlying graph, assuming that all elements are in the "filled" state.
     pub fn from_compact(graph: Graph<N, E, Ty, Ix>) -> Self {
         Self {
+            node_count: graph.node_count(),
             inner: graph,
             holes: [[IndexType::max(); 2]; 8],
         }
@@ -89,6 +96,11 @@ impl<N, E, Ty: EdgeType, Ix: IndexType> GraphNodeAlloc<N, E, Ty, Ix> {
     pub fn clear(&mut self) {
         self.inner.clear();
         self.holes = [[IndexType::max(); 2]; 8];
+        self.node_count = 0;
+    }
+
+    pub fn graph(&self) -> &Graph<N, E, Ty, Ix> {
+        &self.inner
     }
 }
 impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> GraphNodeAlloc<N, E, Ty, Ix> {
@@ -97,6 +109,7 @@ impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> GraphNodeAlloc<N, E, Ty, Ix> {
         if size == 0 {
             return 0;
         }
+        self.node_count += size;
         let best = self
             .holes
             .iter()
@@ -135,7 +148,10 @@ impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> GraphNodeAlloc<N, E, Ty, Ix> {
 
     pub fn free_range(&mut self, start: usize, end: usize) {
         for i in start..end {
-            self.inner[NodeIndex::new(i)] = N::none();
+            let old = std::mem::replace(&mut self.inner[NodeIndex::new(i)], N::none());
+            if !old.is_some() {
+                self.node_count -= 1;
+            }
             self.detach_node(i);
         }
         let mut merge_to: Option<&mut Ix> = None;
@@ -206,10 +222,269 @@ impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> GraphNodeAlloc<N, E, Ty, Ix> {
             *hole = iter.next().map_or(empty, |arr| arr.map(Ix::new));
         }
     }
-}
 
+    pub fn add_node(&mut self, weight: N::Inner) -> NodeIndex<Ix> {
+        let mut val = Some(weight);
+        NodeIndex::new(self.allocate_range(1, || val.take().unwrap()))
+    }
+    pub fn add_edge(&mut self, a: NodeIndex<Ix>, b: NodeIndex<Ix>, weight: E) -> EdgeIndex<Ix> {
+        #[cfg(debug_assertions)]
+        {
+            let _a = &self[a];
+            let _b = &self[b];
+        }
+        self.inner.add_edge(a, b, weight)
+    }
+    pub fn find_edge(&self, a: NodeIndex<Ix>, b: NodeIndex<Ix>) -> Option<EdgeIndex<Ix>> {
+        self.inner.raw_nodes()[a.index()]
+            .weight
+            .is_some()
+            .then_some(())?;
+        self.inner.raw_nodes()[b.index()]
+            .weight
+            .is_some()
+            .then_some(())?;
+        self.inner.find_edge(a, b)
+    }
+}
 impl<N, E, Ty: EdgeType, Ix: IndexType> Default for GraphNodeAlloc<N, E, Ty, Ix> {
     fn default() -> Self {
         Self::new()
+    }
+}
+impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> Index<NodeIndex<Ix>>
+    for GraphNodeAlloc<N, E, Ty, Ix>
+{
+    type Output = N::Inner;
+
+    fn index(&self, index: NodeIndex<Ix>) -> &Self::Output {
+        self.inner[index].unwrap_ref()
+    }
+}
+impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> IndexMut<NodeIndex<Ix>>
+    for GraphNodeAlloc<N, E, Ty, Ix>
+{
+    fn index_mut(&mut self, index: NodeIndex<Ix>) -> &mut Self::Output {
+        self.inner[index].unwrap_mut()
+    }
+}
+impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> Index<EdgeIndex<Ix>>
+    for GraphNodeAlloc<N, E, Ty, Ix>
+{
+    type Output = E;
+
+    fn index(&self, index: EdgeIndex<Ix>) -> &Self::Output {
+        &self.inner[index]
+    }
+}
+impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> IndexMut<EdgeIndex<Ix>>
+    for GraphNodeAlloc<N, E, Ty, Ix>
+{
+    fn index_mut(&mut self, index: EdgeIndex<Ix>) -> &mut Self::Output {
+        &mut self.inner[index]
+    }
+}
+
+impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> GraphBase for GraphNodeAlloc<N, E, Ty, Ix> {
+    type NodeId = NodeIndex<Ix>;
+    type EdgeId = EdgeIndex<Ix>;
+}
+impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> GraphProp for GraphNodeAlloc<N, E, Ty, Ix> {
+    type EdgeType = Ty;
+}
+impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> Data for GraphNodeAlloc<N, E, Ty, Ix> {
+    type NodeWeight = N::Inner;
+    type EdgeWeight = E;
+}
+impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> NodeIndexable for GraphNodeAlloc<N, E, Ty, Ix> {
+    fn node_bound(&self) -> usize {
+        self.inner.node_bound()
+    }
+    fn from_index(&self, i: usize) -> Self::NodeId {
+        NodeIndex::new(i)
+    }
+    fn to_index(&self, a: Self::NodeId) -> usize {
+        a.index()
+    }
+}
+impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> EdgeIndexable for GraphNodeAlloc<N, E, Ty, Ix> {
+    fn edge_bound(&self) -> usize {
+        self.inner.edge_bound()
+    }
+    fn from_index(&self, i: usize) -> Self::EdgeId {
+        EdgeIndex::new(i)
+    }
+    fn to_index(&self, a: Self::EdgeId) -> usize {
+        a.index()
+    }
+}
+impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> NodeCount for GraphNodeAlloc<N, E, Ty, Ix> {
+    fn node_count(&self) -> usize {
+        self.node_count
+    }
+}
+impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> EdgeCount for GraphNodeAlloc<N, E, Ty, Ix> {
+    fn edge_count(&self) -> usize {
+        self.inner.edge_count()
+    }
+}
+impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> DataMap for GraphNodeAlloc<N, E, Ty, Ix> {
+    fn node_weight(&self, id: Self::NodeId) -> Option<&Self::NodeWeight> {
+        let w = self.inner.node_weight(id)?;
+        w.is_some().then(|| w.unwrap_ref())
+    }
+    fn edge_weight(&self, id: Self::EdgeId) -> Option<&Self::EdgeWeight> {
+        self.inner.edge_weight(id)
+    }
+}
+impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> DataMapMut for GraphNodeAlloc<N, E, Ty, Ix> {
+    fn node_weight_mut(&mut self, id: Self::NodeId) -> Option<&mut Self::NodeWeight> {
+        let w = self.inner.node_weight_mut(id)?;
+        w.is_some().then(|| w.unwrap_mut())
+    }
+    fn edge_weight_mut(&mut self, id: Self::EdgeId) -> Option<&mut Self::EdgeWeight> {
+        self.inner.edge_weight_mut(id)
+    }
+}
+impl<N: Optional, E: Copy, Ty: EdgeType, Ix: IndexType> DataValueMap
+    for GraphNodeAlloc<N, E, Ty, Ix>
+where
+    N::Inner: Copy,
+{
+    fn node_weight(&self, id: Self::NodeId) -> Option<Self::NodeWeight> {
+        let w = self.inner.node_weight(id)?;
+        w.is_some().then(|| *w.unwrap_ref())
+    }
+    fn edge_weight(&self, id: Self::EdgeId) -> Option<Self::EdgeWeight> {
+        self.inner.edge_weight(id).copied()
+    }
+}
+impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> Visitable for GraphNodeAlloc<N, E, Ty, Ix> {
+    type Map = <Graph<N, E, Ty, Ix> as Visitable>::Map;
+
+    fn visit_map(&self) -> Self::Map {
+        self.inner.visit_map()
+    }
+    fn reset_map(&self, map: &mut Self::Map) {
+        self.inner.reset_map(map);
+    }
+}
+
+impl<'a, N: Optional, E, Ty: EdgeType, Ix: IndexType> IntoNodeIdentifiers
+    for &'a GraphNodeAlloc<N, E, Ty, Ix>
+{
+    type NodeIdentifiers = iter::NodeIdFilter<NodeIndices<Ix>, &'a Graph<N, E, Ty, Ix>>;
+
+    fn node_identifiers(self) -> Self::NodeIdentifiers {
+        iter::NodeIdFilter(self.inner.node_identifiers(), &self.inner)
+    }
+}
+impl<'a, N: Optional, E, Ty: EdgeType, Ix: IndexType> IntoNodeReferences
+    for &'a GraphNodeAlloc<N, E, Ty, Ix>
+{
+    type NodeRef = (NodeIndex<Ix>, &'a N::Inner);
+    type NodeReferences = iter::NodeRefFilter<NodeReferences<'a, N, Ix>>;
+
+    fn node_references(self) -> Self::NodeReferences {
+        iter::NodeRefFilter(self.inner.node_references())
+    }
+}
+impl<'a, N: Optional, E, Ty: EdgeType, Ix: IndexType> IntoEdgeReferences
+    for &'a GraphNodeAlloc<N, E, Ty, Ix>
+{
+    type EdgeRef = EdgeReference<'a, E, Ix>;
+    type EdgeReferences = iter::EdgeRefFilter<EdgeReferences<'a, E, Ix>, &'a Graph<N, E, Ty, Ix>>;
+
+    fn edge_references(self) -> Self::EdgeReferences {
+        iter::EdgeRefFilter(self.inner.edge_references(), &self.inner)
+    }
+}
+impl<'a, N: Optional, E, Ty: EdgeType, Ix: IndexType> IntoNeighbors
+    for &'a GraphNodeAlloc<N, E, Ty, Ix>
+{
+    type Neighbors = iter::NodeIdFilter<Neighbors<'a, E, Ix>, &'a Graph<N, E, Ty, Ix>>;
+
+    fn neighbors(self, a: Self::NodeId) -> Self::Neighbors {
+        iter::NodeIdFilter(self.inner.neighbors(a), &self.inner)
+    }
+}
+impl<'a, N: Optional, E, Ty: EdgeType, Ix: IndexType> IntoNeighborsDirected
+    for &'a GraphNodeAlloc<N, E, Ty, Ix>
+{
+    type NeighborsDirected = iter::NodeIdFilter<Neighbors<'a, E, Ix>, &'a Graph<N, E, Ty, Ix>>;
+
+    fn neighbors_directed(self, a: Self::NodeId, dir: Direction) -> Self::Neighbors {
+        iter::NodeIdFilter(self.inner.neighbors_directed(a, dir), &self.inner)
+    }
+}
+impl<'a, N: Optional, E, Ty: EdgeType, Ix: IndexType> IntoEdges
+    for &'a GraphNodeAlloc<N, E, Ty, Ix>
+{
+    type Edges = iter::EdgeRefFilter<Edges<'a, E, Ty, Ix>, &'a Graph<N, E, Ty, Ix>>;
+
+    fn edges(self, a: Self::NodeId) -> Self::Edges {
+        iter::EdgeRefFilter(self.inner.edges(a), &self.inner)
+    }
+}
+impl<'a, N: Optional, E, Ty: EdgeType, Ix: IndexType> IntoEdgesDirected
+    for &'a GraphNodeAlloc<N, E, Ty, Ix>
+{
+    type EdgesDirected = iter::EdgeRefFilter<Edges<'a, E, Ty, Ix>, &'a Graph<N, E, Ty, Ix>>;
+
+    fn edges_directed(self, a: Self::NodeId, dir: Direction) -> Self::EdgesDirected {
+        iter::EdgeRefFilter(self.inner.edges_directed(a, dir), &self.inner)
+    }
+}
+
+#[doc(hidden)]
+pub mod iter {
+    use super::*;
+    use petgraph::data::DataMap;
+
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct NodeIdFilter<I, G>(pub I, pub G);
+    impl<G: DataMap, I: Iterator<Item = G::NodeId>> Iterator for NodeIdFilter<I, G>
+    where
+        G::NodeWeight: Optional,
+    {
+        type Item = I::Item;
+        fn next(&mut self) -> Option<Self::Item> {
+            self.0
+                .find(|&e| self.1.node_weight(e).map_or(false, G::NodeWeight::is_some))
+        }
+    }
+
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct NodeRefFilter<I>(pub I);
+    impl<'a, Ix, N: Optional + 'a, I: Iterator<Item = (NodeIndex<Ix>, &'a N)>> Iterator
+        for NodeRefFilter<I>
+    {
+        type Item = (NodeIndex<Ix>, &'a N::Inner);
+        fn next(&mut self) -> Option<Self::Item> {
+            self.0
+                .find_map(|(i, e)| e.is_some().then(|| (i, e.unwrap_ref())))
+        }
+    }
+
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct EdgeRefFilter<I, G>(pub I, pub G);
+    impl<
+            'a,
+            Ix: IndexType,
+            E: 'a,
+            G: DataMap<NodeId = NodeIndex<Ix>>,
+            I: Iterator<Item = petgraph::graph::EdgeReference<'a, E, Ix>>,
+        > Iterator for EdgeRefFilter<I, G>
+    where
+        G::NodeWeight: Optional,
+    {
+        type Item = EdgeReference<'a, E, Ix>;
+        fn next(&mut self) -> Option<Self::Item> {
+            self.0.find_map(|e| {
+                self.1.node_weight(e.source())?.is_some().then_some(())?;
+                self.1.node_weight(e.target())?.is_some().then_some(())?;
+                Some(e)
+            })
+        }
     }
 }

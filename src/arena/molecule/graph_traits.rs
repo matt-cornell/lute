@@ -219,7 +219,7 @@ pub mod iter {
                     }
                     MolRepr::Atomic(ref b) => {
                         let offset = off.index();
-                        let mut it = arena.graph().inner.edge_references().filter_map(|e| {
+                        let mut it = arena.graph().graph().edge_references().filter_map(|e| {
                             let s = b.index(e.source().index())?;
                             let t = b.index(e.target().index())?;
                             Some(EdgeReference::with_weight(
@@ -300,14 +300,14 @@ pub mod iter {
                         if !matches!(self.state, State::Atomic(_)) {
                             let i = b.nth(self.atom_idx.index())?;
                             trace!(id = i, "initializing walker at atomic level");
-                            let w = arena.graph().inner.neighbors(PetIndex::new(i)).detach();
+                            let w = arena.graph().graph().neighbors(PetIndex::new(i)).detach();
                             self.state = State::Atomic(w);
                         }
                         let State::Atomic(w) = &mut self.state else {
                             unreachable!()
                         };
 
-                        while let Some((e, n)) = w.next(&arena.graph().inner) {
+                        while let Some((e, n)) = w.next(arena.graph().graph()) {
                             let Some(idx) = b.index(n.index()) else {
                                 continue;
                             };
@@ -317,7 +317,7 @@ pub mod iter {
                             return Some(EdgeReference::with_weight(
                                 self.orig_idx,
                                 Ix::new(offset),
-                                arena.graph().inner[e],
+                                arena.graph()[e],
                             ));
                         }
                         return None;

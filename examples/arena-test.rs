@@ -1,6 +1,6 @@
 use clap::Parser;
+use lute::graph::semicompact::GraphNodeAlloc;
 use lute::prelude::*;
-use petgraph::prelude::*;
 use std::path::PathBuf;
 
 mod common;
@@ -49,7 +49,8 @@ fn main() {
         eprintln!("arena: {:#?}", arena.expose_frags());
     }
 
-    let graph = lute::graph::GraphCompactor::<&UnGraph<Atom, Bond, u16>>::new(&arena.graph().inner);
+    let graph =
+        lute::graph::GraphCompactor::<&GraphNodeAlloc<Atom, Bond, _, u16>>::new(arena.graph());
 
     match cli.fmt {
         OutputType::None => {}
