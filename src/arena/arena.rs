@@ -35,10 +35,10 @@ macro_rules! arena {
     };
 }
 
-/// Temporary polyfill to mimic a bitset
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct RangePolyfill<Ix>(pub Ix, pub Ix);
-impl<Ix: IndexType> RangePolyfill<Ix> {
+/// Wrapper around a range of values with some convenience methods to mimic a bitset
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) struct Range<Ix>(pub Ix, pub Ix);
+impl<Ix: IndexType> Range<Ix> {
     pub fn from_start_len(start: usize, len: usize) -> Self {
         Self(Ix::new(start), Ix::new(start + len))
     }
@@ -55,6 +55,11 @@ impl<Ix: IndexType> RangePolyfill<Ix> {
     pub fn index(&self, val: usize) -> Option<usize> {
         (val < self.1.index()).then_some(())?;
         val.checked_sub(self.0.index())
+    }
+}
+impl<Ix: Debug> Debug for Range<Ix> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}..{:?}", self.0, self.1)
     }
 }
 
@@ -85,7 +90,7 @@ pub(crate) struct ModdedMol<Ix> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum MolRepr<Ix: IndexType> {
-    Atomic(RangePolyfill<Ix>),
+    Atomic(Range<Ix>),
     Broken(BrokenMol<Ix>),
     Modify(ModdedMol<Ix>),
     TempEmpty,
@@ -891,7 +896,7 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
             let idx = self.push_or_set_frag(
                 Fragment {
                     custom: D::default(),
-                    repr: MolRepr::Atomic(RangePolyfill::from_start_len(start, node_count)),
+                    repr: MolRepr::Atomic(Range::from_start_len(start, node_count)),
                     size: Ix::new(count),
                     seen: false,
                     refcnt: 0,
