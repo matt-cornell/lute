@@ -63,14 +63,14 @@ impl<T> Optional for Option<T> {
 /// A type that "allocates" runs of contiguous nodes.
 /// Might make this a full graph type later, for now it's just a thin wrapper that you could mess up
 #[derive(Debug, Clone)]
-pub struct GraphNodeAlloc<N, E, Ty: EdgeType, Ix: IndexType> {
+pub struct SemiSparseGraph<N, E, Ty: EdgeType, Ix: IndexType> {
     /// The underlying graph we use for storage
     inner: Graph<N, E, Ty, Ix>,
     /// Holes we've created in the graph
     holes: [[Ix; 2]; 8],
     node_count: usize,
 }
-impl<N, E, Ty: EdgeType, Ix: IndexType> GraphNodeAlloc<N, E, Ty, Ix> {
+impl<N, E, Ty: EdgeType, Ix: IndexType> SemiSparseGraph<N, E, Ty, Ix> {
     pub fn new() -> Self {
         Self::with_capacity(0, 0)
     }
@@ -103,7 +103,7 @@ impl<N, E, Ty: EdgeType, Ix: IndexType> GraphNodeAlloc<N, E, Ty, Ix> {
         &self.inner
     }
 }
-impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> GraphNodeAlloc<N, E, Ty, Ix> {
+impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> SemiSparseGraph<N, E, Ty, Ix> {
     /// Allocate a contiguous range of nodes, returns the index of the first one.
     pub fn allocate_range(&mut self, size: usize, mut fill: impl FnMut() -> N::Inner) -> usize {
         if size == 0 {
@@ -247,13 +247,13 @@ impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> GraphNodeAlloc<N, E, Ty, Ix> {
         self.inner.find_edge(a, b)
     }
 }
-impl<N, E, Ty: EdgeType, Ix: IndexType> Default for GraphNodeAlloc<N, E, Ty, Ix> {
+impl<N, E, Ty: EdgeType, Ix: IndexType> Default for SemiSparseGraph<N, E, Ty, Ix> {
     fn default() -> Self {
         Self::new()
     }
 }
 impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> Index<NodeIndex<Ix>>
-    for GraphNodeAlloc<N, E, Ty, Ix>
+    for SemiSparseGraph<N, E, Ty, Ix>
 {
     type Output = N::Inner;
 
@@ -262,14 +262,14 @@ impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> Index<NodeIndex<Ix>>
     }
 }
 impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> IndexMut<NodeIndex<Ix>>
-    for GraphNodeAlloc<N, E, Ty, Ix>
+    for SemiSparseGraph<N, E, Ty, Ix>
 {
     fn index_mut(&mut self, index: NodeIndex<Ix>) -> &mut Self::Output {
         self.inner[index].unwrap_mut()
     }
 }
 impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> Index<EdgeIndex<Ix>>
-    for GraphNodeAlloc<N, E, Ty, Ix>
+    for SemiSparseGraph<N, E, Ty, Ix>
 {
     type Output = E;
 
@@ -278,25 +278,25 @@ impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> Index<EdgeIndex<Ix>>
     }
 }
 impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> IndexMut<EdgeIndex<Ix>>
-    for GraphNodeAlloc<N, E, Ty, Ix>
+    for SemiSparseGraph<N, E, Ty, Ix>
 {
     fn index_mut(&mut self, index: EdgeIndex<Ix>) -> &mut Self::Output {
         &mut self.inner[index]
     }
 }
 
-impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> GraphBase for GraphNodeAlloc<N, E, Ty, Ix> {
+impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> GraphBase for SemiSparseGraph<N, E, Ty, Ix> {
     type NodeId = NodeIndex<Ix>;
     type EdgeId = EdgeIndex<Ix>;
 }
-impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> GraphProp for GraphNodeAlloc<N, E, Ty, Ix> {
+impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> GraphProp for SemiSparseGraph<N, E, Ty, Ix> {
     type EdgeType = Ty;
 }
-impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> Data for GraphNodeAlloc<N, E, Ty, Ix> {
+impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> Data for SemiSparseGraph<N, E, Ty, Ix> {
     type NodeWeight = N::Inner;
     type EdgeWeight = E;
 }
-impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> NodeIndexable for GraphNodeAlloc<N, E, Ty, Ix> {
+impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> NodeIndexable for SemiSparseGraph<N, E, Ty, Ix> {
     fn node_bound(&self) -> usize {
         self.inner.node_bound()
     }
@@ -307,7 +307,7 @@ impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> NodeIndexable for GraphNodeAll
         a.index()
     }
 }
-impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> EdgeIndexable for GraphNodeAlloc<N, E, Ty, Ix> {
+impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> EdgeIndexable for SemiSparseGraph<N, E, Ty, Ix> {
     fn edge_bound(&self) -> usize {
         self.inner.edge_bound()
     }
@@ -318,17 +318,17 @@ impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> EdgeIndexable for GraphNodeAll
         a.index()
     }
 }
-impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> NodeCount for GraphNodeAlloc<N, E, Ty, Ix> {
+impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> NodeCount for SemiSparseGraph<N, E, Ty, Ix> {
     fn node_count(&self) -> usize {
         self.node_count
     }
 }
-impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> EdgeCount for GraphNodeAlloc<N, E, Ty, Ix> {
+impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> EdgeCount for SemiSparseGraph<N, E, Ty, Ix> {
     fn edge_count(&self) -> usize {
         self.inner.edge_count()
     }
 }
-impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> DataMap for GraphNodeAlloc<N, E, Ty, Ix> {
+impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> DataMap for SemiSparseGraph<N, E, Ty, Ix> {
     fn node_weight(&self, id: Self::NodeId) -> Option<&Self::NodeWeight> {
         let w = self.inner.node_weight(id)?;
         w.is_some().then(|| w.unwrap_ref())
@@ -337,7 +337,7 @@ impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> DataMap for GraphNodeAlloc<N, 
         self.inner.edge_weight(id)
     }
 }
-impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> DataMapMut for GraphNodeAlloc<N, E, Ty, Ix> {
+impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> DataMapMut for SemiSparseGraph<N, E, Ty, Ix> {
     fn node_weight_mut(&mut self, id: Self::NodeId) -> Option<&mut Self::NodeWeight> {
         let w = self.inner.node_weight_mut(id)?;
         w.is_some().then(|| w.unwrap_mut())
@@ -347,7 +347,7 @@ impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> DataMapMut for GraphNodeAlloc<
     }
 }
 impl<N: Optional, E: Copy, Ty: EdgeType, Ix: IndexType> DataValueMap
-    for GraphNodeAlloc<N, E, Ty, Ix>
+    for SemiSparseGraph<N, E, Ty, Ix>
 where
     N::Inner: Copy,
 {
@@ -359,7 +359,7 @@ where
         self.inner.edge_weight(id).copied()
     }
 }
-impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> Visitable for GraphNodeAlloc<N, E, Ty, Ix> {
+impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> Visitable for SemiSparseGraph<N, E, Ty, Ix> {
     type Map = <Graph<N, E, Ty, Ix> as Visitable>::Map;
 
     fn visit_map(&self) -> Self::Map {
@@ -371,7 +371,7 @@ impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> Visitable for GraphNodeAlloc<N
 }
 
 impl<'a, N: Optional, E, Ty: EdgeType, Ix: IndexType> IntoNodeIdentifiers
-    for &'a GraphNodeAlloc<N, E, Ty, Ix>
+    for &'a SemiSparseGraph<N, E, Ty, Ix>
 {
     type NodeIdentifiers = iter::NodeIdFilter<NodeIndices<Ix>, &'a Graph<N, E, Ty, Ix>>;
 
@@ -380,7 +380,7 @@ impl<'a, N: Optional, E, Ty: EdgeType, Ix: IndexType> IntoNodeIdentifiers
     }
 }
 impl<'a, N: Optional, E, Ty: EdgeType, Ix: IndexType> IntoNodeReferences
-    for &'a GraphNodeAlloc<N, E, Ty, Ix>
+    for &'a SemiSparseGraph<N, E, Ty, Ix>
 {
     type NodeRef = (NodeIndex<Ix>, &'a N::Inner);
     type NodeReferences = iter::NodeRefFilter<NodeReferences<'a, N, Ix>>;
@@ -390,7 +390,7 @@ impl<'a, N: Optional, E, Ty: EdgeType, Ix: IndexType> IntoNodeReferences
     }
 }
 impl<'a, N: Optional, E, Ty: EdgeType, Ix: IndexType> IntoEdgeReferences
-    for &'a GraphNodeAlloc<N, E, Ty, Ix>
+    for &'a SemiSparseGraph<N, E, Ty, Ix>
 {
     type EdgeRef = EdgeReference<'a, E, Ix>;
     type EdgeReferences = iter::EdgeRefFilter<EdgeReferences<'a, E, Ix>, &'a Graph<N, E, Ty, Ix>>;
@@ -400,7 +400,7 @@ impl<'a, N: Optional, E, Ty: EdgeType, Ix: IndexType> IntoEdgeReferences
     }
 }
 impl<'a, N: Optional, E, Ty: EdgeType, Ix: IndexType> IntoNeighbors
-    for &'a GraphNodeAlloc<N, E, Ty, Ix>
+    for &'a SemiSparseGraph<N, E, Ty, Ix>
 {
     type Neighbors = iter::NodeIdFilter<Neighbors<'a, E, Ix>, &'a Graph<N, E, Ty, Ix>>;
 
@@ -409,7 +409,7 @@ impl<'a, N: Optional, E, Ty: EdgeType, Ix: IndexType> IntoNeighbors
     }
 }
 impl<'a, N: Optional, E, Ty: EdgeType, Ix: IndexType> IntoNeighborsDirected
-    for &'a GraphNodeAlloc<N, E, Ty, Ix>
+    for &'a SemiSparseGraph<N, E, Ty, Ix>
 {
     type NeighborsDirected = iter::NodeIdFilter<Neighbors<'a, E, Ix>, &'a Graph<N, E, Ty, Ix>>;
 
@@ -418,7 +418,7 @@ impl<'a, N: Optional, E, Ty: EdgeType, Ix: IndexType> IntoNeighborsDirected
     }
 }
 impl<'a, N: Optional, E, Ty: EdgeType, Ix: IndexType> IntoEdges
-    for &'a GraphNodeAlloc<N, E, Ty, Ix>
+    for &'a SemiSparseGraph<N, E, Ty, Ix>
 {
     type Edges = iter::EdgeRefFilter<Edges<'a, E, Ty, Ix>, &'a Graph<N, E, Ty, Ix>>;
 
@@ -427,7 +427,7 @@ impl<'a, N: Optional, E, Ty: EdgeType, Ix: IndexType> IntoEdges
     }
 }
 impl<'a, N: Optional, E, Ty: EdgeType, Ix: IndexType> IntoEdgesDirected
-    for &'a GraphNodeAlloc<N, E, Ty, Ix>
+    for &'a SemiSparseGraph<N, E, Ty, Ix>
 {
     type EdgesDirected = iter::EdgeRefFilter<Edges<'a, E, Ty, Ix>, &'a Graph<N, E, Ty, Ix>>;
 

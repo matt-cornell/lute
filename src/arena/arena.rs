@@ -8,7 +8,7 @@ use misc::DataValueMap;
 use petgraph::graph::DefaultIx;
 use petgraph::prelude::*;
 use petgraph::visit::*;
-use semicompact::GraphNodeAlloc;
+use semisparse::SemiSparseGraph;
 use slab::Slab;
 use smallvec::SmallVec;
 use std::cell::{Cell, UnsafeCell};
@@ -64,7 +64,7 @@ impl<Ix: Debug> Debug for Range<Ix> {
 }
 
 const ATOM_BIT_STORAGE: usize = 2;
-type Graph<Ix> = GraphNodeAlloc<Atom, Bond, Undirected, Ix>;
+type Graph<Ix> = SemiSparseGraph<Atom, Bond, Undirected, Ix>;
 type BSType = crate::utils::bitset::BitSet<u16, ATOM_BIT_STORAGE>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

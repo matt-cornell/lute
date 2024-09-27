@@ -1,5 +1,5 @@
 use clap::Parser;
-use lute::graph::semicompact::GraphNodeAlloc;
+use lute::graph::semisparse::SemiSparseGraph;
 use lute::prelude::*;
 use std::path::PathBuf;
 
@@ -50,7 +50,7 @@ fn main() {
     }
 
     let graph =
-        lute::graph::GraphCompactor::<&GraphNodeAlloc<Atom, Bond, _, u16>>::new(arena.graph());
+        lute::graph::GraphCompactor::<&SemiSparseGraph<Atom, Bond, _, u16>>::new(arena.graph());
 
     match cli.fmt {
         OutputType::None => {}

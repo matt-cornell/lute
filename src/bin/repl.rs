@@ -5,7 +5,7 @@ use petgraph::data::FromElements;
 use petgraph::prelude::*;
 use reedline_repl_rs::{self as rlr, Repl};
 use rlr::clap::{self, Arg, ArgAction, ArgMatches, Command, Parser, ValueEnum};
-use semicompact::GraphNodeAlloc;
+use semisparse::SemiSparseGraph;
 use std::env;
 use std::ffi::OsStr;
 use std::fmt::Write;
@@ -324,7 +324,7 @@ fn dump(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, ReplError
                     .to_string()
                 } else {
                     SvgFormatter {
-                        graph: &GraphCompactor::<&GraphNodeAlloc<_, _, _, _>>::new(
+                        graph: &GraphCompactor::<&SemiSparseGraph<_, _, _, _>>::new(
                             ctx.arena.graph(),
                         ),
                         mode,
@@ -354,7 +354,7 @@ fn dump(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>, ReplError
                     .render(None)
                 } else {
                     SvgFormatter {
-                        graph: &GraphCompactor::<&GraphNodeAlloc<_, _, _, _>>::new(
+                        graph: &GraphCompactor::<&SemiSparseGraph<_, _, _, _>>::new(
                             ctx.arena.graph(),
                         ),
                         mode,
