@@ -1,5 +1,6 @@
 use itertools::Itertools;
 use petgraph::graph::{EdgeIndex, Graph, IndexType, NodeIndex};
+use petgraph::visit::NodeCount;
 use petgraph::{Direction, EdgeType};
 
 /// A trait for types acting like `Option`. Mostly here for its special impl for `Atom`, which uses a scratch bit.
@@ -11,19 +12,29 @@ pub trait Optional {
     fn none() -> Self;
     /// Create a version of this type
     fn some(val: Self::Inner) -> Self;
+
+    fn unwrap_ref(&self) -> &Self::Inner;
+
+    fn unwrap_mut(&mut self) -> &mut Self::Inner;
 }
 impl Optional for crate::core::Atom {
     type Inner = Self;
 
     fn is_some(&self) -> bool {
-        self.data.scratch() & (1 << 6) == 0
+        self.data.scratch() & (1 << 5) == 0
     }
     fn none() -> Self {
-        Self::new_scratch(0, 1 << 6)
+        Self::new_scratch(0, 1 << 5)
     }
     fn some(mut val: Self::Inner) -> Self {
-        val.map_scratch(|s| s & ((1 << 6) - 1));
+        val.map_scratch(|s| s & ((1 << 5) - 1));
         val
+    }
+    fn unwrap_ref(&self) -> &Self::Inner {
+        self
+    }
+    fn unwrap_mut(&mut self) -> &mut Self::Inner {
+        self
     }
 }
 impl<T> Optional for Option<T> {
@@ -38,16 +49,28 @@ impl<T> Optional for Option<T> {
     fn some(val: T) -> Self {
         Some(val)
     }
+    fn unwrap_ref(&self) -> &Self::Inner {
+        self.as_ref().unwrap()
+    }
+    fn unwrap_mut(&mut self) -> &mut Self::Inner {
+        self.as_mut().unwrap()
+    }
 }
 
+/// A type that "allocates" runs of contiguous nodes.
+/// Might make this a full graph type later, for now it's just a thin wrapper that you could mess up
 #[derive(Debug, Clone)]
-pub struct SemiCompactGraph<N, E, Ty: EdgeType, Ix: IndexType> {
+pub struct GraphNodeAlloc<N, E, Ty: EdgeType, Ix: IndexType> {
     /// The underlying graph we use for storage
-    inner: Graph<N, E, Ty, Ix>,
+    pub inner: Graph<N, E, Ty, Ix>,
     /// Holes we've created in the graph
     holes: [[Ix; 2]; 8],
 }
-impl<N, E, Ty: EdgeType, Ix: IndexType> SemiCompactGraph<N, E, Ty, Ix> {
+impl<N, E, Ty: EdgeType, Ix: IndexType> GraphNodeAlloc<N, E, Ty, Ix> {
+    pub fn new() -> Self {
+        Self::with_capacity(0, 0)
+    }
+
     /// Create a new semi-connected graph with a given capacity
     pub fn with_capacity(nodes: usize, edges: usize) -> Self {
         Self {
@@ -64,12 +87,12 @@ impl<N, E, Ty: EdgeType, Ix: IndexType> SemiCompactGraph<N, E, Ty, Ix> {
         }
     }
 
-    #[inline(always)]
-    pub fn graph(&self) -> &Graph<N, E, Ty, Ix> {
-        &self.inner
+    pub fn clear(&mut self) {
+        self.inner.clear();
+        self.holes = [[IndexType::max(); 2]; 8];
     }
 }
-impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> SemiCompactGraph<N, E, Ty, Ix> {
+impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> GraphNodeAlloc<N, E, Ty, Ix> {
     /// Allocate a contiguous range of nodes, returns the index of the first one.
     pub fn allocate_range(&mut self, size: usize, mut fill: impl FnMut() -> N::Inner) -> usize {
         if size == 0 {
@@ -164,6 +187,10 @@ impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> SemiCompactGraph<N, E, Ty, Ix>
         let hlen = self.holes.len();
         let start_ix = self.holes[hlen - last - 1][0].index();
         let empty = [IndexType::max(); 2];
+        if start_ix >= self.inner.node_count() {
+            self.holes[(hlen - last)..].fill(empty);
+            return;
+        }
         let chunks = self.inner.raw_nodes()[start_ix..]
             .iter()
             .enumerate()
@@ -179,5 +206,11 @@ impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> SemiCompactGraph<N, E, Ty, Ix>
         for hole in &mut self.holes[(hlen - last)..] {
             *hole = iter.next().map_or(empty, |arr| arr.map(Ix::new));
         }
+    }
+}
+
+impl<N, E, Ty: EdgeType, Ix: IndexType> Default for GraphNodeAlloc<N, E, Ty, Ix> {
+    fn default() -> Self {
+        Self::new()
     }
 }
