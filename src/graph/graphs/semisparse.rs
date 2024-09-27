@@ -16,8 +16,10 @@ pub trait Optional {
     /// Create a version of this type
     fn some(val: Self::Inner) -> Self;
 
+    /// Get a reference to the inner value, panicking if this is in an "empty" state.
     fn unwrap_ref(&self) -> &Self::Inner;
 
+    /// Get a mutable reference to the inner value, panicking if this is in an "empty" state.
     fn unwrap_mut(&mut self) -> &mut Self::Inner;
 }
 impl Optional for crate::core::Atom {
@@ -34,9 +36,11 @@ impl Optional for crate::core::Atom {
         val
     }
     fn unwrap_ref(&self) -> &Self::Inner {
+        debug_assert!(self.is_some(), "\"unwrapped\" an \"empty\" molecule!");
         self
     }
     fn unwrap_mut(&mut self) -> &mut Self::Inner {
+        debug_assert!(self.is_some(), "\"unwrapped\" an \"empty\" molecule!");
         self
     }
 }
@@ -60,8 +64,7 @@ impl<T> Optional for Option<T> {
     }
 }
 
-/// A type that "allocates" runs of contiguous nodes.
-/// Might make this a full graph type later, for now it's just a thin wrapper that you could mess up
+/// A "semi-sparse" graph. Node indices are stable across removals, but unlike `StableGraph`, you can also allocate a contiguous range of nodes.
 #[derive(Debug, Clone)]
 pub struct SemiSparseGraph<N, E, Ty: EdgeType, Ix: IndexType> {
     /// The underlying graph we use for storage
@@ -75,7 +78,7 @@ impl<N, E, Ty: EdgeType, Ix: IndexType> SemiSparseGraph<N, E, Ty, Ix> {
         Self::with_capacity(0, 0)
     }
 
-    /// Create a new semi-connected graph with a given capacity
+    /// Create a new semi-sparse graph with a given capacity
     pub fn with_capacity(nodes: usize, edges: usize) -> Self {
         Self {
             inner: Graph::with_capacity(nodes, edges),
@@ -84,7 +87,7 @@ impl<N, E, Ty: EdgeType, Ix: IndexType> SemiSparseGraph<N, E, Ty, Ix> {
         }
     }
 
-    /// Create a new semi-connected graph from an underlying graph, assuming that all elements are in the "filled" state.
+    /// Create a new semi-sparse graph from an underlying graph, assuming that all elements are in the "filled" state.
     pub fn from_compact(graph: Graph<N, E, Ty, Ix>) -> Self {
         Self {
             node_count: graph.node_count(),
@@ -93,12 +96,14 @@ impl<N, E, Ty: EdgeType, Ix: IndexType> SemiSparseGraph<N, E, Ty, Ix> {
         }
     }
 
+    /// Clear all of the nodes and edges in this graph.
     pub fn clear(&mut self) {
         self.inner.clear();
         self.holes = [[IndexType::max(); 2]; 8];
         self.node_count = 0;
     }
 
+    /// Get a reference to the underlying graph.
     pub fn graph(&self) -> &Graph<N, E, Ty, Ix> {
         &self.inner
     }
@@ -146,6 +151,7 @@ impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> SemiSparseGraph<N, E, Ty, Ix> 
         }
     }
 
+    /// Free a range of nodes. It doesn't have to be the same as the one passed in.
     pub fn free_range(&mut self, start: usize, end: usize) {
         for i in start..end {
             let old = std::mem::replace(&mut self.inner[NodeIndex::new(i)], N::none());
@@ -223,18 +229,21 @@ impl<N: Optional, E, Ty: EdgeType, Ix: IndexType> SemiSparseGraph<N, E, Ty, Ix> 
         }
     }
 
+    /// Add a node to the graph, the same way it does in the base `Graph`.
     pub fn add_node(&mut self, weight: N::Inner) -> NodeIndex<Ix> {
         let mut val = Some(weight);
         NodeIndex::new(self.allocate_range(1, || val.take().unwrap()))
     }
+    /// Add an edge to the graph, the same way it does in the base `Graph`.
     pub fn add_edge(&mut self, a: NodeIndex<Ix>, b: NodeIndex<Ix>, weight: E) -> EdgeIndex<Ix> {
         #[cfg(debug_assertions)]
         {
-            let _a = &self[a];
-            let _b = &self[b];
+            debug_assert!(self.inner.raw_nodes()[a.index()].weight.is_some());
+            debug_assert!(self.inner.raw_nodes()[b.index()].weight.is_some());
         }
         self.inner.add_edge(a, b, weight)
     }
+    /// Find an edge between two nodes.
     pub fn find_edge(&self, a: NodeIndex<Ix>, b: NodeIndex<Ix>) -> Option<EdgeIndex<Ix>> {
         self.inner.raw_nodes()[a.index()]
             .weight
