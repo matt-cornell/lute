@@ -5,7 +5,9 @@ use petgraph::data::FromElements;
 use petgraph::prelude::*;
 use reedline_repl_rs::{self as rlr, Repl};
 use rlr::clap::{self, Arg, ArgAction, ArgMatches, Command, Parser, ValueEnum};
+use rlr::reedline::{Prompt, PromptViMode, PromptEditMode, PromptHistorySearch, PromptHistorySearchStatus};
 use semisparse::SemiSparseGraph;
+use std::borrow::Cow;
 use std::env;
 use std::ffi::OsStr;
 use std::fmt::Write;
@@ -654,6 +656,48 @@ fn adjust_settings(args: ArgMatches, ctx: &mut Context) -> Result<Option<String>
     })
 }
 
+struct LutePrompt;
+impl Prompt for LutePrompt {
+    fn render_prompt_left(&self) -> Cow<str> {
+        Cow::Borrowed(concat!("lute v", env!("CARGO_PKG_VERSION")))
+    }
+
+    fn render_prompt_right(&self) -> Cow<str> {
+        Cow::Borrowed("")
+    }
+
+    fn render_prompt_indicator(&self, edit_mode: PromptEditMode) -> Cow<str> {
+        match edit_mode {
+            PromptEditMode::Default | PromptEditMode::Emacs => "> ".into(),
+            PromptEditMode::Vi(vi_mode) => match vi_mode {
+                PromptViMode::Normal => "> ".into(),
+                PromptViMode::Insert => ": ".into(),
+            },
+            PromptEditMode::Custom(str) => str.into(),
+        }
+    }
+
+    fn render_prompt_multiline_indicator(&self) -> Cow<str> {
+        Cow::Borrowed("::: ")
+    }
+
+    fn render_prompt_history_search_indicator(
+        &self,
+        history_search: PromptHistorySearch,
+    ) -> Cow<str> {
+        let prefix = match history_search.status {
+            PromptHistorySearchStatus::Passing => "",
+            PromptHistorySearchStatus::Failing => "failing ",
+        };
+        // NOTE: magic strings, given there is logic on how these compose I am not sure if it
+        // is worth extracting in to static constant
+        Cow::Owned(format!(
+            "({}reverse-search: {}) ",
+            prefix, history_search.term
+        ))
+    }
+}
+
 #[derive(Debug, Parser)]
 struct Cli {
     /// File to load for command history
@@ -688,7 +732,7 @@ fn main() {
     let mut repl = Repl::new(context)
         .with_name("lute")
         .with_version(concat!("v", env!("CARGO_PKG_VERSION")))
-        .with_prompt(concat!("lute v", env!("CARGO_PKG_VERSION")))
+        .with_prompt(LutePrompt)
         .with_command(Command::new("reset").about("Reset the arena"), |_, ctx| {
             ctx.arena = Arena::new();
             Ok(None)
