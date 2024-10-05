@@ -1213,6 +1213,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "egui_tracing"
+version = "0.2.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "64e01e2bab711727bd92c586524acdf34f4654b3383796578642034458d72d74"
+dependencies = [
+ "chrono",
+ "egui",
+ "globset",
+ "serde",
+ "tracing",
+ "tracing-log",
+ "tracing-subscriber",
+ "unicode-segmentation",
+]
+
+[[package]]
 name = "either"
 version = "1.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1568,6 +1584,20 @@ dependencies = [
  "khronos_api",
  "log",
  "xml-rs",
+]
+
+[[package]]
+name = "globset"
+version = "0.4.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "15f1ce686646e7f1e19bf7d5533fe443a45dbfb990e00629110797578b42fb19"
+dependencies = [
+ "aho-corasick",
+ "bstr",
+ "log",
+ "regex-automata",
+ "regex-syntax",
+ "serde",
 ]
 
 [[package]]
@@ -2054,6 +2084,7 @@ dependencies = [
  "clap",
  "coordgen",
  "eframe",
+ "egui_tracing",
  "fmtastic",
  "gcd",
  "itertools 0.13.0",
