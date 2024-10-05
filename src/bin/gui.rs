@@ -11,17 +11,37 @@ fn main() -> eframe::Result {
         "Lute GUI",
         eframe::NativeOptions::default(),
         move |ctx, _frame| {
+            if ctx.input_mut(|i| {
+                i.consume_shortcut(&egui::KeyboardShortcut::new(
+                    egui::Modifiers::CTRL,
+                    egui::Key::W,
+                ))
+            }) {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
             egui::SidePanel::left("sidebar").show(ctx, |ui| {
                 ui.horizontal_top(|ui| {
                     ui.label("Fragments");
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-                        if ui.button("C").clicked() {
+                        if ui.button("C").clicked()
+                            || ctx.input_mut(|i| {
+                                i.consume_shortcut(&egui::KeyboardShortcut::new(
+                                    egui::Modifiers::CTRL,
+                                    egui::Key::R,
+                                ))
+                            })
+                        {
                             arena = Arena::new();
                         }
                         {
                             let popup_id = ui.make_persistent_id("load_smiles");
                             let response = ui.button("+");
-                            if response.clicked() {
+                            if response.clicked()
+                                || (ctx.memory(|mem| mem.focused().is_none())
+                                    && ctx.input_mut(|i| {
+                                        i.consume_key(Default::default(), egui::Key::L)
+                                    }))
+                            {
                                 ui.memory_mut(|mem| mem.open_popup(popup_id));
                                 smiles_popup_focus = true;
                             }
@@ -49,8 +69,12 @@ fn main() -> eframe::Result {
                                             let cancel = ui.button("Cancel");
                                             if load.clicked()
                                                 || (editor.has_focus()
-                                                    && ctx
-                                                        .input(|i| i.key_pressed(egui::Key::Enter)))
+                                                    && ctx.input_mut(|i| {
+                                                        i.consume_key(
+                                                            Default::default(),
+                                                            egui::Key::Enter,
+                                                        )
+                                                    }))
                                             {
                                                 let graph = SmilesParser::new(&smiles_input)
                                                     .parse()
@@ -61,8 +85,11 @@ fn main() -> eframe::Result {
                                                 ui.memory_mut(|mem| mem.close_popup());
                                             } else if cancel.clicked()
                                                 || (editor.has_focus()
-                                                    && ctx.input(|i| {
-                                                        i.key_pressed(egui::Key::Escape)
+                                                    && ctx.input_mut(|i| {
+                                                        i.consume_key(
+                                                            Default::default(),
+                                                            egui::Key::Escape,
+                                                        )
                                                     }))
                                             {
                                                 smiles_input.clear();
@@ -98,7 +125,7 @@ fn main() -> eframe::Result {
 
                         let data = SvgFormatter {
                             graph: mol,
-                            mode: lute::disp::svg::FormatMode::LegacyH,
+                            mode: lute::disp::svg::FormatMode::Normal,
                         }
                         .render(None);
                         let img = egui::ColorImage {
