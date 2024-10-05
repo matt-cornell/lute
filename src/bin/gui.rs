@@ -158,39 +158,47 @@ fn main() -> eframe::Result {
             }
             egui::CentralPanel::default().show(ctx, |ui| {
                 if !arena.expose_frags().is_empty() {
-                    ui.centered_and_justified(|ui| {
-                        let mol = arena.molecule(current.into());
+                    tracing::subscriber::with_default(
+                        tracing::subscriber::NoSubscriber::new(),
+                        || {
+                            ui.centered_and_justified(|ui| {
+                                let mol = arena.molecule(current.into());
 
-                        let data = SvgFormatter {
-                            graph: mol,
-                            mode: lute::disp::svg::FormatMode::Normal,
-                        }
-                        .render(None);
-                        let img = egui::ColorImage {
-                            size: [data.width() as _, data.height() as _],
-                            pixels: bytemuck::allocation::cast_vec::<u8, egui::Color32>(
-                                data.take(),
-                            ),
-                        };
-                        let texture = ctx.load_texture(
-                            format!("mol:{}", mol.lightweight_smiles()),
-                            img,
-                            Default::default(),
-                        );
-                        ui.add(egui::Image::new((texture.id(), texture.size_vec2())));
-                        // TODO: make this cache the image
-                    });
+                                let data = SvgFormatter {
+                                    graph: mol,
+                                    mode: lute::disp::svg::FormatMode::Normal,
+                                }
+                                .render(None);
+                                let img = egui::ColorImage {
+                                    size: [data.width() as _, data.height() as _],
+                                    pixels: bytemuck::allocation::cast_vec::<u8, egui::Color32>(
+                                        data.take(),
+                                    ),
+                                };
+                                let texture = ctx.load_texture(
+                                    format!("mol:{}", mol.lightweight_smiles()),
+                                    img,
+                                    Default::default(),
+                                );
+                                ui.add(egui::Image::new((texture.id(), texture.size_vec2())));
+                                // TODO: make this cache the image
+                            });
 
-                    let mol = arena.molecule(current.into());
+                            let mol = arena.molecule(current.into());
 
-                    ui.with_layout(egui::Layout::bottom_up(egui::Align::Max), |ui| {
-                        ui.label(format!(
-                            "Fast SMILES: {}",
-                            mol.smiles(SmilesConfig::fast_roundtrip()),
-                        ));
-                        ui.label(format!("Canon SMILES: {}", mol.smiles(SmilesConfig::new())));
-                        ui.label(format!("Atomic mass: {:.3}u", mol.mass()));
-                    });
+                            ui.with_layout(egui::Layout::bottom_up(egui::Align::Max), |ui| {
+                                ui.label(format!(
+                                    "Fast SMILES: {}",
+                                    mol.smiles(SmilesConfig::fast_roundtrip()),
+                                ));
+                                ui.label(format!(
+                                    "Canon SMILES: {}",
+                                    mol.smiles(SmilesConfig::new())
+                                ));
+                                ui.label(format!("Atomic mass: {:.3}u", mol.mass()));
+                            });
+                        },
+                    );
                 }
             });
         },
