@@ -79,5 +79,5 @@ rand = ["dep:gcd", "dep:rand"]
 resvg = ["dep:lazy_static", "dep:resvg"]
 
 examples-feats = ["dep:clap", "dep:tracing-flame", "dep:tracing-subscriber"]
-gui-feats = ["dep:bytemuck", "dep:eframe", "dep:egui_tracing", "dep:tracing-subscriber"]
+gui-feats = ["coordgen", "dep:bytemuck", "dep:eframe", "dep:egui_tracing", "dep:tracing-subscriber"]
 repl-feats = ["dep:clap", "dep:reedline-repl-rs", "dep:tracing-subscriber"]
