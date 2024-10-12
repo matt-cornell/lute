@@ -551,13 +551,15 @@ fn main() -> eframe::Result {
                                     }
                                     rdx *= 1.5;
                                     rdy *= 1.5;
-                                    painter.line_segment(
-                                        [
+                                    painter.add(egui::Shape::dashed_line(
+                                        &[
                                             egui::pos2(x1 - rdx, y1 - rdy),
                                             egui::pos2(x2 - rdx, y2 - rdy),
-                                        ],
+                                        ] as _,
                                         stroke,
-                                    );
+                                        10.0,
+                                        10.0,
+                                    ));
                                     painter.line_segment(
                                         [egui::pos2(x1, y1), egui::pos2(x2, y2)],
                                         stroke,
