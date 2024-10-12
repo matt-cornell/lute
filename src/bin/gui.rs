@@ -170,7 +170,7 @@ fn main() -> eframe::Result {
                     let mol = arena.molecule(current.into());
                     let click = ctx.pointer_interact_pos();
                     let mut selected = None;
-                    ui.centered_and_justified(|cui| {
+                    ui.centered_and_justified(|ui| {
                         let mut atoms = mol
                             .node_references()
                             .map(|a| {
@@ -219,7 +219,7 @@ fn main() -> eframe::Result {
                         let diff_y = max_y - min_y + 80.0;
                         let max_axis = diff_x.max(diff_y);
 
-                        let painter = cui.painter();
+                        let painter = ui.painter();
                         let bounds = painter.clip_rect();
                         let size = (bounds.max - bounds.min).abs();
                         let min_axis = size.min_elem();
@@ -393,9 +393,10 @@ fn main() -> eframe::Result {
                             };
                             if let Some(pos) = click {
                                 if rect.contains(pos) {
-                                    selected = Some(aref.id());
+                                    selected = Some((aref.id(), rect));
+                                    let center = rect.center();
                                     painter.circle_filled(
-                                        rect.center(),
+                                        center,
                                         rect.size().length() * 0.6,
                                         Color32::YELLOW.gamma_multiply(0.25),
                                     );
@@ -578,6 +579,28 @@ fn main() -> eframe::Result {
                             idx += data.unknown() as usize;
                         }
                     });
+
+                    if let Some((id, rect)) = selected {
+                        ui.allocate_new_ui(
+                            egui::UiBuilder::new().max_rect(egui::Rect::from_min_size(
+                                rect.center(),
+                                egui::vec2(100.0, 100.0),
+                            )),
+                            |ui| {
+                                egui::Frame::popup(ui.style()).show(ui, |ui| {
+                                    let atom = mol.node_weight(id).unwrap();
+                                    ui.label(format!("{:#}", atom));
+                                    ui.label(format!("protons: {}", atom.isotope));
+                                    ui.label(format!("isotope: {}", atom.isotope));
+                                    ui.separator();
+                                    ui.label(format!("hydrogen: {}", atom.data.hydrogen()));
+                                    ui.label(format!("single bonds: {}", atom.data.single()));
+                                    ui.label(format!("placeholders: {}", atom.data.unknown()));
+                                    ui.label(format!("other bonds: {}", atom.data.other()));
+                                });
+                            },
+                        );
+                    }
 
                     ui.with_layout(egui::Layout::bottom_up(egui::Align::Max), |ui| {
                         ui.label(format!(
