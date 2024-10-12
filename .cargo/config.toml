@@ -1,4 +1,4 @@
 [alias]
-gui = "r -F gui-feats --bin gui"
+gui = "r -F gui-feats --bin gui --no-default-features"
 mrepl = "r -F repl-feats --bin repl --no-default-features -- -H target/repl.txt"
 repl = "r -F repl-feats --bin repl -- -H target/repl.txt"
