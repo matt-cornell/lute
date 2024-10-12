@@ -1,6 +1,6 @@
 #![feature(cmp_minmax)]
 
-use eframe::egui;
+use eframe::egui::{self, Color32, FontId};
 use fmtastic::*;
 use lute::atom_info::ATOM_DATA;
 use lute::disp::svg::svg_atom_color;
@@ -12,8 +12,6 @@ use tracing_subscriber::{filter, prelude::*, Registry};
 
 #[cfg(not(target_family = "wasm"))]
 fn main() -> eframe::Result {
-    use eframe::egui::FontId;
-
     let mut arena = Arena::<u32>::new();
     let mut current = 0;
     let mut smiles_input = String::new();
@@ -170,7 +168,9 @@ fn main() -> eframe::Result {
                     let _guard =
                         tracing::subscriber::set_default(tracing::subscriber::NoSubscriber::new());
                     let mol = arena.molecule(current.into());
-                    ui.centered_and_justified(|ui| {
+                    let click = ctx.pointer_interact_pos();
+                    let mut selected = None;
+                    ui.centered_and_justified(|cui| {
                         let mut atoms = mol
                             .node_references()
                             .map(|a| {
@@ -219,7 +219,7 @@ fn main() -> eframe::Result {
                         let diff_y = max_y - min_y + 80.0;
                         let max_axis = diff_x.max(diff_y);
 
-                        let painter = ui.painter();
+                        let painter = cui.painter();
                         let bounds = painter.clip_rect();
                         let size = (bounds.max - bounds.min).abs();
                         let min_axis = size.min_elem();
@@ -229,189 +229,13 @@ fn main() -> eframe::Result {
                             *y = (*y - min_y) * scale + bounds.min.y + (size.y - diff_y) / 2.0;
                         }
 
-                        for edge in mol.edge_references() {
-                            let [ix1, ix2] = std::cmp::minmax(
-                                mol.to_index(edge.source()),
-                                mol.to_index(edge.target()),
-                            );
-                            let (ox1, oy1) = locs[ix1];
-                            let (ox2, oy2) = locs[ix2];
-                            let (mut x1, mut y1) = (ox1, oy1);
-                            let (mut x2, mut y2) = (ox2, oy2);
-                            let (mut dx, mut dy) = (x2 - x1, y2 - y1);
-                            let mag = (dx * dx + dy * dy).sqrt();
-                            dx /= mag;
-                            dy /= mag;
-                            if atoms[ix1] != 6
-                                || mol.node_weight(edge.source()).unwrap().isotope != 0
-                            {
-                                x1 += dx * scale * 9.0;
-                                y1 += dy * scale * 9.0;
-                            }
-                            if atoms[ix2] != 6
-                                || mol.node_weight(edge.target()).unwrap().isotope != 0
-                            {
-                                x2 -= dx * scale * 9.0;
-                                y2 -= dy * scale * 9.0;
-                            }
-                            let (mut rdx, mut rdy) = (-dy * 2.75, dx * 2.75);
-                            match *edge.weight() {
-                                Bond::Non => {}
-                                Bond::Single | Bond::Left | Bond::Right => {
-                                    painter.line_segment(
-                                        [egui::pos2(x1, y1), egui::pos2(x2, y2)],
-                                        (2.0, egui::Color32::LIGHT_GRAY),
-                                    );
-                                }
-                                Bond::Double | Bond::DoubleE | Bond::DoubleZ => {
-                                    painter.line_segment(
-                                        [
-                                            egui::pos2(x1 - rdx, y1 - rdy),
-                                            egui::pos2(x2 - rdx, y2 - rdy),
-                                        ],
-                                        (2.0, egui::Color32::LIGHT_GRAY),
-                                    );
-                                    painter.line_segment(
-                                        [
-                                            egui::pos2(x1 + rdx, y1 + rdy),
-                                            egui::pos2(x2 + rdx, y2 + rdy),
-                                        ],
-                                        (2.0, egui::Color32::LIGHT_GRAY),
-                                    );
-                                }
-                                Bond::Triple => {
-                                    painter.line_segment(
-                                        [
-                                            egui::pos2(x1 - 2.0 * rdx, y1 - 2.0 * rdy),
-                                            egui::pos2(x2 - 2.0 * rdx, y2 - 2.0 * rdy),
-                                        ],
-                                        (2.0, egui::Color32::LIGHT_GRAY),
-                                    );
-                                    painter.line_segment(
-                                        [
-                                            egui::pos2(x1 + 2.0 * rdx, y1 + 2.0 * rdy),
-                                            egui::pos2(x2 + 2.0 * rdx, y2 + 2.0 * rdy),
-                                        ],
-                                        (2.0, egui::Color32::LIGHT_GRAY),
-                                    );
-                                    painter.line_segment(
-                                        [egui::pos2(x1, y1), egui::pos2(x2, y2)],
-                                        (2.0, egui::Color32::LIGHT_GRAY),
-                                    );
-                                }
-                                Bond::Quad => {
-                                    painter.line_segment(
-                                        [
-                                            egui::pos2(x1 - 3.0 * rdx, y1 - 3.0 * rdy),
-                                            egui::pos2(x2 - 3.0 * rdx, y2 - 3.0 * rdy),
-                                        ],
-                                        (2.0, egui::Color32::LIGHT_GRAY),
-                                    );
-                                    painter.line_segment(
-                                        [
-                                            egui::pos2(x1 - rdx, y1 - rdy),
-                                            egui::pos2(x2 - rdx, y2 - rdy),
-                                        ],
-                                        (2.0, egui::Color32::LIGHT_GRAY),
-                                    );
-                                    painter.line_segment(
-                                        [
-                                            egui::pos2(x1 + rdx, y1 + rdy),
-                                            egui::pos2(x2 + rdx, y2 + rdy),
-                                        ],
-                                        (2.0, egui::Color32::LIGHT_GRAY),
-                                    );
-                                    painter.line_segment(
-                                        [
-                                            egui::pos2(x1 + 3.0 * rdx, y1 + 3.0 * rdy),
-                                            egui::pos2(x2 + 3.0 * rdx, y2 + 3.0 * rdy),
-                                        ],
-                                        (2.0, egui::Color32::LIGHT_GRAY),
-                                    );
-                                }
-                                Bond::Aromatic => {
-                                    let mut flip = 0.0;
-                                    let id1 = edge.source();
-                                    let id2 = edge.target();
-                                    for e in mol.edges(id1).chain(mol.edges(id2)) {
-                                        if *e.weight() != Bond::Aromatic {
-                                            continue;
-                                        }
-                                        if [id1, id2].contains(&e.target()) {
-                                            continue;
-                                        }
-                                        let (x1, y1) = locs[e.source().0 as usize];
-                                        let (x2, y2) = locs[e.target().0 as usize];
-                                        let ndx = x2 - x1;
-                                        let ndy = y2 - y1;
-                                        let dot = dx * ndy - dy * ndx;
-                                        flip += dot;
-                                    }
-                                    if flip > -0.0001 {
-                                        rdx = -rdx;
-                                        rdy = -rdy;
-                                    }
-                                    rdx *= 1.5;
-                                    rdy *= 1.5;
-                                    painter.line_segment(
-                                        [
-                                            egui::pos2(x1 - rdx, y1 - rdy),
-                                            egui::pos2(x2 - rdx, y2 - rdy),
-                                        ],
-                                        (2.0, egui::Color32::LIGHT_GRAY),
-                                    );
-                                    painter.line_segment(
-                                        [egui::pos2(x1, y1), egui::pos2(x2, y2)],
-                                        (2.0, egui::Color32::LIGHT_GRAY),
-                                    );
-                                }
-                                _ => panic!("invalid bond!"),
-                            }
-                        }
-
-                        let mut idx = mol.node_count();
-
-                        for (atom, &(x1, y1)) in mol.node_references().zip(&locs) {
-                            let atom = atom.weight();
-                            let data = atom.data;
-                            for i in 0..data.unknown() {
-                                let (x2, y2) = locs[idx + (i as usize)];
-                                let mut dx = x2 - x1;
-                                let mut dy = y2 - y1;
-                                let mul = (dx * dx + dy * dy).sqrt().recip() * scale * 12.0;
-                                dx *= mul;
-                                dy *= mul;
-                                let x3 = x2 - dx;
-                                let y3 = y2 - dy;
-                                let mut x0 = x1;
-                                let mut y0 = y1;
-                                if atom.protons != 6 || atom.isotope != 0 {
-                                    x0 += dx;
-                                    y0 += dy;
-                                }
-                                painter.line_segment(
-                                    [egui::pos2(x0, y0), egui::pos2(x3, y3)],
-                                    (2.0, egui::Color32::LIGHT_GRAY),
-                                );
-                                painter.text(
-                                    egui::pos2(x2, y2),
-                                    egui::Align2::CENTER_CENTER,
-                                    "R",
-                                    FontId::proportional(scale * 15.0),
-                                    egui::Color32::from_rgb(0x40, 0x7F, 0x00),
-                                );
-                            }
-                            idx += data.unknown() as usize;
-                        }
-
                         for (aref, &(cx, cy)) in mol.node_references().zip(&locs) {
                             let atom = aref.weight();
                             let left =
                                 [8, 9, 16, 17, 34, 35, 52, 53, 84, 85].contains(&atom.protons);
                             let is_protium = atom.protons == 1 && atom.isotope == 0;
-                            let color =
-                                egui::Color32::from_hex(svg_atom_color(atom.protons)).unwrap();
-                            if let Some((n, (mut dx, mut dy))) = mol
+                            let color = Color32::from_hex(svg_atom_color(atom.protons)).unwrap();
+                            let rect = if let Some((n, (mut dx, mut dy))) = mol
                                 .neighbors(aref.id())
                                 .map(|i| (1usize, locs[i.0 as usize]))
                                 .reduce(|(a, (ax, ay)), (b, (bx, by))| (a + b, (ax + bx, ay + by)))
@@ -459,11 +283,11 @@ fn main() -> eframe::Result {
                                             }
                                         }
                                     }
-                                    let main = painter.text(
+                                    let mut rect = painter.text(
                                         egui::pos2(cx, cy),
                                         egui::Align2::CENTER_CENTER,
                                         s,
-                                        egui::FontId::proportional(scale * 10.0),
+                                        FontId::proportional(scale * 10.0),
                                         color,
                                     );
                                     if atom.charge != 0 {
@@ -472,27 +296,35 @@ fn main() -> eframe::Result {
                                             -1 => "-".to_string(),
                                             _ => format!("{:+}", atom.charge),
                                         };
-                                        painter.text(
-                                            egui::pos2(main.max.x, main.min.y),
+                                        let sub = painter.text(
+                                            egui::pos2(rect.max.x, rect.min.y),
                                             egui::Align2::LEFT_TOP,
                                             s,
                                             FontId::proportional(scale * 5.0),
                                             color,
                                         );
+                                        rect = rect.union(sub);
                                     }
-                                }
-                                if atom.protons == 6 && atom.charge != 0 {
-                                    painter.text(
-                                        egui::pos2(cx - dx, cy - dy),
-                                        egui::Align2::CENTER_CENTER,
-                                        match atom.charge {
-                                            1 => "+".to_string(),
-                                            -1 => "-".to_string(),
-                                            _ => format!("{:+}", atom.charge),
-                                        },
-                                        egui::FontId::proportional(scale * 10.0),
-                                        egui::Color32::from_gray(0x60),
-                                    );
+                                    rect
+                                } else if atom.charge != 0 {
+                                    painter
+                                        .text(
+                                            egui::pos2(cx - dx, cy - dy),
+                                            egui::Align2::CENTER_CENTER,
+                                            match atom.charge {
+                                                1 => "+".to_string(),
+                                                -1 => "-".to_string(),
+                                                _ => format!("{:+}", atom.charge),
+                                            },
+                                            FontId::proportional(scale * 10.0),
+                                            Color32::from_gray(0x60),
+                                        )
+                                        .union(egui::Rect::from_pos(egui::pos2(cx, cy)))
+                                } else {
+                                    egui::Rect::from_x_y_ranges(
+                                        egui::Rangef::new(cx - scale * 5.0, cx + scale * 5.0),
+                                        egui::Rangef::new(cy - scale * 5.0, cy + scale * 5.0),
+                                    )
                                 }
                             } else if atom.protons != 6 || atom.isotope != 0 {
                                 let mut s = String::new();
@@ -530,11 +362,11 @@ fn main() -> eframe::Result {
                                         }
                                     }
                                 }
-                                let main = painter.text(
+                                let mut rect = painter.text(
                                     egui::pos2(cx, cy),
                                     egui::Align2::CENTER_CENTER,
                                     s,
-                                    egui::FontId::proportional(scale * 10.0),
+                                    FontId::proportional(scale * 10.0),
                                     color,
                                 );
                                 if atom.charge != 0 {
@@ -543,15 +375,207 @@ fn main() -> eframe::Result {
                                         -1 => "-".to_string(),
                                         _ => format!("{:+}", atom.charge),
                                     };
-                                    painter.text(
-                                        egui::pos2(main.max.x, main.min.y),
+                                    let sub = painter.text(
+                                        egui::pos2(rect.max.x, rect.min.y),
                                         egui::Align2::LEFT_TOP,
                                         s,
                                         FontId::proportional(scale * 5.0),
                                         color,
                                     );
+                                    rect = rect.union(sub);
+                                }
+                                rect
+                            } else {
+                                egui::Rect::from_x_y_ranges(
+                                    egui::Rangef::new(cx - scale * 5.0, cx + scale * 5.0),
+                                    egui::Rangef::new(cy - scale * 5.0, cy + scale * 5.0),
+                                )
+                            };
+                            if let Some(pos) = click {
+                                if rect.contains(pos) {
+                                    selected = Some(aref.id());
+                                    painter.circle_filled(
+                                        rect.center(),
+                                        rect.size().length() * 0.6,
+                                        Color32::YELLOW.gamma_multiply(0.25),
+                                    );
                                 }
                             }
+                        }
+
+                        for edge in mol.edge_references() {
+                            let [ix1, ix2] = std::cmp::minmax(
+                                mol.to_index(edge.source()),
+                                mol.to_index(edge.target()),
+                            );
+                            let (ox1, oy1) = locs[ix1];
+                            let (ox2, oy2) = locs[ix2];
+                            let (mut x1, mut y1) = (ox1, oy1);
+                            let (mut x2, mut y2) = (ox2, oy2);
+                            let (mut dx, mut dy) = (x2 - x1, y2 - y1);
+                            let mag = (dx * dx + dy * dy).sqrt();
+                            dx /= mag;
+                            dy /= mag;
+                            if atoms[ix1] != 6
+                                || mol.node_weight(edge.source()).unwrap().isotope != 0
+                            {
+                                x1 += dx * scale * 9.0;
+                                y1 += dy * scale * 9.0;
+                            }
+                            if atoms[ix2] != 6
+                                || mol.node_weight(edge.target()).unwrap().isotope != 0
+                            {
+                                x2 -= dx * scale * 9.0;
+                                y2 -= dy * scale * 9.0;
+                            }
+                            let (mut rdx, mut rdy) = (-dy * 2.75, dx * 2.75);
+                            match *edge.weight() {
+                                Bond::Non => {}
+                                Bond::Single | Bond::Left | Bond::Right => {
+                                    painter.line_segment(
+                                        [egui::pos2(x1, y1), egui::pos2(x2, y2)],
+                                        (2.0, Color32::LIGHT_GRAY),
+                                    );
+                                }
+                                Bond::Double | Bond::DoubleE | Bond::DoubleZ => {
+                                    painter.line_segment(
+                                        [
+                                            egui::pos2(x1 - rdx, y1 - rdy),
+                                            egui::pos2(x2 - rdx, y2 - rdy),
+                                        ],
+                                        (2.0, Color32::LIGHT_GRAY),
+                                    );
+                                    painter.line_segment(
+                                        [
+                                            egui::pos2(x1 + rdx, y1 + rdy),
+                                            egui::pos2(x2 + rdx, y2 + rdy),
+                                        ],
+                                        (2.0, Color32::LIGHT_GRAY),
+                                    );
+                                }
+                                Bond::Triple => {
+                                    painter.line_segment(
+                                        [
+                                            egui::pos2(x1 - 2.0 * rdx, y1 - 2.0 * rdy),
+                                            egui::pos2(x2 - 2.0 * rdx, y2 - 2.0 * rdy),
+                                        ],
+                                        (2.0, Color32::LIGHT_GRAY),
+                                    );
+                                    painter.line_segment(
+                                        [
+                                            egui::pos2(x1 + 2.0 * rdx, y1 + 2.0 * rdy),
+                                            egui::pos2(x2 + 2.0 * rdx, y2 + 2.0 * rdy),
+                                        ],
+                                        (2.0, Color32::LIGHT_GRAY),
+                                    );
+                                    painter.line_segment(
+                                        [egui::pos2(x1, y1), egui::pos2(x2, y2)],
+                                        (2.0, Color32::LIGHT_GRAY),
+                                    );
+                                }
+                                Bond::Quad => {
+                                    painter.line_segment(
+                                        [
+                                            egui::pos2(x1 - 3.0 * rdx, y1 - 3.0 * rdy),
+                                            egui::pos2(x2 - 3.0 * rdx, y2 - 3.0 * rdy),
+                                        ],
+                                        (2.0, Color32::LIGHT_GRAY),
+                                    );
+                                    painter.line_segment(
+                                        [
+                                            egui::pos2(x1 - rdx, y1 - rdy),
+                                            egui::pos2(x2 - rdx, y2 - rdy),
+                                        ],
+                                        (2.0, Color32::LIGHT_GRAY),
+                                    );
+                                    painter.line_segment(
+                                        [
+                                            egui::pos2(x1 + rdx, y1 + rdy),
+                                            egui::pos2(x2 + rdx, y2 + rdy),
+                                        ],
+                                        (2.0, Color32::LIGHT_GRAY),
+                                    );
+                                    painter.line_segment(
+                                        [
+                                            egui::pos2(x1 + 3.0 * rdx, y1 + 3.0 * rdy),
+                                            egui::pos2(x2 + 3.0 * rdx, y2 + 3.0 * rdy),
+                                        ],
+                                        (2.0, Color32::LIGHT_GRAY),
+                                    );
+                                }
+                                Bond::Aromatic => {
+                                    let mut flip = 0.0;
+                                    let id1 = edge.source();
+                                    let id2 = edge.target();
+                                    for e in mol.edges(id1).chain(mol.edges(id2)) {
+                                        if *e.weight() != Bond::Aromatic {
+                                            continue;
+                                        }
+                                        if [id1, id2].contains(&e.target()) {
+                                            continue;
+                                        }
+                                        let (x1, y1) = locs[e.source().0 as usize];
+                                        let (x2, y2) = locs[e.target().0 as usize];
+                                        let ndx = x2 - x1;
+                                        let ndy = y2 - y1;
+                                        let dot = dx * ndy - dy * ndx;
+                                        flip += dot;
+                                    }
+                                    if flip > -0.0001 {
+                                        rdx = -rdx;
+                                        rdy = -rdy;
+                                    }
+                                    rdx *= 1.5;
+                                    rdy *= 1.5;
+                                    painter.line_segment(
+                                        [
+                                            egui::pos2(x1 - rdx, y1 - rdy),
+                                            egui::pos2(x2 - rdx, y2 - rdy),
+                                        ],
+                                        (2.0, Color32::LIGHT_GRAY),
+                                    );
+                                    painter.line_segment(
+                                        [egui::pos2(x1, y1), egui::pos2(x2, y2)],
+                                        (2.0, Color32::LIGHT_GRAY),
+                                    );
+                                }
+                                _ => panic!("invalid bond!"),
+                            }
+                        }
+
+                        let mut idx = mol.node_count();
+
+                        for (atom, &(x1, y1)) in mol.node_references().zip(&locs) {
+                            let atom = atom.weight();
+                            let data = atom.data;
+                            for i in 0..data.unknown() {
+                                let (x2, y2) = locs[idx + (i as usize)];
+                                let mut dx = x2 - x1;
+                                let mut dy = y2 - y1;
+                                let mul = (dx * dx + dy * dy).sqrt().recip() * scale * 12.0;
+                                dx *= mul;
+                                dy *= mul;
+                                let x3 = x2 - dx;
+                                let y3 = y2 - dy;
+                                let mut x0 = x1;
+                                let mut y0 = y1;
+                                if atom.protons != 6 || atom.isotope != 0 {
+                                    x0 += dx;
+                                    y0 += dy;
+                                }
+                                painter.line_segment(
+                                    [egui::pos2(x0, y0), egui::pos2(x3, y3)],
+                                    (2.0, Color32::LIGHT_GRAY),
+                                );
+                                painter.text(
+                                    egui::pos2(x2, y2),
+                                    egui::Align2::CENTER_CENTER,
+                                    "R",
+                                    FontId::proportional(scale * 15.0),
+                                    Color32::from_rgb(0x40, 0x7F, 0x00),
+                                );
+                            }
+                            idx += data.unknown() as usize;
                         }
                     });
 
