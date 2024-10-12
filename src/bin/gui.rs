@@ -17,6 +17,8 @@ fn main() -> eframe::Result {
     let mut smiles_input = String::new();
     let mut smiles_popup_focus = true;
     let mut show_logs = false;
+    let mut show_atom_popup = false;
+    let mut show_neighbors = false;
     let collector = egui_tracing::EventCollector::new();
     Registry::default()
         .with(
@@ -31,6 +33,7 @@ fn main() -> eframe::Result {
         "Lute GUI",
         eframe::NativeOptions::default(),
         move |ctx, _frame| {
+            let focused = ctx.memory(|mem| mem.focused().is_some());
             let close = ctx.input_mut(|i| {
                 let close = i.consume_shortcut(&egui::KeyboardShortcut::new(
                     egui::Modifiers::CTRL,
@@ -41,6 +44,14 @@ fn main() -> eframe::Result {
                     egui::Key::D,
                 )) {
                     show_logs = !show_logs;
+                }
+                if !focused {
+                    if i.consume_key(Default::default(), egui::Key::A) {
+                        show_atom_popup = !show_atom_popup;
+                    }
+                    if i.consume_key(Default::default(), egui::Key::N) {
+                        show_neighbors = !show_neighbors;
+                    }
                 }
                 close
             });
@@ -229,6 +240,8 @@ fn main() -> eframe::Result {
                             *y = (*y - min_y) * scale + bounds.min.y + (size.y - diff_y) / 2.0;
                         }
 
+                        let mut neighbors = Vec::new();
+
                         for (aref, &(cx, cy)) in mol.node_references().zip(&locs) {
                             let atom = aref.weight();
                             let left =
@@ -395,11 +408,16 @@ fn main() -> eframe::Result {
                                 if rect.contains(pos) {
                                     selected = Some((aref.id(), rect));
                                     let center = rect.center();
-                                    painter.circle_filled(
-                                        center,
-                                        rect.size().length() * 0.6,
-                                        Color32::YELLOW.gamma_multiply(0.25),
-                                    );
+                                    if show_atom_popup || show_neighbors {
+                                        painter.circle_filled(
+                                            center,
+                                            rect.size().length() * 0.6,
+                                            Color32::YELLOW.gamma_multiply(0.25),
+                                        );
+                                    }
+                                    if show_neighbors {
+                                        neighbors.extend(mol.edges(aref.id()));
+                                    }
                                 }
                             }
                         }
@@ -430,12 +448,17 @@ fn main() -> eframe::Result {
                                 y2 -= dy * scale * 9.0;
                             }
                             let (mut rdx, mut rdy) = (-dy * 2.75, dx * 2.75);
+                            let stroke = if neighbors.iter().any(|e| e.id() == edge.id()) {
+                                (4.0, Color32::GOLD)
+                            } else {
+                                (2.0, Color32::LIGHT_GRAY)
+                            };
                             match *edge.weight() {
                                 Bond::Non => {}
                                 Bond::Single | Bond::Left | Bond::Right => {
                                     painter.line_segment(
                                         [egui::pos2(x1, y1), egui::pos2(x2, y2)],
-                                        (2.0, Color32::LIGHT_GRAY),
+                                        stroke,
                                     );
                                 }
                                 Bond::Double | Bond::DoubleE | Bond::DoubleZ => {
@@ -444,14 +467,14 @@ fn main() -> eframe::Result {
                                             egui::pos2(x1 - rdx, y1 - rdy),
                                             egui::pos2(x2 - rdx, y2 - rdy),
                                         ],
-                                        (2.0, Color32::LIGHT_GRAY),
+                                        stroke,
                                     );
                                     painter.line_segment(
                                         [
                                             egui::pos2(x1 + rdx, y1 + rdy),
                                             egui::pos2(x2 + rdx, y2 + rdy),
                                         ],
-                                        (2.0, Color32::LIGHT_GRAY),
+                                        stroke,
                                     );
                                 }
                                 Bond::Triple => {
@@ -460,18 +483,18 @@ fn main() -> eframe::Result {
                                             egui::pos2(x1 - 2.0 * rdx, y1 - 2.0 * rdy),
                                             egui::pos2(x2 - 2.0 * rdx, y2 - 2.0 * rdy),
                                         ],
-                                        (2.0, Color32::LIGHT_GRAY),
+                                        stroke,
                                     );
                                     painter.line_segment(
                                         [
                                             egui::pos2(x1 + 2.0 * rdx, y1 + 2.0 * rdy),
                                             egui::pos2(x2 + 2.0 * rdx, y2 + 2.0 * rdy),
                                         ],
-                                        (2.0, Color32::LIGHT_GRAY),
+                                        stroke,
                                     );
                                     painter.line_segment(
                                         [egui::pos2(x1, y1), egui::pos2(x2, y2)],
-                                        (2.0, Color32::LIGHT_GRAY),
+                                        stroke,
                                     );
                                 }
                                 Bond::Quad => {
@@ -480,28 +503,28 @@ fn main() -> eframe::Result {
                                             egui::pos2(x1 - 3.0 * rdx, y1 - 3.0 * rdy),
                                             egui::pos2(x2 - 3.0 * rdx, y2 - 3.0 * rdy),
                                         ],
-                                        (2.0, Color32::LIGHT_GRAY),
+                                        stroke,
                                     );
                                     painter.line_segment(
                                         [
                                             egui::pos2(x1 - rdx, y1 - rdy),
                                             egui::pos2(x2 - rdx, y2 - rdy),
                                         ],
-                                        (2.0, Color32::LIGHT_GRAY),
+                                        stroke,
                                     );
                                     painter.line_segment(
                                         [
                                             egui::pos2(x1 + rdx, y1 + rdy),
                                             egui::pos2(x2 + rdx, y2 + rdy),
                                         ],
-                                        (2.0, Color32::LIGHT_GRAY),
+                                        stroke,
                                     );
                                     painter.line_segment(
                                         [
                                             egui::pos2(x1 + 3.0 * rdx, y1 + 3.0 * rdy),
                                             egui::pos2(x2 + 3.0 * rdx, y2 + 3.0 * rdy),
                                         ],
-                                        (2.0, Color32::LIGHT_GRAY),
+                                        stroke,
                                     );
                                 }
                                 Bond::Aromatic => {
@@ -533,11 +556,11 @@ fn main() -> eframe::Result {
                                             egui::pos2(x1 - rdx, y1 - rdy),
                                             egui::pos2(x2 - rdx, y2 - rdy),
                                         ],
-                                        (2.0, Color32::LIGHT_GRAY),
+                                        stroke,
                                     );
                                     painter.line_segment(
                                         [egui::pos2(x1, y1), egui::pos2(x2, y2)],
-                                        (2.0, Color32::LIGHT_GRAY),
+                                        stroke,
                                     );
                                 }
                                 _ => panic!("invalid bond!"),
@@ -580,26 +603,28 @@ fn main() -> eframe::Result {
                         }
                     });
 
-                    if let Some((id, rect)) = selected {
-                        ui.allocate_new_ui(
-                            egui::UiBuilder::new().max_rect(egui::Rect::from_min_size(
-                                rect.center(),
-                                egui::vec2(100.0, 100.0),
-                            )),
-                            |ui| {
-                                egui::Frame::popup(ui.style()).show(ui, |ui| {
-                                    let atom = mol.node_weight(id).unwrap();
-                                    ui.label(format!("{:#}", atom));
-                                    ui.label(format!("protons: {}", atom.isotope));
-                                    ui.label(format!("isotope: {}", atom.isotope));
-                                    ui.separator();
-                                    ui.label(format!("hydrogen: {}", atom.data.hydrogen()));
-                                    ui.label(format!("single bonds: {}", atom.data.single()));
-                                    ui.label(format!("placeholders: {}", atom.data.unknown()));
-                                    ui.label(format!("other bonds: {}", atom.data.other()));
-                                });
-                            },
-                        );
+                    if show_atom_popup {
+                        if let Some((id, rect)) = selected {
+                            ui.allocate_new_ui(
+                                egui::UiBuilder::new().max_rect(egui::Rect::from_min_size(
+                                    rect.center(),
+                                    egui::vec2(100.0, 100.0),
+                                )),
+                                |ui| {
+                                    egui::Frame::popup(ui.style()).show(ui, |ui| {
+                                        let atom = mol.node_weight(id).unwrap();
+                                        ui.label(format!("{:#}", atom));
+                                        ui.label(format!("protons: {}", atom.isotope));
+                                        ui.label(format!("isotope: {}", atom.isotope));
+                                        ui.separator();
+                                        ui.label(format!("hydrogen: {}", atom.data.hydrogen()));
+                                        ui.label(format!("single bonds: {}", atom.data.single()));
+                                        ui.label(format!("placeholders: {}", atom.data.unknown()));
+                                        ui.label(format!("other bonds: {}", atom.data.other()));
+                                    });
+                                },
+                            );
+                        }
                     }
 
                     ui.with_layout(egui::Layout::bottom_up(egui::Align::Max), |ui| {
