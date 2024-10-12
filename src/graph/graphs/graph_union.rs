@@ -285,7 +285,7 @@ pub mod iter {
         pub(super) iter: Option<I>,
         pub(super) map: fn(&'a G) -> I,
     }
-    impl<'a, G, I: Iterator> Iterator for TaggedIter<'a, G, I> {
+    impl<G, I: Iterator> Iterator for TaggedIter<'_, G, I> {
         type Item = Tagged<I::Item>;
 
         fn next(&mut self) -> Option<Self::Item> {

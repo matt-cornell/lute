@@ -282,7 +282,7 @@ pub struct Iter<'a, T, const N: usize> {
     bits: &'a BitSet<T, N>,
     next: usize,
 }
-impl<'a, T: PrimInt, const N: usize> Iterator for Iter<'a, T, N> {
+impl<T: PrimInt, const N: usize> Iterator for Iter<'_, T, N> {
     type Item = usize;
 
     fn next(&mut self) -> Option<Self::Item> {
