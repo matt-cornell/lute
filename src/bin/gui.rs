@@ -643,12 +643,28 @@ fn main() -> eframe::Result {
                     }
 
                     ui.with_layout(egui::Layout::bottom_up(egui::Align::Max), |ui| {
-                        ui.label(format!(
-                            "Fast SMILES: {}",
-                            mol.smiles(SmilesConfig::fast_roundtrip()),
-                        ));
-                        ui.label(format!("Canon SMILES: {}", mol.smiles(SmilesConfig::new())));
-                        ui.label(format!("Atomic mass: {:.3}u", mol.mass()));
+                        egui::Frame::group(ui.style()).show(ui, |ui| {
+                            let plain = egui::TextFormat::default();
+                            let code = egui::TextFormat {
+                                background: ui.style().visuals.code_bg_color,
+                                ..egui::TextFormat::simple(
+                                    FontId::monospace(14.0),
+                                    Color32::PLACEHOLDER,
+                                )
+                            };
+                            let mut job = egui::text::LayoutJob::single_section(
+                                format!("Atomic mass: {:.3}u\nFast SMILES: ", mol.mass()),
+                                plain.clone(),
+                            );
+                            job.append(
+                                &mol.smiles(SmilesConfig::fast_roundtrip()),
+                                4.0,
+                                code.clone(),
+                            );
+                            job.append("\nCanon SMILES: ", 0.0, plain);
+                            job.append(&mol.smiles(SmilesConfig::new()), 4.0, code);
+                            ui.label(job);
+                        });
                     });
                 }
             });
