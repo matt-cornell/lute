@@ -19,6 +19,7 @@ fn main() -> eframe::Result {
     let mut show_logs = false;
     let mut show_atom_popup = false;
     let mut show_neighbors = false;
+    let mut show_ids = false;
     let collector = egui_tracing::EventCollector::new();
     Registry::default()
         .with(
@@ -51,6 +52,9 @@ fn main() -> eframe::Result {
                     }
                     if i.consume_key(Default::default(), egui::Key::N) {
                         show_neighbors = !show_neighbors;
+                    }
+                    if i.consume_key(Default::default(), egui::Key::I) {
+                        show_ids = !show_ids;
                     }
                 }
                 close
@@ -260,6 +264,15 @@ fn main() -> eframe::Result {
                                 let mag = (dx * dx + dy * dy).sqrt();
                                 dx /= mag;
                                 dy /= mag;
+                                if show_ids {
+                                    painter.text(
+                                        egui::pos2(cx - dy * scale * 10.0, cy + dx * scale * 10.0),
+                                        egui::Align2::CENTER_CENTER,
+                                        aref.id().0,
+                                        Default::default(),
+                                        Color32::LIGHT_BLUE,
+                                    );
+                                }
                                 if atom.protons != 6 || atom.isotope != 0 {
                                     let mut s = String::new();
                                     if dx > 0.0 && left {
@@ -322,7 +335,7 @@ fn main() -> eframe::Result {
                                 } else if atom.charge != 0 {
                                     painter
                                         .text(
-                                            egui::pos2(cx - dx, cy - dy),
+                                            egui::pos2(cx - dx * scale, cy - dy * scale),
                                             egui::Align2::CENTER_CENTER,
                                             match atom.charge {
                                                 1 => "+".to_string(),
