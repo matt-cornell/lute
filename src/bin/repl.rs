@@ -5,7 +5,9 @@ use petgraph::data::FromElements;
 use petgraph::prelude::*;
 use reedline_repl_rs::{self as rlr, Repl};
 use rlr::clap::{self, Arg, ArgAction, ArgMatches, Command, Parser, ValueEnum};
-use rlr::reedline::{Prompt, PromptViMode, PromptEditMode, PromptHistorySearch, PromptHistorySearchStatus};
+use rlr::reedline::{
+    Prompt, PromptEditMode, PromptHistorySearch, PromptHistorySearchStatus, PromptViMode,
+};
 use semisparse::SemiSparseGraph;
 use std::borrow::Cow;
 use std::env;

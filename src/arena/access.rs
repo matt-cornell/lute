@@ -77,7 +77,10 @@ pub trait ArenaAccessible {
 
 impl<T: ArenaAccessible> ArenaAccessible for &T {
     type Ix = T::Ix;
-    type Access<'a> = T::Access<'a> where Self: 'a;
+    type Access<'a>
+        = T::Access<'a>
+    where
+        Self: 'a;
 
     fn get_accessor(&self) -> Self::Access<'_> {
         T::get_accessor(self)
@@ -97,8 +100,14 @@ impl<Ix: IndexType, D> Copy for PtrAcc<Ix, D> {}
 impl<Ix: IndexType, D> ArenaAccessor for PtrAcc<Ix, D> {
     type Ix = Ix;
     type Data = D;
-    type Ref<'a> = &'a Arena<Ix, D> where D: 'a;
-    type MappedRef<'a, T: 'a> = &'a T where D: 'a;
+    type Ref<'a>
+        = &'a Arena<Ix, D>
+    where
+        D: 'a;
+    type MappedRef<'a, T: 'a>
+        = &'a T
+    where
+        D: 'a;
 
     fn get_arena<'a>(&'a self) -> Self::Ref<'a>
     where
@@ -125,8 +134,14 @@ impl<Ix: IndexType, D> ArenaAccessor for PtrAcc<Ix, D> {
     }
 }
 impl<Ix: IndexType, D> ArenaAccessorMut for PtrAcc<Ix, D> {
-    type RefMut<'a> = &'a mut Arena<Ix, D> where D: 'a;
-    type MappedRefMut<'a, T: 'a> = &'a mut T where D: 'a;
+    type RefMut<'a>
+        = &'a mut Arena<Ix, D>
+    where
+        D: 'a;
+    type MappedRefMut<'a, T: 'a>
+        = &'a mut T
+    where
+        D: 'a;
 
     fn get_arena_mut<'a>(&'a self) -> Self::RefMut<'a>
     where
@@ -171,7 +186,10 @@ impl<Ix: IndexType, D> ArenaPtr<Ix, D> {
 }
 impl<Ix: IndexType, D> ArenaAccessible for ArenaPtr<Ix, D> {
     type Ix = Ix;
-    type Access<'a> = PtrAcc<Ix, D> where D: 'a;
+    type Access<'a>
+        = PtrAcc<Ix, D>
+    where
+        D: 'a;
 
     fn get_accessor(&self) -> PtrAcc<Ix, D> {
         PtrAcc(self.0)
@@ -190,8 +208,14 @@ impl<Ix: IndexType, D> Copy for RefAcc<'_, Ix, D> {}
 impl<'a, Ix: IndexType, D> ArenaAccessor for RefAcc<'a, Ix, D> {
     type Ix = Ix;
     type Data = D;
-    type Ref<'b> = &'b Arena<Ix, D> where 'a: 'b;
-    type MappedRef<'b, T: 'b> = &'b T where 'a: 'b;
+    type Ref<'b>
+        = &'b Arena<Ix, D>
+    where
+        'a: 'b;
+    type MappedRef<'b, T: 'b>
+        = &'b T
+    where
+        'a: 'b;
 
     fn get_arena<'b>(&'b self) -> Self::Ref<'b>
     where
@@ -222,7 +246,10 @@ impl<'a, Ix: IndexType, D> ArenaAccessor for RefAcc<'a, Ix, D> {
 
 impl<Ix: IndexType, D> ArenaAccessible for Arena<Ix, D> {
     type Ix = Ix;
-    type Access<'a> = RefAcc<'a, Ix, D> where D: 'a;
+    type Access<'a>
+        = RefAcc<'a, Ix, D>
+    where
+        D: 'a;
 
     fn get_accessor(&self) -> RefAcc<Ix, D> {
         RefAcc(self)
@@ -241,8 +268,14 @@ impl<Ix: IndexType, D> Copy for RefCellAcc<'_, Ix, D> {}
 impl<'a, Ix: IndexType, D> ArenaAccessor for RefCellAcc<'a, Ix, D> {
     type Ix = Ix;
     type Data = D;
-    type Ref<'b> = Ref<'b, Arena<Ix, D>> where 'a: 'b;
-    type MappedRef<'b, T: 'b> = Ref<'b, T> where 'a: 'b;
+    type Ref<'b>
+        = Ref<'b, Arena<Ix, D>>
+    where
+        'a: 'b;
+    type MappedRef<'b, T: 'b>
+        = Ref<'b, T>
+    where
+        'a: 'b;
 
     fn get_arena<'b>(&'b self) -> Self::Ref<'b>
     where
@@ -271,8 +304,14 @@ impl<'a, Ix: IndexType, D> ArenaAccessor for RefCellAcc<'a, Ix, D> {
     }
 }
 impl<'a, Ix: IndexType, D> ArenaAccessorMut for RefCellAcc<'a, Ix, D> {
-    type RefMut<'b> = RefMut<'b, Arena<Ix, D>> where 'a: 'b;
-    type MappedRefMut<'b, T: 'b> = RefMut<'b, T> where 'a: 'b;
+    type RefMut<'b>
+        = RefMut<'b, Arena<Ix, D>>
+    where
+        'a: 'b;
+    type MappedRefMut<'b, T: 'b>
+        = RefMut<'b, T>
+    where
+        'a: 'b;
 
     fn get_arena_mut<'b>(&'b self) -> Self::RefMut<'b>
     where
@@ -303,7 +342,10 @@ impl<'a, Ix: IndexType, D> ArenaAccessorMut for RefCellAcc<'a, Ix, D> {
 
 impl<Ix: IndexType, D> ArenaAccessible for RefCell<Arena<Ix, D>> {
     type Ix = Ix;
-    type Access<'a> = RefCellAcc<'a, Ix, D> where D: 'a;
+    type Access<'a>
+        = RefCellAcc<'a, Ix, D>
+    where
+        D: 'a;
 
     fn get_accessor(&self) -> RefCellAcc<Ix, D> {
         RefCellAcc(self)
@@ -323,8 +365,15 @@ impl<'a, Ix: IndexType, D, R: RawRwLock + 'a> Copy for RwLockAcc<'a, Ix, D, R> {
 impl<'a, Ix: IndexType, D, R: RawRwLock + 'a> ArenaAccessor for RwLockAcc<'a, Ix, D, R> {
     type Ix = Ix;
     type Data = D;
-    type Ref<'b> = RwLockReadGuard<'b, R, Arena<Ix, D>> where 'a: 'b, D: 'b;
-    type MappedRef<'b, T: 'b> = MappedRwLockReadGuard<'b, R, T> where 'a: 'b;
+    type Ref<'b>
+        = RwLockReadGuard<'b, R, Arena<Ix, D>>
+    where
+        'a: 'b,
+        D: 'b;
+    type MappedRef<'b, T: 'b>
+        = MappedRwLockReadGuard<'b, R, T>
+    where
+        'a: 'b;
 
     fn get_arena<'b>(&'b self) -> Self::Ref<'b>
     where
@@ -353,8 +402,14 @@ impl<'a, Ix: IndexType, D, R: RawRwLock + 'a> ArenaAccessor for RwLockAcc<'a, Ix
     }
 }
 impl<'a, Ix: IndexType, D, R: RawRwLock + 'a> ArenaAccessorMut for RwLockAcc<'a, Ix, D, R> {
-    type RefMut<'b> = RwLockWriteGuard<'b, R, Arena<Ix, D>> where 'a: 'b;
-    type MappedRefMut<'b, T: 'b> = MappedRwLockWriteGuard<'b, R, T> where 'a: 'b;
+    type RefMut<'b>
+        = RwLockWriteGuard<'b, R, Arena<Ix, D>>
+    where
+        'a: 'b;
+    type MappedRefMut<'b, T: 'b>
+        = MappedRwLockWriteGuard<'b, R, T>
+    where
+        'a: 'b;
 
     fn get_arena_mut<'b>(&'b self) -> Self::RefMut<'b>
     where
@@ -385,7 +440,11 @@ impl<'a, Ix: IndexType, D, R: RawRwLock + 'a> ArenaAccessorMut for RwLockAcc<'a,
 
 impl<Ix: IndexType, D, R: RawRwLock> ArenaAccessible for RwLock<R, Arena<Ix, D>> {
     type Ix = Ix;
-    type Access<'a> = RwLockAcc<'a, Ix, D, R> where R: 'a, D: 'a;
+    type Access<'a>
+        = RwLockAcc<'a, Ix, D, R>
+    where
+        R: 'a,
+        D: 'a;
 
     fn get_accessor(&self) -> RwLockAcc<Ix, D, R> {
         RwLockAcc(self)
@@ -394,7 +453,10 @@ impl<Ix: IndexType, D, R: RawRwLock> ArenaAccessible for RwLock<R, Arena<Ix, D>>
 
 impl<T: ArenaAccessible> ArenaAccessible for Rc<T> {
     type Ix = T::Ix;
-    type Access<'a> = T::Access<'a> where T: 'a;
+    type Access<'a>
+        = T::Access<'a>
+    where
+        T: 'a;
 
     fn get_accessor(&self) -> Self::Access<'_> {
         T::get_accessor(self)
@@ -403,7 +465,10 @@ impl<T: ArenaAccessible> ArenaAccessible for Rc<T> {
 
 impl<T: ArenaAccessible> ArenaAccessible for Arc<T> {
     type Ix = T::Ix;
-    type Access<'a> = T::Access<'a> where T: 'a;
+    type Access<'a>
+        = T::Access<'a>
+    where
+        T: 'a;
 
     fn get_accessor(&self) -> Self::Access<'_> {
         T::get_accessor(self)
