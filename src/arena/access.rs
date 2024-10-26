@@ -64,8 +64,8 @@ pub trait ArenaAccessorMut: ArenaAccessor {
 }
 
 pub trait ArenaAccessorRef: ArenaAccessor {
-    fn extract_ref<'a>(r: Self::Ref<'a>) -> &'a Arena<Self::Ix, Self::Data>;
-    fn extract_mapped_ref<'a, T>(r: Self::MappedRef<'a, T>) -> &'a T;
+    fn extract_ref(r: Self::Ref<'_>) -> &Arena<Self::Ix, Self::Data>;
+    fn extract_mapped_ref<T>(r: Self::MappedRef<'_, T>) -> &T;
 }
 
 /// Allow access to an arena.
@@ -173,10 +173,16 @@ impl<Ix: IndexType, D> ArenaAccessorMut for PtrAcc<Ix, D> {
     }
 }
 impl<Ix: IndexType, D> ArenaAccessorRef for PtrAcc<Ix, D> {
-    fn extract_ref<'a>(r: Self::Ref<'a>) -> &'a Arena<Self::Ix, Self::Data> where D: 'a {
+    fn extract_ref<'a>(r: Self::Ref<'a>) -> &'a Arena<Self::Ix, Self::Data>
+    where
+        D: 'a,
+    {
         r
     }
-    fn extract_mapped_ref<'a, T>(r: Self::MappedRef<'a, T>) -> &'a T where D: 'a {
+    fn extract_mapped_ref<'a, T>(r: Self::MappedRef<'a, T>) -> &'a T
+    where
+        D: 'a,
+    {
         r
     }
 }
@@ -257,10 +263,16 @@ impl<'a, Ix: IndexType, D> ArenaAccessor for RefAcc<'a, Ix, D> {
     }
 }
 impl<Ix: IndexType, D> ArenaAccessorRef for RefAcc<'_, Ix, D> {
-    fn extract_ref<'a>(r: Self::Ref<'a>) -> &'a Arena<Self::Ix, Self::Data> where Self: 'a {
+    fn extract_ref<'a>(r: Self::Ref<'a>) -> &'a Arena<Self::Ix, Self::Data>
+    where
+        Self: 'a,
+    {
         r
     }
-    fn extract_mapped_ref<'a, T>(r: Self::MappedRef<'a, T>) -> &'a T where Self: 'a {
+    fn extract_mapped_ref<'a, T>(r: Self::MappedRef<'a, T>) -> &'a T
+    where
+        Self: 'a,
+    {
         r
     }
 }

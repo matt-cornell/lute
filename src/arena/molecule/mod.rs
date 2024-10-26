@@ -73,6 +73,14 @@ impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
         })
     }
 
+    pub fn with_ref<S, F: FnOnce(Molecule<Ix, access::RefAcc<Ix, R::Data>>) -> S>(
+        &self,
+        f: F,
+    ) -> S {
+        let guard = self.arena();
+        f(guard.molecule(self.index))
+    }
+
     pub fn fragment(&self) -> R::MappedRef<'_, Fragment<Ix, R::Data>> {
         R::map_ref(self.arena(), |a| &a.frags[self.index.index()])
     }
