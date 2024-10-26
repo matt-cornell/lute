@@ -1,8 +1,8 @@
-// use crate::arena::{ArenaAccessor, ArenaAccessorMut, Molecule};
+use crate::arena::{ArenaAccessorRef, Molecule};
 use frunk::hlist;
 use frunk::HCons;
 use indices::*;
-// use petgraph::graph::IndexType;
+use petgraph::graph::IndexType;
 use std::ops::{Deref, DerefMut};
 
 /// Marker indices for recursive property access
@@ -124,6 +124,14 @@ where
 
     fn get_prop_mut(&mut self) -> Self::RefMut<'_> {
         (**self).get_prop_mut()
+    }
+}
+
+impl<T, I, Ix: IndexType, R: ArenaAccessorRef<Ix = Ix>> Property<T, Inside<I>> for Molecule<Ix, R> where R::Data: Property<T, I> {
+    type Ref<'a> = <R::Data as Property<T, I>>::Ref<'a> where Self: 'a;
+
+    fn get_prop(&self) -> Self::Ref<'_> {
+        R::extract_mapped_ref(self.data()).get_prop()
     }
 }
 

@@ -4,7 +4,8 @@
     cmp_minmax,
     debug_closure_helpers,
     get_many_mut,
-    maybe_uninit_write_slice
+    maybe_uninit_write_slice,
+    trivial_bounds
 )]
 
 #[rustfmt::skip]

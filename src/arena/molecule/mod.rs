@@ -2,19 +2,35 @@ use super::arena::*;
 use super::*;
 use petgraph::graph::NodeIndex as PetIndex;
 use petgraph::visit::IntoNodeReferences;
+use std::fmt::{self, Debug, Formatter};
+use std::marker::PhantomData;
 
 pub mod graph_traits;
 mod node_impls;
 pub use node_impls::*;
 
 /// Main API to access molecules and fragments stored in an arena.
-#[derive(Debug, Clone, Copy)]
 #[repr(C)]
-pub struct Molecule<Ix, R> {
+pub struct Molecule<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> {
     pub arena: R,
     pub index: MolIndex<Ix>,
+    pub _phantom: PhantomData<R::Data>,
 }
-impl<Ix, R> Molecule<Ix, R> {
+impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Debug for Molecule<Ix, R> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Molecule")
+            .field("index", &self.index.0)
+            .field("arena", &(&*self.arena() as *const _))
+            .finish()
+    }
+}
+impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Clone for Molecule<Ix, R> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Copy for Molecule<Ix, R> {}
+impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> Molecule<Ix, R> {
     pub fn from_arena<'a, 'b: 'a, A: ArenaAccessible<Ix = Ix, Access<'a> = R> + 'a>(
         arena: &'b A,
         index: MolIndex<Ix>,
@@ -25,6 +41,7 @@ impl<Ix, R> Molecule<Ix, R> {
         Self {
             arena: arena.get_accessor(),
             index,
+            _phantom: PhantomData,
         }
     }
 

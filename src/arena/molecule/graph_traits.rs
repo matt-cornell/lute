@@ -1,18 +1,18 @@
-use crate::utils::bitset::BitSet;
-
 use super::*;
+use crate::utils::bitset::BitSet;
+use access::ArenaAccessor;
 use petgraph::{visit::*, Direction};
 use std::iter::Map;
 use std::ops::Range;
 
-impl<Ix: Copy + Ord, R> GraphBase for Molecule<Ix, R> {
+impl<Ix: IndexType + Ord, R: ArenaAccessor<Ix = Ix>> GraphBase for Molecule<Ix, R> {
     type NodeId = NodeIndex<Ix>;
     type EdgeId = EdgeIndex<Ix>;
 }
 
-impl<Ix: Copy + Ord, R: Copy> GraphRef for Molecule<Ix, R> {}
+impl<Ix: IndexType + Ord, R: ArenaAccessor<Ix = Ix>> GraphRef for Molecule<Ix, R> {}
 
-impl<Ix: Copy + Ord, R> GraphProp for Molecule<Ix, R> {
+impl<Ix: IndexType + Ord, R: ArenaAccessor<Ix = Ix>> GraphProp for Molecule<Ix, R> {
     type EdgeType = petgraph::Undirected;
 }
 
@@ -34,7 +34,7 @@ impl<Ix: IndexType + Ord, R: ArenaAccessor<Ix = Ix>> NodeIndexable for Molecule<
 }
 impl<Ix: IndexType + Ord, R: ArenaAccessor<Ix = Ix>> NodeCompactIndexable for Molecule<Ix, R> {}
 
-impl<Ix: IndexType + Ord, R> Data for Molecule<Ix, R> {
+impl<Ix: IndexType + Ord, R: ArenaAccessor<Ix = Ix>> Data for Molecule<Ix, R> {
     type NodeWeight = Atom;
     type EdgeWeight = Bond;
 }
@@ -129,7 +129,7 @@ impl<Ix: IndexType + Ord, R: ArenaAccessor<Ix = Ix> + Copy> GetAdjacencyMatrix f
         matrix.get(i)
     }
 }
-impl<Ix: IndexType + Ord, R> Visitable for Molecule<Ix, R> {
+impl<Ix: IndexType + Ord, R: ArenaAccessor<Ix = Ix>> Visitable for Molecule<Ix, R> {
     type Map = BitSet<usize, 1>;
 
     fn reset_map(&self, map: &mut Self::Map) {

@@ -63,6 +63,11 @@ pub trait ArenaAccessorMut: ArenaAccessor {
     ) -> Self::MappedRefMut<'a, U>;
 }
 
+pub trait ArenaAccessorRef: ArenaAccessor {
+    fn extract_ref<'a>(r: Self::Ref<'a>) -> &'a Arena<Self::Ix, Self::Data>;
+    fn extract_mapped_ref<'a, T>(r: Self::MappedRef<'a, T>) -> &'a T;
+}
+
 /// Allow access to an arena.
 ///
 /// The purpose of this type is to allow `RefCell`s and similar types to be passed to things expecting mutability.
@@ -167,6 +172,14 @@ impl<Ix: IndexType, D> ArenaAccessorMut for PtrAcc<Ix, D> {
         f(r)
     }
 }
+impl<Ix: IndexType, D> ArenaAccessorRef for PtrAcc<Ix, D> {
+    fn extract_ref<'a>(r: Self::Ref<'a>) -> &'a Arena<Self::Ix, Self::Data> where D: 'a {
+        r
+    }
+    fn extract_mapped_ref<'a, T>(r: Self::MappedRef<'a, T>) -> &'a T where D: 'a {
+        r
+    }
+}
 
 /// Wrapper type around a `*mut Arena`. It has an `unsafe` constructor because the
 /// `ArenaAccessible` implementation can't be.
@@ -241,6 +254,14 @@ impl<'a, Ix: IndexType, D> ArenaAccessor for RefAcc<'a, Ix, D> {
         'a: 'b,
     {
         f(r)
+    }
+}
+impl<Ix: IndexType, D> ArenaAccessorRef for RefAcc<'_, Ix, D> {
+    fn extract_ref<'a>(r: Self::Ref<'a>) -> &'a Arena<Self::Ix, Self::Data> where Self: 'a {
+        r
+    }
+    fn extract_mapped_ref<'a, T>(r: Self::MappedRef<'a, T>) -> &'a T where Self: 'a {
+        r
     }
 }
 
