@@ -16,6 +16,7 @@ pub mod empirical;
 pub mod graph;
 pub mod molecule;
 pub mod parse;
+pub mod prop;
 pub mod utils;
 
 #[cfg(feature = "rand")]
