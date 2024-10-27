@@ -4,8 +4,8 @@
     cmp_minmax,
     debug_closure_helpers,
     get_many_mut,
-    maybe_uninit_write_slice,
-    trivial_bounds
+    mapped_lock_guards,
+    maybe_uninit_write_slice
 )]
 
 #[rustfmt::skip]
@@ -34,6 +34,8 @@ pub mod prelude {
     pub use crate::graph::misc::DataValueMap;
     pub use crate::molecule::Molecule as MolTrait;
     pub use crate::parse::smiles::SmilesParser;
+    pub use crate::prop::{self, PropertyExt as _};
+
     pub use crate::{arena, empirical, smiles};
 }
 
