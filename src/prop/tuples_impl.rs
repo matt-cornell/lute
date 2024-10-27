@@ -23,6 +23,7 @@ macro_rules! impl_tuple {
         impl<T, I, $($head,)* $($tail,)* $curr: Property<T, I>> Property<T, Nth<I, { array_len([$(replace_idents!($head ()),)*]) }>> for ($($head,)* $curr, $($tail,)*) {
             type Ref<'a> = $curr::Ref<'a> where Self: 'a, T: 'a;
 
+            #[inline(always)]
             fn get_prop(&self) -> Self::Ref<'_> {
                 let ($(replace_idents!($head _),)* curr, $(replace_idents!($tail _),)*) = self;
                 curr.get_prop()
@@ -31,6 +32,7 @@ macro_rules! impl_tuple {
         impl<T, I, $($head,)* $($tail,)* $curr: PropertyMut<T, I>> PropertyMut<T, Nth<I, { array_len([$(replace_idents!($head ()),)*]) }>> for ($($head,)* $curr, $($tail,)*) {
             type RefMut<'a> = $curr::RefMut<'a> where Self: 'a, T: 'a;
 
+            #[inline(always)]
             fn get_prop_mut(&mut self) -> Self::RefMut<'_> {
                 let ($(replace_idents!($head _),)* curr, $(replace_idents!($tail _),)*) = self;
                 curr.get_prop_mut()
@@ -39,17 +41,20 @@ macro_rules! impl_tuple {
         impl<T, I, $($head,)* $($tail,)* $curr: PropertyIMut<T, I>> PropertyIMut<T, Nth<I, { array_len([$(replace_idents!($head ()),)*]) }>> for ($($head,)* $curr, $($tail,)*) {
             type RefIMut<'a> = $curr::RefIMut<'a> where Self: 'a, T: 'a;
 
+            #[inline(always)]
             fn get_prop_imut(&self) -> Self::RefIMut<'_> {
                 let ($(replace_idents!($head _),)* curr, $(replace_idents!($tail _),)*) = self;
                 curr.get_prop_imut()
             }
         }
         impl<T, I, $($head,)* $($tail,)* $curr: PropertyRef<T, I>> PropertyRef<T, Nth<I, { array_len([$(replace_idents!($head ()),)*]) }>> for ($($head,)* $curr, $($tail,)*) {
+            #[inline(always)]
             fn extract_ref<'a>(r: Self::Ref<'a>) -> &'a T where Self: 'a {
                 $curr::extract_ref(r)
             }
         }
         impl<T, I, $($head,)* $($tail,)* $curr: PropertyMutRef<T, I>> PropertyMutRef<T, Nth<I, { array_len([$(replace_idents!($head ()),)*]) }>> for ($($head,)* $curr, $($tail,)*) {
+            #[inline(always)]
             fn extract_mut_ref<'a>(r: Self::RefMut<'a>) -> &'a mut T where Self: 'a {
                 $curr::extract_mut_ref(r)
             }

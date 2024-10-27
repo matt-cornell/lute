@@ -129,6 +129,7 @@ pub trait PropertyIMut<T, I>: PropertyMut<T, I> {
 pub trait PropertyRef<T, I>: Property<T, I> {
     /// This should be a no-op.
     fn extract_ref(r: Self::Ref<'_>) -> &T;
+    #[inline]
     fn get_prop_ref(&self) -> &T {
         Self::extract_ref(self.get_prop())
     }
@@ -139,6 +140,7 @@ pub trait PropertyRef<T, I>: Property<T, I> {
 pub trait PropertyMutRef<T, I>: PropertyMut<T, I> {
     /// This should be a no-op.
     fn extract_mut_ref(r: Self::RefMut<'_>) -> &mut T;
+    #[inline]
     fn get_prop_mut_ref(&mut self) -> &mut T {
         Self::extract_mut_ref(self.get_prop_mut())
     }
@@ -150,6 +152,7 @@ impl<T> Property<T, Current> for T {
     where
         Self: 'a;
 
+    #[inline(always)]
     fn get_prop(&self) -> &T {
         self
     }
@@ -160,16 +163,19 @@ impl<T> PropertyMut<T, Current> for T {
     where
         Self: 'a;
 
+    #[inline(always)]
     fn get_prop_mut(&mut self) -> &mut T {
         self
     }
 }
 impl<T> PropertyRef<T, Current> for T {
+    #[inline(always)]
     fn extract_ref(r: Self::Ref<'_>) -> &T {
         r
     }
 }
 impl<T> PropertyMutRef<T, Current> for T {
+    #[inline(always)]
     fn extract_mut_ref(r: Self::RefMut<'_>) -> &mut T {
         r
     }
@@ -181,6 +187,7 @@ impl<T, I, Head: Property<T, I>, Tail> Property<T, Inside<I>> for HCons<Head, Ta
         Self: 'a,
         T: 'a;
 
+    #[inline(always)]
     fn get_prop(&self) -> Self::Ref<'_> {
         self.head.get_prop()
     }
@@ -192,6 +199,7 @@ impl<T, I, Head: PropertyMut<T, I>, Tail> PropertyMut<T, Inside<I>> for HCons<He
         Self: 'a,
         T: 'a;
 
+    #[inline(always)]
     fn get_prop_mut(&mut self) -> Self::RefMut<'_> {
         self.head.get_prop_mut()
     }
@@ -203,11 +211,13 @@ impl<T, I, Head: PropertyIMut<T, I>, Tail> PropertyIMut<T, Inside<I>> for HCons<
         Self: 'a,
         T: 'a;
 
+    #[inline(always)]
     fn get_prop_imut(&self) -> Self::RefIMut<'_> {
         self.head.get_prop_imut()
     }
 }
 impl<T, I, Head: PropertyRef<T, I>, Tail> PropertyRef<T, Inside<I>> for HCons<Head, Tail> {
+    #[inline(always)]
     fn extract_ref<'a>(r: Self::Ref<'a>) -> &'a T
     where
         Self: 'a,
@@ -216,6 +226,7 @@ impl<T, I, Head: PropertyRef<T, I>, Tail> PropertyRef<T, Inside<I>> for HCons<He
     }
 }
 impl<T, I, Head: PropertyMutRef<T, I>, Tail> PropertyMutRef<T, Inside<I>> for HCons<Head, Tail> {
+    #[inline(always)]
     fn extract_mut_ref<'a>(r: Self::RefMut<'a>) -> &'a mut T
     where
         Self: 'a,
@@ -230,6 +241,7 @@ impl<T, I, Head, Tail: Property<T, I>> Property<T, Next<I>> for HCons<Head, Tail
         Self: 'a,
         T: 'a;
 
+    #[inline(always)]
     fn get_prop(&self) -> Self::Ref<'_> {
         self.tail.get_prop()
     }
@@ -241,6 +253,7 @@ impl<T, I, Head, Tail: PropertyMut<T, I>> PropertyMut<T, Next<I>> for HCons<Head
         Self: 'a,
         T: 'a;
 
+    #[inline(always)]
     fn get_prop_mut(&mut self) -> Self::RefMut<'_> {
         self.tail.get_prop_mut()
     }
@@ -252,11 +265,13 @@ impl<T, I, Head, Tail: PropertyIMut<T, I>> PropertyIMut<T, Next<I>> for HCons<He
         Self: 'a,
         T: 'a;
 
+    #[inline(always)]
     fn get_prop_imut(&self) -> Self::RefIMut<'_> {
         self.tail.get_prop_imut()
     }
 }
 impl<T, I, Head, Tail: PropertyRef<T, I>> PropertyRef<T, Next<I>> for HCons<Head, Tail> {
+    #[inline(always)]
     fn extract_ref<'a>(r: Self::Ref<'a>) -> &'a T
     where
         Self: 'a,
@@ -265,6 +280,7 @@ impl<T, I, Head, Tail: PropertyRef<T, I>> PropertyRef<T, Next<I>> for HCons<Head
     }
 }
 impl<T, I, Head, Tail: PropertyMutRef<T, I>> PropertyMutRef<T, Next<I>> for HCons<Head, Tail> {
+    #[inline(always)]
     fn extract_mut_ref<'a>(r: Self::RefMut<'a>) -> &'a mut T
     where
         Self: 'a,
@@ -272,48 +288,6 @@ impl<T, I, Head, Tail: PropertyMutRef<T, I>> PropertyMutRef<T, Next<I>> for HCon
         Tail::extract_mut_ref(r)
     }
 }
-/*
-impl<T, I, R: Deref<Target: Property<T, I>>> Property<T, Derefed<I>> for R {
-    type Ref<'a>
-        = <<R as Deref>::Target as Property<T, I>>::Ref<'a>
-    where
-        Self: 'a, T: 'a;
-
-    fn get_prop(&self) -> Self::Ref<'_> {
-        (**self).get_prop()
-    }
-}
-impl<T, I, R: DerefMut<Target: PropertyMut<T, I>>> PropertyMut<T, Derefed<I>> for R {
-    type RefMut<'a>
-        = <<R as Deref>::Target as PropertyMut<T, I>>::RefMut<'a>
-    where
-        Self: 'a, T: 'a;
-
-    fn get_prop_mut(&mut self) -> Self::RefMut<'_> {
-        (**self).get_prop_mut()
-    }
-}
-impl<T, I, R: Deref<Target: PropertyIMut<T, I>>> PropertyIMut<T, Derefed<I>> for R {
-    type RefIMut<'a>
-        = <<R as Deref>::Target as PropertyIMut<T, I>>::RefIMut<'a>
-    where
-        Self: 'a;
-
-    fn get_prop_imut(&self) -> Self::RefIMut<'_> {
-        (**self).get_prop_imut()
-    }
-}
-impl<T, I, R: Deref<Target: PropertyIMut<T, I>>> PropertyMut<T, Derefed<I>> for R {
-    type RefMut<'a>
-        = <<R as Deref>::Target as PropertyIMut<T, I>>::RefIMut<'a>
-    where
-        Self: 'a;
-
-    fn get_prop_mut(&mut self) -> Self::RefMut<'_> {
-        (**self).get_prop_imut()
-    }
-}
-*/
 
 impl<T, I, Ix: IndexType, R: ArenaAccessorRef<Ix = Ix, Data: Property<T, I>>> Property<T, Inside<I>>
     for Molecule<Ix, R>
@@ -324,6 +298,7 @@ impl<T, I, Ix: IndexType, R: ArenaAccessorRef<Ix = Ix, Data: Property<T, I>>> Pr
         Self: 'a,
         T: 'a;
 
+    #[inline(always)]
     fn get_prop(&self) -> Self::Ref<'_> {
         R::extract_mapped_ref(self.data()).get_prop()
     }
@@ -337,6 +312,7 @@ impl<T, I, Ix: IndexType, R: ArenaAccessorRef<Ix = Ix, Data: PropertyIMut<T, I>>
         Self: 'a,
         T: 'a;
 
+    #[inline(always)]
     fn get_prop_mut(&mut self) -> Self::RefMut<'_> {
         R::extract_mapped_ref(self.data()).get_prop_imut()
     }
@@ -350,6 +326,7 @@ impl<T, I, Ix: IndexType, R: ArenaAccessorRef<Ix = Ix, Data: PropertyIMut<T, I>>
         Self: 'a,
         T: 'a;
 
+    #[inline(always)]
     fn get_prop_imut(&self) -> Self::RefIMut<'_> {
         R::extract_mapped_ref(self.data()).get_prop_imut()
     }
@@ -370,30 +347,35 @@ pub trait PropertyExt {
         Self: PropertyIMut<T, I> + 'a,
         T: 'a;
 
+    #[inline(always)]
     fn get_prop_of<T, I>(&self) -> Self::Ref<'_>
     where
         Self: Property<T, I>,
     {
         self.get_prop()
     }
+    #[inline(always)]
     fn get_prop_mut_of<T, I>(&mut self) -> Self::RefMut<'_>
     where
         Self: PropertyMut<T, I>,
     {
         self.get_prop_mut()
     }
+    #[inline(always)]
     fn get_prop_imut_of<T, I>(&self) -> Self::RefIMut<'_>
     where
         Self: PropertyIMut<T, I>,
     {
         self.get_prop_imut()
     }
+    #[inline(always)]
     fn get_prop_ref_of<T, I>(&self) -> &T
     where
         Self: PropertyRef<T, I>,
     {
         self.get_prop_ref()
     }
+    #[inline(always)]
     fn get_prop_mut_ref_of<T, I>(&mut self) -> &mut T
     where
         Self: PropertyMutRef<T, I>,
