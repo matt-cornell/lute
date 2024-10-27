@@ -3,7 +3,7 @@
 //! Uses the same basic idea as [`frunk`] does in its `HList` methods, but adds in recursive searches.
 //! Looking at the implementors of these traits is a mess, so to summarize:
 //! - Every type can access itself
-//! - `frunk`'s `HList`s can access any of their elements
+//! - `HList`s can access any of their elements
 //! - Tuples up to 12 elements can access any of their elements
 //! - `&mut T` and `Box` forward access to their contained type
 //! - `&T`, `Rc`, and `Arc` all provide immutable and interior-mutable access
