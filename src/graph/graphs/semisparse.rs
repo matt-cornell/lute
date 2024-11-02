@@ -360,11 +360,11 @@ impl<N: Optional, E: Copy, Ty: EdgeType, Ix: IndexType> DataValueMap
 where
     N::Inner: Copy,
 {
-    fn node_weight(&self, id: Self::NodeId) -> Option<Self::NodeWeight> {
+    fn node_weight_val(&self, id: Self::NodeId) -> Option<Self::NodeWeight> {
         let w = self.inner.node_weight(id)?;
         w.is_some().then(|| *w.unwrap_ref())
     }
-    fn edge_weight(&self, id: Self::EdgeId) -> Option<Self::EdgeWeight> {
+    fn edge_weight_val(&self, id: Self::EdgeId) -> Option<Self::EdgeWeight> {
         self.inner.edge_weight(id).copied()
     }
 }

@@ -66,13 +66,13 @@ impl<G: GraphBase, T: PrimInt, const N: usize, const C: bool> NodeCount
 impl<G: DataValueMap + NodeIndexable, T: PrimInt, const N: usize, const C: bool> DataValueMap
     for BitFiltered<G, T, N, C>
 {
-    fn node_weight(&self, id: Self::NodeId) -> Option<Self::NodeWeight> {
+    fn node_weight_val(&self, id: Self::NodeId) -> Option<Self::NodeWeight> {
         self.filter
             .get(self.graph.to_index(id))
-            .then(|| self.graph.node_weight(id))?
+            .then(|| self.graph.node_weight_val(id))?
     }
-    fn edge_weight(&self, id: Self::EdgeId) -> Option<Self::EdgeWeight> {
-        self.graph.edge_weight(id)
+    fn edge_weight_val(&self, id: Self::EdgeId) -> Option<Self::EdgeWeight> {
+        self.graph.edge_weight_val(id)
     }
 }
 

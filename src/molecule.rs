@@ -132,7 +132,7 @@ impl<G: Visitable + IntoEdges + DataValueMap<NodeWeight = Atom, EdgeWeight = Bon
                 };
                 (!self.seen.is_visited(&n2)).then_some((n2, e.weight().bond_count().floor() as u8))
             }));
-            let a = self.graph.node_weight(n).unwrap();
+            let a = self.graph.node_weight_val(n).unwrap();
             self.weights
                 .push((((a.protons as u16) << 9) + a.isotope, w));
         }
@@ -287,7 +287,7 @@ where
     where
         &'a Self: DataValueMap + IntoEdges,
     {
-        let atom = self.node_weight(id).unwrap();
+        let atom = self.node_weight_val(id).unwrap();
         let mut neighbors_pi = false;
         let mut bond_electrons = 0.0;
         for edge in self.edges(id) {

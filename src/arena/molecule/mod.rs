@@ -300,10 +300,10 @@ impl<
 impl<Ix: IndexType, R: ArenaAccessor<Ix = Ix>> crate::graph::misc::DataValueMap
     for Molecule<Ix, R>
 {
-    fn node_weight(&self, idx: NodeIndex<Ix>) -> Option<Atom> {
+    fn node_weight_val(&self, idx: NodeIndex<Ix>) -> Option<Atom> {
         self.get_atom(idx)
     }
-    fn edge_weight(&self, idx: EdgeIndex<Ix>) -> Option<Bond> {
+    fn edge_weight_val(&self, idx: EdgeIndex<Ix>) -> Option<Bond> {
         self.get_bond(idx)
     }
 }

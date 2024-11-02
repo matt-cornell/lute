@@ -175,11 +175,11 @@ impl<G: DataMap> DataMap for GraphCompactor<G> {
 }
 
 impl<G: DataValueMap> DataValueMap for GraphCompactor<G> {
-    fn node_weight(&self, id: Self::NodeId) -> Option<Self::NodeWeight> {
-        self.graph.node_weight(id)
+    fn node_weight_val(&self, id: Self::NodeId) -> Option<Self::NodeWeight> {
+        self.graph.node_weight_val(id)
     }
-    fn edge_weight(&self, id: Self::EdgeId) -> Option<Self::EdgeWeight> {
-        self.graph.edge_weight(id)
+    fn edge_weight_val(&self, id: Self::EdgeId) -> Option<Self::EdgeWeight> {
+        self.graph.edge_weight_val(id)
     }
 }
 

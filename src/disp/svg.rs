@@ -231,11 +231,11 @@ where
             dx /= mag;
             dy /= mag;
             if self.mode == FormatMode::Normal {
-                if atoms[ix1] != 6 || self.graph.node_weight(edge.source()).unwrap().isotope != 0 {
+                if atoms[ix1] != 6 || self.graph.node_weight_val(edge.source()).unwrap().isotope != 0 {
                     x1 += dx * 12.0;
                     y1 += dy * 12.0;
                 }
-                if atoms[ix2] != 6 || self.graph.node_weight(edge.target()).unwrap().isotope != 0 {
+                if atoms[ix2] != 6 || self.graph.node_weight_val(edge.target()).unwrap().isotope != 0 {
                     x2 -= dx * 12.0;
                     y2 -= dy * 12.0;
                 }

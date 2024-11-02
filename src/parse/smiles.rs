@@ -1,9 +1,10 @@
 use crate::atom_info::ATOM_DATA;
 use crate::core::{TooManyBonds, *};
+use crate::prelude::DataValueMap;
 use crate::utils::echar::*;
 use atoi::FromRadix10;
 use itertools::Itertools;
-use petgraph::prelude::*;
+use petgraph::data::{Build, DataMapMut};
 use petgraph::visit::*;
 use smallvec::SmallVec;
 use std::cmp::Ordering;
@@ -15,7 +16,7 @@ use SmilesErrorKind::*;
 #[macro_export]
 macro_rules! smiles {
     ($smiles:literal) => {
-        $crate::parse::smiles::SmilesParser::new($smiles)
+        $crate::parse::smiles::GraphSmilesParser::new($smiles)
             .parse()
             .expect(concat!("Failed to parse SMILES ", $smiles))
     };
@@ -73,68 +74,61 @@ impl From<TooManyBonds> for SmilesError {
 /// Parser for a SMILES string.
 ///
 /// Parsing is single-use, with this type acting somewhat like a builder in its API.
-pub struct SmilesParser<'a> {
+pub struct SmilesParser<'a, G: GraphBase> {
     // use byte slice because SMILES shouldn't have non-ASCII data
     pub input: &'a [u8],
     index: usize,
-    rings: HashMap<usize, (NodeIndex, Option<Bond>)>,
-    graph: MoleculeGraph,
-    pub suppress: bool,
+    rings: HashMap<usize, (G::NodeId, Option<Bond>)>,
+    pub graph: G,
     pub validate: bool,
 }
-impl<'a> SmilesParser<'a> {
+impl<'a, G: GraphBase> SmilesParser<'a, G> {
     /// Create a new parser from an input string
-    pub fn new<I: AsRef<[u8]> + ?Sized>(input: &'a I) -> Self {
+    pub fn new_in<I: AsRef<[u8]> + ?Sized>(input: &'a I, graph: G) -> Self {
         let input = input.as_ref();
         debug_assert!(input.is_ascii());
         Self {
             input,
             index: 0,
             rings: Default::default(),
-            graph: Default::default(),
-            suppress: true,
+            graph,
             validate: cfg!(debug_assertions),
         }
     }
-
-    /// Create a new parser from an input string, without suppressing hydrogens and r-groups
-    pub fn new_unsuppressed<I: AsRef<[u8]> + ?Sized>(input: &'a I) -> Self {
-        let input = input.as_ref();
-        debug_assert!(input.is_ascii());
-        Self {
-            input,
-            index: 0,
-            rings: Default::default(),
-            graph: Default::default(),
-            suppress: false,
-            validate: true,
-        }
-    }
-
-    pub fn with_suppression(mut self, suppress: bool) -> Self {
-        self.suppress = suppress;
-        self
+    pub fn new<I: AsRef<[u8]> + ?Sized>(input: &'a I) -> Self
+    where
+        G: Default,
+    {
+        Self::new_in(input, G::default())
     }
     pub fn with_validation(mut self, validate: bool) -> Self {
         self.validate = validate;
-        self
-    }
-    pub fn set_suppression(&mut self, suppress: bool) -> &mut Self {
-        self.suppress = suppress;
         self
     }
     pub fn set_validation(&mut self, validate: bool) -> &mut Self {
         self.validate = validate;
         self
     }
+}
 
+impl<G> SmilesParser<'_, G>
+where
+    G: Build
+        + DataMapMut<NodeWeight = Atom, EdgeWeight = Bond>
+        + DataValueMap
+        + GraphProp<EdgeType = petgraph::Undirected>
+        + Visitable
+        + NodeCompactIndexable,
+    for<'a> &'a G: IntoEdges<NodeId = G::NodeId, EdgeId = G::EdgeId, NodeWeight = Atom, EdgeWeight = Bond>
+        + IntoNodeReferences,
+{
     /// Parse a "chain". This can really be anything, though, it just returns the first atom in the
     /// group so it can be bonded to something else
     #[instrument(level = "debug", skip(self), fields(self.input, self.index))]
     fn parse_chain(
         &mut self,
         nested: bool,
-    ) -> Result<Option<(NodeIndex, Bond, bool)>, SmilesError> {
+    ) -> Result<Option<(G::NodeId, Bond, bool)>, SmilesError> {
         if self.index >= self.input.len() {
             return Ok(None);
         }
@@ -162,20 +156,15 @@ impl<'a> SmilesParser<'a> {
                     if bond == Bond::Non {
                         continue;
                     }
-                    if self.graph.contains_edge(last_atom, atom) {
+                    if self.graph.neighbors(last_atom).any(|n| n == atom) {
                         Err(SmilesError::new(start_idx, DuplicateBond))?
-                    }
-                    if self.graph[last_atom].protons == 0
-                        && self.graph.edges(last_atom).next().is_some()
-                    {
-                        Err(SmilesError::new(start_idx, MultiBondedR))?
                     }
                     self.graph.add_edge(
                         last_atom,
                         atom,
                         if !ex
-                            && self.graph[last_atom].data.scratch()
-                                & self.graph[atom].data.scratch()
+                            && self.graph.node_weight(last_atom).unwrap().data.scratch()
+                                & self.graph.node_weight(atom).unwrap().data.scratch()
                                 & 2
                                 != 0
                         {
@@ -184,7 +173,10 @@ impl<'a> SmilesParser<'a> {
                             bond
                         },
                     );
-                    self.graph[atom].with_scratch(|s| *s |= 8);
+                    self.graph
+                        .node_weight_mut(atom)
+                        .unwrap()
+                        .with_scratch(|s| *s |= 8);
                 }
                 Some(&b')') if nested => {
                     if ex {
@@ -194,7 +186,10 @@ impl<'a> SmilesParser<'a> {
                     return Ok(Some((first_atom, first_bond.0, first_bond.1)));
                 }
                 Some(&b'&') => {
-                    self.graph[last_atom].add_unknown(1)?;
+                    self.graph
+                        .node_weight_mut(last_atom)
+                        .unwrap()
+                        .add_unknown(1)?;
                     self.index += 1;
                 }
                 Some(_) => {
@@ -205,8 +200,8 @@ impl<'a> SmilesParser<'a> {
                                 last_atom,
                                 atom,
                                 if !ex
-                                    && self.graph[last_atom].data.scratch()
-                                        & self.graph[atom].data.scratch()
+                                    && self.graph.node_weight(last_atom).unwrap().data.scratch()
+                                        & self.graph.node_weight(atom).unwrap().data.scratch()
                                         & 2
                                         != 0
                                 {
@@ -244,7 +239,7 @@ impl<'a> SmilesParser<'a> {
 
     /// Parse an atom or an atom with hydrogens attached (in brackets)
     #[instrument(level = "trace", skip_all, fields(self.input, self.index))]
-    fn get_atom(&mut self) -> Result<Option<NodeIndex>, SmilesError> {
+    fn get_atom(&mut self) -> Result<Option<G::NodeId>, SmilesError> {
         match self.input.get(self.index) {
             None => Ok(None),
             Some(&b'B') => {
@@ -463,17 +458,15 @@ impl<'a> SmilesParser<'a> {
                 if self.input.get(self.index) == Some(&b'@') {
                     trace!("handling chirality");
                     self.index += 1;
+                    let a = self.graph.node_weight_mut(atom).unwrap();
                     if self.input.get(self.index) == Some(&b'@') {
                         self.index += 1;
-                        self.graph[atom].data.set_chirality(Chirality::R);
+                        a.data.set_chirality(Chirality::R);
                     } else {
-                        self.graph[atom].data.set_chirality(Chirality::S);
+                        a.data.set_chirality(Chirality::S);
                     }
                 }
                 if self.input.get(self.index) == Some(&b'H') {
-                    if self.graph[atom].protons == 0 {
-                        Err(SmilesError::new(self.index, MultiBondedR))?
-                    }
                     self.index += 1;
                     let (mut h, used) = u8::from_radix_10(&self.input[self.index..]);
                     if used == 0 {
@@ -482,15 +475,9 @@ impl<'a> SmilesParser<'a> {
                         self.index += used;
                     }
                     trace!(count = h, "adding explicit hydrogens");
-                    if self.suppress {
-                        self.graph[atom].add_hydrogens(h)?;
-                    } else {
-                        for _ in 0..h {
-                            let hy = self.graph.add_node(Atom::new(1));
-                            self.graph.add_edge(atom, hy, Bond::Single);
-                        }
-                    }
-                    self.graph[atom].with_scratch(|s| *s |= 1);
+                    let a = self.graph.node_weight_mut(atom).unwrap();
+                    a.add_hydrogens(h)?;
+                    a.with_scratch(|s| *s |= 1);
                 }
                 match self.input.get(self.index) {
                     Some(&b'+') => {
@@ -507,7 +494,7 @@ impl<'a> SmilesParser<'a> {
                             self.index += used;
                         }
                         trace!(charge, "adding positive charge");
-                        self.graph[atom].charge = charge;
+                        self.graph.node_weight_mut(atom).unwrap().charge = charge;
                     }
                     Some(&b'-') => {
                         self.index += 1;
@@ -523,7 +510,7 @@ impl<'a> SmilesParser<'a> {
                             self.index += used;
                         }
                         trace!(charge, "adding negative charge");
-                        self.graph[atom].charge = -charge;
+                        self.graph.node_weight_mut(atom).unwrap().charge = -charge;
                     }
                     _ => {}
                 }
@@ -540,7 +527,7 @@ impl<'a> SmilesParser<'a> {
 
     /// Handle loops. Since this needs to know which bond to use, it also parses a bond.
     #[instrument(level = "debug", skip_all, fields(self.input, self.index))]
-    fn handle_loops(&mut self, last_atom: NodeIndex) -> Result<(Bond, bool), SmilesError> {
+    fn handle_loops(&mut self, last_atom: G::NodeId) -> Result<(Bond, bool), SmilesError> {
         loop {
             let bond_idx = self.index;
             let prev_bond = self.get_bond();
@@ -578,7 +565,7 @@ impl<'a> SmilesParser<'a> {
                             }
                         }
                     };
-                    if self.graph.contains_edge(last_atom, other) {
+                    if self.graph.neighbors(last_atom).any(|a| a == other) {
                         return Err(SmilesError::new(num_idx, DuplicateBond));
                     }
                     if bond != Bond::Non {
@@ -586,8 +573,8 @@ impl<'a> SmilesParser<'a> {
                             last_atom,
                             other,
                             if !ex
-                                && self.graph[last_atom].data.scratch()
-                                    & self.graph[other].data.scratch()
+                                && self.graph.node_weight(last_atom).unwrap().data.scratch()
+                                    & self.graph.node_weight(other).unwrap().data.scratch()
                                     & 2
                                     != 0
                             {
@@ -628,7 +615,8 @@ impl<'a> SmilesParser<'a> {
     /// Update bond counts
     #[instrument(level = "debug", skip_all, fields(self.input, self.index))]
     fn update_bonds(&mut self) -> Result<(), SmilesError> {
-        for n in self.graph.node_indices() {
+        for n in 0..self.graph.node_count() {
+            let n = self.graph.from_index(n);
             let mut sc = 0;
             let mut bc = 0;
             for b in self.graph.edges(n) {
@@ -638,11 +626,12 @@ impl<'a> SmilesParser<'a> {
                     bc += 1;
                 }
             }
-            self.graph[n].set_single_bonds(
+            let a = self.graph.node_weight_mut(n).unwrap();
+            a.set_single_bonds(
                 sc.try_into()
                     .map_err(|_| TooManyBonds(TooMany::Single, sc))?,
             )?;
-            self.graph[n].set_other_bonds(
+            a.set_other_bonds(
                 bc.try_into()
                     .map_err(|_| TooManyBonds(TooMany::Other, bc))?,
             )?;
@@ -653,15 +642,19 @@ impl<'a> SmilesParser<'a> {
     /// Saturate all atoms with hydrogens
     #[instrument(level = "debug", skip_all, fields(self.input, self.index))]
     fn update_hydrogens(&mut self) -> Result<(), SmilesError> {
-        for atom in self.graph.node_indices() {
-            let ex_bonds = match self.graph[atom].protons {
+        for atom in 0..self.graph.node_count() {
+            let atom = self.graph.from_index(atom);
+            let a = *self.graph.node_weight(atom).unwrap();
+            if a.data.scratch() & 1 == 1 {
+                continue;
+            }
+            let ex_bonds = match a.protons {
                 1 => Some(1),
-                x @ 6..=9 => Some(10 - (x as i8) + self.graph[atom].charge),
-                x @ 14..=17 => Some(18 - (x as i8) + self.graph[atom].charge),
+                x @ 6..=9 => Some(10 - (x as i8) + a.charge),
+                x @ 14..=17 => Some(18 - (x as i8) + a.charge),
                 35 | 53 => Some(1),
                 _ => None,
             };
-            let a = self.graph[atom];
             trace!(atom = %a, ex_bonds, "checking atom");
             if let Some(ex_bonds) = ex_bonds {
                 let bond_count = (self
@@ -671,27 +664,11 @@ impl<'a> SmilesParser<'a> {
                     .ceil()
                     .clamp(0.0, 127.0) as i8)
                     + (a.data.hydrogen() + a.data.unknown()) as i8;
-                if self.suppress {
-                    let mut walk = self.graph.neighbors(atom).detach();
-                    let mut count = 0;
-                    while let Some((e, n)) = walk.next(&self.graph) {
-                        if self.graph[n].protons == 1 && self.graph[e] == Bond::Single {
-                            self.graph[n].add_hydrogens(1)?;
-                            self.graph.remove_node(n);
-                            count += 1;
-                        }
-                    }
-                    if count > 0 {
-                        debug!(count, id = atom.index(), "pruned hydrogens");
-                    }
-                    if bond_count < ex_bonds && self.graph[atom].data.scratch() & 1 == 0 {
-                        self.graph[atom].add_hydrogens((ex_bonds - bond_count) as u8)?;
-                    }
-                } else if bond_count < ex_bonds && self.graph[atom].data.scratch() & 1 == 0 {
-                    for _ in 0..(ex_bonds - bond_count) {
-                        let hy = self.graph.add_node(Atom::new(1));
-                        self.graph.add_edge(atom, hy, Bond::Single);
-                    }
+                if bond_count < ex_bonds {
+                    self.graph
+                        .node_weight_mut(atom)
+                        .unwrap()
+                        .add_hydrogens((ex_bonds - bond_count) as u8)?;
                 }
             }
         }
@@ -707,12 +684,13 @@ impl<'a> SmilesParser<'a> {
 
         {
             let _span = debug_span!("E/Z assignment").entered();
-            for id in (0..self.graph.edge_count()).map(petgraph::graph::EdgeIndex::new) {
-                if self.graph[id] != Bond::Double {
-                    continue;
-                }
-                trace!(id = id.index(), "checking double bond");
-                let (a, b) = self.graph.edge_endpoints(id).unwrap();
+            let edges = self
+                .graph
+                .edge_references()
+                .filter(|e| *e.weight() == Bond::Double)
+                .map(|e| (e.id(), e.source(), e.target()))
+                .collect::<SmallVec<_, 8>>();
+            for (id, a, b) in edges {
                 let (mut left, mut right, mut unbound) = (None, None, None);
                 let mut es = SmallVec::<_, 4>::new();
                 for e in self.graph.edges(a) {
@@ -738,9 +716,8 @@ impl<'a> SmilesParser<'a> {
                     (None, Some(_), None) => Ordering::Less,
                     _ => Ordering::Equal,
                 };
-                trace!(id = id.index(), ord = aord as i8, "checked first end");
                 for e in es.drain(..) {
-                    self.graph[e] = Bond::Single;
+                    *self.graph.edge_weight_mut(e).unwrap() = Bond::Single;
                 }
                 if aord == Ordering::Equal {
                     continue;
@@ -769,14 +746,13 @@ impl<'a> SmilesParser<'a> {
                     (None, Some(_), None) => Ordering::Less,
                     _ => Ordering::Equal,
                 };
-                trace!(id = id.index(), ord = bord as i8, "checked other end");
                 for e in es.drain(..) {
-                    self.graph[e] = Bond::Single;
+                    *self.graph.edge_weight_mut(e).unwrap() = Bond::Single;
                 }
                 if bord == Ordering::Equal {
                     continue;
                 }
-                self.graph[id] = if aord == bord {
+                *self.graph.edge_weight_mut(id).unwrap() = if aord == bord {
                     Bond::DoubleZ
                 } else {
                     Bond::DoubleE
@@ -787,12 +763,13 @@ impl<'a> SmilesParser<'a> {
         // R/S assignment
         {
             let _span = debug_span!("R/S assignment").entered();
-            for id in (0..self.graph.node_count()).map(petgraph::graph::NodeIndex::new) {
-                let ch = self.graph[id].data.chirality();
+            let detached = &self.graph as *const G;
+            for id in (0..self.graph.node_count()).map(|i| unsafe { (*detached).from_index(i) }) {
+                let ch = self.graph.node_weight(id).unwrap().data.chirality();
                 if !ch.is_chiral() {
                     continue;
                 }
-                trace!(id = id.index(), "checking atom");
+                trace!(id = self.graph.to_index(id), "checking atom");
 
                 let mut ns: SmallVec<_, 4> = self
                     .graph
@@ -800,7 +777,10 @@ impl<'a> SmilesParser<'a> {
                     .map(|n| self.graph.cip_priority(n, id))
                     .collect();
                 if ns.len() > 4 {
-                    warn!(bonds = ?ns, "attempting to determine chirality for atom with more than 4 bonds");
+                    warn!(
+                        bonds = ns.len(),
+                        "attempting to determine chirality for atom with more than 4 bonds"
+                    );
                 }
                 if ch == Chirality::R {
                     ns.reverse();
@@ -846,30 +826,38 @@ impl<'a> SmilesParser<'a> {
                     Chirality::None
                 };
                 std::mem::drop(ns);
-                self.graph[id].data.set_chirality(ch);
+                self.graph
+                    .node_weight_mut(id)
+                    .unwrap()
+                    .data
+                    .set_chirality(ch);
             }
         }
     }
 
     /// Perform some checks on the molecule. Panics on failure (which should be impossible).
-    #[instrument(level = "trace", skip_all, fields(self.input, self.index))]
     fn validate(&self) {
+        trace!(
+            input = std::str::from_utf8(self.input).unwrap_or("non-UTF8 data??"),
+            index = self.index,
+            "validate"
+        );
         for node in self.graph.node_references() {
             assert_eq!(
                 self.graph.edges(node.id()).count(),
                 (node.weight().data.single() + node.weight().data.other()) as usize
             );
         }
-        for &edge in self.graph.edge_weights() {
+        for edge in self.graph.edge_references() {
+            let edge = *edge.weight();
             assert_ne!(edge, Bond::Non);
             assert_ne!(edge, Bond::Left);
             assert_ne!(edge, Bond::Right);
         }
     }
 
-    /// Parse the molecule, consuming self. This is taken by value to avoid cleanup.
-    #[instrument(level = "debug", skip_all)]
-    pub fn parse(mut self) -> Result<MoleculeGraph, SmilesError> {
+    /// Parse the molecule into the graph.
+    pub fn parse_inplace(&mut self) -> Result<(), SmilesError> {
         self.parse_chain(false)?;
         self.update_bonds()?;
         self.update_hydrogens()?;
@@ -877,10 +865,17 @@ impl<'a> SmilesParser<'a> {
         if self.validate {
             self.validate();
         }
-        if let Some(id) = self.rings.into_keys().next() {
+        if let Some((id, _)) = self.rings.drain().next() {
             Err(SmilesError::new(self.index, UnclosedLoop(id)))
         } else {
-            Ok(self.graph)
+            Ok(())
         }
     }
+    /// Parse the molecule and return the graph.
+    pub fn parse(mut self) -> Result<G, SmilesError> {
+        self.parse_inplace()?;
+        Ok(self.graph)
+    }
 }
+
+pub type GraphSmilesParser<'a> = SmilesParser<'a, MoleculeGraph>;

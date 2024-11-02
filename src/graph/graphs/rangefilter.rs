@@ -49,14 +49,14 @@ impl<G: GraphBase + NodeIndexable> NodeCount for RangeFiltered<G> {
     }
 }
 impl<G: DataValueMap + NodeIndexable> DataValueMap for RangeFiltered<G> {
-    fn node_weight(&self, id: Self::NodeId) -> Option<Self::NodeWeight> {
+    fn node_weight_val(&self, id: Self::NodeId) -> Option<Self::NodeWeight> {
         let i = self.graph.to_index(id);
         (self.start..self.end)
             .contains(&i)
-            .then(|| self.graph.node_weight(id))?
+            .then(|| self.graph.node_weight_val(id))?
     }
-    fn edge_weight(&self, id: Self::EdgeId) -> Option<Self::EdgeWeight> {
-        self.graph.edge_weight(id)
+    fn edge_weight_val(&self, id: Self::EdgeId) -> Option<Self::EdgeWeight> {
+        self.graph.edge_weight_val(id)
     }
 }
 

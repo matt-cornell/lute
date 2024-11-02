@@ -141,7 +141,7 @@ mod semantic {
         }
         #[inline]
         fn eq(&mut self, g0: &G0, g1: &G1, n0: G0::NodeId, n1: G1::NodeId) -> bool {
-            if let (Some(x), Some(y)) = (g0.node_weight(n0), g1.node_weight(n1)) {
+            if let (Some(x), Some(y)) = (g0.node_weight_val(n0), g1.node_weight_val(n1)) {
                 self(&x, &y)
             } else {
                 false

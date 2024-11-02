@@ -5,31 +5,31 @@ use petgraph::visit::Data;
 use petgraph::EdgeType;
 
 pub trait DataValueMap: Data {
-    fn node_weight(&self, id: Self::NodeId) -> Option<Self::NodeWeight>;
-    fn edge_weight(&self, id: Self::EdgeId) -> Option<Self::EdgeWeight>;
+    fn node_weight_val(&self, id: Self::NodeId) -> Option<Self::NodeWeight>;
+    fn edge_weight_val(&self, id: Self::EdgeId) -> Option<Self::EdgeWeight>;
 }
 
 impl<G: DataValueMap> DataValueMap for &G {
-    fn node_weight(&self, id: Self::NodeId) -> Option<Self::NodeWeight> {
-        G::node_weight(self, id)
+    fn node_weight_val(&self, id: Self::NodeId) -> Option<Self::NodeWeight> {
+        G::node_weight_val(self, id)
     }
-    fn edge_weight(&self, id: Self::EdgeId) -> Option<Self::EdgeWeight> {
-        G::edge_weight(self, id)
+    fn edge_weight_val(&self, id: Self::EdgeId) -> Option<Self::EdgeWeight> {
+        G::edge_weight_val(self, id)
     }
 }
 impl<N: Copy, E: Copy, Ty: EdgeType, Ix: IndexType> DataValueMap for Graph<N, E, Ty, Ix> {
-    fn node_weight(&self, id: Self::NodeId) -> Option<Self::NodeWeight> {
+    fn node_weight_val(&self, id: Self::NodeId) -> Option<Self::NodeWeight> {
         DataMap::node_weight(&self, id).copied()
     }
-    fn edge_weight(&self, id: Self::EdgeId) -> Option<Self::EdgeWeight> {
+    fn edge_weight_val(&self, id: Self::EdgeId) -> Option<Self::EdgeWeight> {
         DataMap::edge_weight(&self, id).copied()
     }
 }
 impl<N: Copy, E: Copy, Ty: EdgeType, Ix: IndexType> DataValueMap for StableGraph<N, E, Ty, Ix> {
-    fn node_weight(&self, id: Self::NodeId) -> Option<Self::NodeWeight> {
+    fn node_weight_val(&self, id: Self::NodeId) -> Option<Self::NodeWeight> {
         DataMap::node_weight(&self, id).copied()
     }
-    fn edge_weight(&self, id: Self::EdgeId) -> Option<Self::EdgeWeight> {
+    fn edge_weight_val(&self, id: Self::EdgeId) -> Option<Self::EdgeWeight> {
         DataMap::edge_weight(&self, id).copied()
     }
 }

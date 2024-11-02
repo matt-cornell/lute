@@ -158,10 +158,10 @@ where
         true
     }
     fn eq(&mut self, g0: &G0, g1: &&GraphCompactor<G1>, n0: G0::NodeId, n1: G1::NodeId) -> bool {
-        let Some(l) = g0.node_weight(n0) else {
+        let Some(l) = g0.node_weight_val(n0) else {
             return false;
         };
-        let Some(mut r) = g1.node_weight(n1) else {
+        let Some(mut r) = g1.node_weight_val(n1) else {
             return false;
         };
         let mat = self.matched[g1.graph.to_index(n1)].get();
@@ -749,7 +749,7 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
                 for (n, to) in ism.iter_mut().enumerate() {
                     let to_id = compacted.node_map[*to];
                     let new = mol.to_index(to_id);
-                    let mut mol_a = mol.node_weight(to_id).unwrap();
+                    let mut mol_a = mol.node_weight_val(to_id).unwrap();
                     let mat = matched[new].get();
                     mol_a
                         .single_to_unknown(mat.3)
@@ -806,7 +806,7 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
                     .try_into()
                     .expect("More than 255 pruned groups isn't possible!");
                 matched[to].3 = new;
-                let mut mol_a = mol.node_weight(mi).unwrap();
+                let mut mol_a = mol.node_weight_val(mi).unwrap();
                 let _ = mol_a.single_to_unknown(new);
                 let cmp_a = cmp.get_atom(Ix::new(from)).unwrap();
                 matched[to].2 = mol_a == cmp_a;
@@ -838,7 +838,7 @@ impl<Ix: IndexType, D: Default> Arena<Ix, D> {
                 .filter_map(|(from, &to)| {
                     let mat = matched[to];
                     (!mat.2).then(|| {
-                        let mut atom = mol.node_weight(mol.from_index(to)).unwrap();
+                        let mut atom = mol.node_weight_val(mol.from_index(to)).unwrap();
                         let _ = atom.single_to_unknown(mat.3);
                         (Ix::new(from), atom)
                     })

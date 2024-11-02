@@ -18,7 +18,7 @@ fn atomic_lookup() {
         ("CN", &[6, 7]),
         ("O=C=O", &[8, 6, 8]),
     ] {
-        let mol_idx = arena.insert_mol(&SmilesParser::new(mol).parse().unwrap());
+        let mol_idx = arena.insert_mol(&GraphSmilesParser::new(mol).parse().unwrap());
         let ins = arena.molecule(mol_idx);
         for (n, &protons) in atoms.iter().enumerate() {
             assert_eq!(

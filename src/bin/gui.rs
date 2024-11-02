@@ -449,13 +449,13 @@ fn main() -> eframe::Result {
                             dx /= mag;
                             dy /= mag;
                             if atoms[ix1] != 6
-                                || mol.node_weight(edge.source()).unwrap().isotope != 0
+                                || mol.node_weight_val(edge.source()).unwrap().isotope != 0
                             {
                                 x1 += dx * scale * 9.0;
                                 y1 += dy * scale * 9.0;
                             }
                             if atoms[ix2] != 6
-                                || mol.node_weight(edge.target()).unwrap().isotope != 0
+                                || mol.node_weight_val(edge.target()).unwrap().isotope != 0
                             {
                                 x2 -= dx * scale * 9.0;
                                 y2 -= dy * scale * 9.0;
@@ -627,7 +627,7 @@ fn main() -> eframe::Result {
                                 )),
                                 |ui| {
                                     egui::Frame::popup(ui.style()).show(ui, |ui| {
-                                        let atom = mol.node_weight(id).unwrap();
+                                        let atom = mol.node_weight_val(id).unwrap();
                                         ui.label(format!("{:#}", atom));
                                         ui.label(format!("protons: {}", atom.isotope));
                                         ui.label(format!("isotope: {}", atom.isotope));

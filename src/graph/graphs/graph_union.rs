@@ -82,11 +82,11 @@ impl<G: DataMapMut> DataMapMut for GraphUnion<G> {
     }
 }
 impl<G: DataValueMap> DataValueMap for GraphUnion<G> {
-    fn node_weight(&self, id: Tagged<G::NodeId>) -> Option<G::NodeWeight> {
-        self.0[id.graph_id].node_weight(id.inner)
+    fn node_weight_val(&self, id: Tagged<G::NodeId>) -> Option<G::NodeWeight> {
+        self.0[id.graph_id].node_weight_val(id.inner)
     }
-    fn edge_weight(&self, id: Tagged<G::EdgeId>) -> Option<G::EdgeWeight> {
-        self.0[id.graph_id].edge_weight(id.inner)
+    fn edge_weight_val(&self, id: Tagged<G::EdgeId>) -> Option<G::EdgeWeight> {
+        self.0[id.graph_id].edge_weight_val(id.inner)
     }
 }
 impl<G: NodeCount> NodeCount for GraphUnion<G> {

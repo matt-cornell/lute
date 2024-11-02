@@ -31,7 +31,7 @@ pub mod prelude {
     pub use crate::empirical::EmpiricalFormula;
     pub use crate::graph::misc::DataValueMap;
     pub use crate::molecule::Molecule as MolTrait;
-    pub use crate::parse::smiles::SmilesParser;
+    pub use crate::parse::smiles::{SmilesParser, GraphSmilesParser};
     pub use crate::{arena, empirical, smiles};
 }
 
